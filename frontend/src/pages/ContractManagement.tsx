@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -82,6 +82,8 @@ export default function ContractManagement() {
     products: [] as ContractProduct[],  // Array of products with quantities
   })
 
+  const dataLoadInProgress = useRef(false)
+
   useEffect(() => {
     loadData()
   }, [])
@@ -100,6 +102,11 @@ export default function ContractManagement() {
   }, [selectedContract])
 
   const loadData = async () => {
+    if (dataLoadInProgress.current) {
+      console.log('⏸️ Contract data request already running, skipping duplicate call')
+      return []
+    }
+    dataLoadInProgress.current = true
     try {
       // Load contracts and customers in parallel - they're independent
       const [contractsRes, customersRes] = await Promise.all([
@@ -119,6 +126,8 @@ export default function ContractManagement() {
       setContracts([])
       setCustomers([])
       return []
+    } finally {
+      dataLoadInProgress.current = false
     }
   }
 

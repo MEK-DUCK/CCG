@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Box,
   Tabs,
@@ -117,6 +117,23 @@ export default function HomePage() {
   })
 
   const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const activeRequests = useRef(0)
+  const dataLoadInProgress = useRef(false)
+  const portMovementLoadInProgress = useRef(false)
+
+  const beginLoading = () => {
+    activeRequests.current += 1
+    if (activeRequests.current === 1) {
+      setLoading(true)
+    }
+  }
+
+  const endLoading = () => {
+    activeRequests.current = Math.max(0, activeRequests.current - 1)
+    if (activeRequests.current === 0) {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (isInitialLoad) {
@@ -145,8 +162,13 @@ export default function HomePage() {
   }, [selectedMonth, selectedYear, value])
 
   const loadPortMovement = async () => {
+    if (portMovementLoadInProgress.current) {
+      console.log('⏸️ Port movement request already in flight, skipping duplicate call')
+      return
+    }
+    portMovementLoadInProgress.current = true
+    beginLoading()
     try {
-      setLoading(true)
       console.log(`Loading port movement for month ${selectedMonth}, year ${selectedYear}`)
       const portRes = await cargoAPI.getPortMovement(selectedMonth, selectedYear)
       console.log(`Port movement API response:`, portRes)
@@ -156,13 +178,19 @@ export default function HomePage() {
       console.error('Error loading port movement:', error)
       setPortMovement([])
     } finally {
-      setLoading(false)
+      portMovementLoadInProgress.current = false
+      endLoading()
     }
   }
 
   const loadData = async () => {
+    if (dataLoadInProgress.current) {
+      console.log('⏸️ Data request already in flight, skipping duplicate call')
+      return
+    }
+    dataLoadInProgress.current = true
+    beginLoading()
     try {
-      setLoading(true)
       // Load customers and contracts in parallel - they're independent
       const [customersRes, contractsRes, completedRes, inRoadRes] = await Promise.all([
         customerAPI.getAll().catch(() => ({ data: [] })),
@@ -178,7 +206,8 @@ export default function HomePage() {
     } catch (error: any) {
       console.error('Error loading data:', error)
     } finally {
-      setLoading(false)
+      dataLoadInProgress.current = false
+      endLoading()
     }
   }
 
