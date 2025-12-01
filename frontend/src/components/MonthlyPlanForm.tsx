@@ -77,7 +77,7 @@ interface MonthlyPlanEntry {
   laycan_2_days: string
 }
 
-export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editingPlan, onPlanCreated, onCancel }: MonthlyPlanFormProps) {
+export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editingPlan: _editingPlan, onPlanCreated, onCancel: _onCancel }: MonthlyPlanFormProps) {
   // Changed to support multiple entries per month: key is "month-year", value is array of entries
   const [monthEntries, setMonthEntries] = useState<Record<string, MonthlyPlanEntry[]>>({})
   const [existingMonthlyPlans, setExistingMonthlyPlans] = useState<any[]>([])
@@ -253,7 +253,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
   // position 1 = Q4 (Contract Q2) -> q2_quantity
   // position 2 = Q1 (Contract Q3) -> q3_quantity
   // position 3 = Q2 (Contract Q4) -> q4_quantity
-  const getQuarterlyQuantity = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', position: number): number => {
+  const getQuarterlyQuantity = (_quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', position: number): number => {
     if (!quarterlyPlan) {
       return 0
     }

@@ -93,10 +93,10 @@ export default function HomePage() {
   const [cargoDialogOpen, setCargoDialogOpen] = useState(false)
   const [editingCargo, setEditingCargo] = useState<Cargo | null>(null)
   const [cargoMonthlyPlanId, setCargoMonthlyPlanId] = useState<number | null>(null)
+  const [_cargoMonthlyPlan, setCargoMonthlyPlan] = useState<MonthlyPlan | null>(null)
   const [cargoContractId, setCargoContractId] = useState<number | null>(null)
   const [cargoContract, setCargoContract] = useState<Contract | null>(null)
   const [cargoProductName, setCargoProductName] = useState<string | null>(null)
-  const [cargoMonthlyPlan, setCargoMonthlyPlan] = useState<MonthlyPlan | null>(null)
   const [newCargoMonthlyPlanId, setNewCargoMonthlyPlanId] = useState<number | null>(null) // For moving cargo
   const [cargoFormData, setCargoFormData] = useState({
     vessel_name: '',
@@ -2081,11 +2081,6 @@ export default function HomePage() {
               setPortMovementFilterStatus(null)
               setPortMovementSearch('')
             }}
-            resultCount={(() => {
-              // Calculate from renderPortMovementTable - will be set dynamically
-              return undefined
-            })()}
-            totalCount={portMovement.length + monthlyPlans.length}
           />
           
           {renderPortMovementTable()}

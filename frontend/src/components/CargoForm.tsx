@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   Box,
   Button,
@@ -7,8 +7,8 @@ import {
   Paper,
 } from '@mui/material'
 import { Add } from '@mui/icons-material'
-import { cargoAPI, customerAPI, productAPI } from '../api/client'
-import type { Contract, Customer, Product } from '../types'
+import { cargoAPI } from '../api/client'
+import type { Contract } from '../types'
 
 interface CargoFormProps {
   contract: Contract
@@ -17,8 +17,8 @@ interface CargoFormProps {
 }
 
 export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: CargoFormProps) {
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [products, setProducts] = useState<Product[]>([])
+  const productOptions = Array.isArray(contract.products) ? contract.products : []
+  const [selectedProduct, setSelectedProduct] = useState(productOptions[0]?.name || '')
   const [formData, setFormData] = useState({
     vessel_name: '',
     load_ports: '',
@@ -35,44 +35,20 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
     notes: '',
   })
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    try {
-      const [customersRes, productsRes] = await Promise.all([
-        customerAPI.getAll(),
-        productAPI.getAll(),
-      ])
-      setCustomers(customersRes.data)
-      setProducts(productsRes.data)
-    } catch (error) {
-      console.error('Error loading data:', error)
-    }
-  }
-
-  const getCustomerId = () => {
-    const product = products.find((p) => p.id === contract.product_id)
-    if (!product) return null
-    return product.customer_id
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!monthlyPlanId) {
       alert('Please create a monthly plan first')
       return
     }
-    const customerId = getCustomerId()
-    if (!customerId) {
-      alert('Could not find customer for this contract')
+    if (!selectedProduct) {
+      alert('Please select a product from the contract')
       return
     }
     try {
       await cargoAPI.create({
-        customer_id: customerId,
-        product_id: contract.product_id,
+        customer_id: contract.customer_id,
+        product_name: selectedProduct,
         contract_id: contract.id,
         monthly_plan_id: monthlyPlanId,
         vessel_name: formData.vessel_name,
@@ -123,6 +99,22 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
         </Typography>
       )}
       <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <TextField
+          label="Product"
+          select
+          SelectProps={{ native: true }}
+          value={selectedProduct}
+          onChange={(e) => setSelectedProduct(e.target.value)}
+          required
+          fullWidth
+          helperText="Select a product defined in the contract"
+        >
+          {productOptions.map((product) => (
+            <option key={product.name} value={product.name}>
+              {product.name}
+            </option>
+          ))}
+        </TextField>
         <TextField
           label="Vessel Name"
           value={formData.vessel_name}
