@@ -1233,11 +1233,6 @@ export default function HomePage() {
               // Display contract_number (the field typed in Contract Management page)
               const contractNumber = contract?.contract_number || (cargo.contract_id ? `Contract ID: ${cargo.contract_id}` : '-')
               
-              const docsComplete = Boolean(
-                cargo.sailing_fax_entry_completed &&
-                cargo.documents_mailing_completed &&
-                cargo.inspector_invoice_completed
-              )
               const isCIFCargo = cargo.contract_type === 'CIF'
               const isInRoadStatus = cargo.status === 'In-Road (Pending Discharge)'
               const isInRoadCompleteStatus = cargo.status === 'In-Road Complete'
@@ -1429,7 +1424,6 @@ export default function HomePage() {
                       <Button
                         variant="outlined"
                         size="small"
-                        disabled={!docsComplete}
                         onClick={(e) => {
                           e.stopPropagation()
                           handleStartInRoad(cargo)
