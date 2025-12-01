@@ -23,25 +23,18 @@ export default function QuickFilters({
   const now = new Date()
   const currentMonthValue = currentMonth || now.getMonth() + 1
   const currentYearValue = currentYear || now.getFullYear()
-  const currentQuarter = Math.floor((currentMonthValue - 1) / 3) + 1
-  const selectedQuarter = Math.floor((selectedMonth - 1) / 3) + 1
-
-  const quarterOptions = [
-    { label: 'Q1 (Jan-Mar)', startMonth: 1 },
-    { label: 'Q2 (Apr-Jun)', startMonth: 4 },
-    { label: 'Q3 (Jul-Sep)', startMonth: 7 },
-    { label: 'Q4 (Oct-Dec)', startMonth: 10 },
-  ]
 
   const handleQuickFilter = (filterType: string) => {
     if (filterType === 'this-month') {
       onMonthChange(currentMonthValue)
       onYearChange(currentYearValue)
     } else if (filterType === 'this-quarter') {
+      // Set to first month of current quarter
       const quarterStartMonth = Math.floor((currentMonthValue - 1) / 3) * 3 + 1
       onMonthChange(quarterStartMonth)
       onYearChange(currentYearValue)
     } else {
+      // For status filters, just call the callback
       onFilterSelect(filterType)
     }
   }
@@ -62,21 +55,7 @@ export default function QuickFilters({
         onClick={() => handleQuickFilter('this-quarter')}
         variant="outlined"
         sx={{ cursor: 'pointer' }}
-        color={selectedQuarter === currentQuarter && selectedYear === currentYearValue ? 'primary' : 'default'}
       />
-      {quarterOptions.map((quarter, index) => (
-        <Chip
-          key={quarter.label}
-          label={quarter.label}
-          onClick={() => {
-            onMonthChange(quarter.startMonth)
-            onYearChange(selectedYear)
-          }}
-          variant="outlined"
-          sx={{ cursor: 'pointer' }}
-          color={selectedQuarter === index + 1 ? 'primary' : 'default'}
-        />
-      ))}
       <Chip
         icon={<Schedule fontSize="small" />}
         label="Pending"
