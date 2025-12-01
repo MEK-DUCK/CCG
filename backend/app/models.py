@@ -27,6 +27,7 @@ class CargoStatus(str, enum.Enum):
     COMPLETED_LOADING = "Completed Loading"
     IN_ROAD = "In-Road (Pending Discharge)"
     PENDING_NOMINATION = "Pending Nomination"
+    IN_ROAD_COMPLETE = "In-Road Complete"
 
 
 class Customer(Base):

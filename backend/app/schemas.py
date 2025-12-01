@@ -203,6 +203,17 @@ class Cargo(CargoBase):
         from_attributes = True
         use_enum_values = True
 
+class CargoInRoadStart(BaseModel):
+    vessel_name: Optional[str] = None
+    eta_discharge_port: Optional[datetime] = None
+    discharge_port_location: Optional[str] = None
+    eta: Optional[str] = None
+    notes: Optional[str] = None
+
+class CargoDischarge(BaseModel):
+    discharge_completion_time: Optional[datetime] = None
+    notes: Optional[str] = None
+
 # Cargo Audit Log Schemas
 class CargoAuditLog(BaseModel):
     id: int

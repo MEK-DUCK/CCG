@@ -80,7 +80,6 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
   const [monthEntries, setMonthEntries] = useState<Record<string, MonthlyPlanEntry[]>>({})
   const [existingMonthlyPlans, setExistingMonthlyPlans] = useState<any[]>([])
   const [isSaving, setIsSaving] = useState(false)
-  const [contractType, setContractType] = useState<'FOB' | 'CIF' | null>(null)
   const [contract, setContract] = useState<any>(null)
   const [quarterOrder, setQuarterOrder] = useState<('Q1' | 'Q2' | 'Q3' | 'Q4')[]>([])
   const [contractMonths, setContractMonths] = useState<Array<{ month: number, year: number }>>([])
@@ -94,7 +93,6 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
           const contractRes = await contractAPI.getById(quarterlyPlan.contract_id)
           const contractData = contractRes.data
           setContract(contractData)
-          setContractType(contractData.contract_type)
           
           // Parse start period to get start month
           const startDate = new Date(contractData.start_period)
@@ -374,8 +372,8 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
               month_quantity: parseFloat(entry.quantity || '0'),
               number_of_liftings: 1,
               planned_lifting_sizes: undefined,
-              laycan_5_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
-              laycan_2_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
+              laycan_5_days: parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
+              laycan_2_days: parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
             }
             
             // Only allow month/year changes if plan is not locked
@@ -411,8 +409,8 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
           month_quantity: quantity,
           number_of_liftings: 1,
           planned_lifting_sizes: undefined,
-          laycan_5_days: contractType === 'FOB' && quantity > 0 ? (entry.laycan_5_days || undefined) : undefined,
-          laycan_2_days: contractType === 'FOB' && quantity > 0 ? (entry.laycan_2_days || undefined) : undefined,
+          laycan_5_days: quantity > 0 ? (entry.laycan_5_days || undefined) : undefined,
+          laycan_2_days: quantity > 0 ? (entry.laycan_2_days || undefined) : undefined,
         })
       })
 
@@ -556,7 +554,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
                         )}
                         {entries.map((entry, entryIndex) => {
                           const quantity = parseFloat(entry.quantity || '0')
-                          const showLaycans = contractType === 'FOB' && quantity > 0
+                          const showLaycans = quantity > 0
                           const status = entry.id ? planStatuses[entry.id] : null
                           const isLocked = status?.is_locked || false
                           const hasCargos = status?.has_cargos || false
