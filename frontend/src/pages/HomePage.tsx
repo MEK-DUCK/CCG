@@ -93,7 +93,6 @@ export default function HomePage() {
   const [cargoDialogOpen, setCargoDialogOpen] = useState(false)
   const [editingCargo, setEditingCargo] = useState<Cargo | null>(null)
   const [cargoMonthlyPlanId, setCargoMonthlyPlanId] = useState<number | null>(null)
-  const [_cargoMonthlyPlan, setCargoMonthlyPlan] = useState<MonthlyPlan | null>(null)
   const [cargoContractId, setCargoContractId] = useState<number | null>(null)
   const [cargoContract, setCargoContract] = useState<Contract | null>(null)
   const [cargoProductName, setCargoProductName] = useState<string | null>(null)
@@ -287,7 +286,6 @@ export default function HomePage() {
     try {
       const monthlyPlanRes = await monthlyPlanAPI.getById(cargo.monthly_plan_id)
       const monthlyPlan = monthlyPlanRes.data
-      setCargoMonthlyPlan(monthlyPlan)
       
       // Get laycan window from monthly plan: priority is laycan_2_days > laycan_5_days > TBA
       if (monthlyPlan.laycan_2_days) {
@@ -410,8 +408,6 @@ export default function HomePage() {
     }
     
     // Store monthly plan for reference
-    setCargoMonthlyPlan(monthlyPlan)
-    
     setCargoFormData({
       vessel_name: 'TBA',
       load_ports: contract.allowed_load_ports || '',
