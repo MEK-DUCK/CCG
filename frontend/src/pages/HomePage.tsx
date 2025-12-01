@@ -892,9 +892,6 @@ export default function HomePage() {
               <TableCell sx={{ minWidth: isMobile ? 140 : 'auto', fontWeight: 'bold' }}>ETA (Discharge)</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 140 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 140 : 'auto', fontWeight: 'bold' }}>Transit Notes</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 140 : 'auto', fontWeight: 'bold' }}>Sailing Fax</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 140 : 'auto', fontWeight: 'bold' }}>Documents Mailing</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 140 : 'auto', fontWeight: 'bold' }}>Inspector Invoice</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -924,38 +921,10 @@ export default function HomePage() {
                 </TableCell>
                 <TableCell>{cargo.discharge_port_location || '-'}</TableCell>
                 <TableCell>{cargo.notes || '-'}</TableCell>
-                <TableCell>
-                  {renderChecklistChip(
-                    cargo.sailing_fax_entry_completed,
-                    cargo.sailing_fax_entry_initials,
-                    cargo.sailing_fax_entry_date
-                  )}
-                </TableCell>
-                <TableCell>
-                  {renderChecklistChip(
-                    cargo.documents_mailing_completed,
-                    cargo.documents_mailing_initials,
-                    cargo.documents_mailing_date
-                  )}
-                </TableCell>
-                <TableCell>
-                  {renderChecklistChip(
-                    cargo.inspector_invoice_completed,
-                    cargo.inspector_invoice_initials,
-                    cargo.inspector_invoice_date
-                  )}
-                </TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <Button
                     variant="contained"
                     size="small"
-                    disabled={
-                      !(
-                        cargo.sailing_fax_entry_completed &&
-                        cargo.documents_mailing_completed &&
-                        cargo.inspector_invoice_completed
-                      )
-                    }
                     onClick={() => handleMarkDischarged(cargo)}
                   >
                     Mark Discharged
@@ -1108,26 +1077,6 @@ export default function HomePage() {
     }
   }
 
-  const handleStartInRoad = async (cargo: Cargo) => {
-    if (!window.confirm('Move this CIF cargo into In-Road tracking?')) {
-      return
-    }
-    try {
-      await cargoAPI.startInRoad(cargo.id, {
-        vessel_name: cargo.vessel_name,
-        eta_discharge_port: cargo.eta_discharge_port,
-        discharge_port_location: cargo.discharge_port_location,
-        eta: cargo.eta,
-        notes: cargo.notes,
-      })
-      await loadData()
-      alert('Cargo moved to In-Road tracking.')
-    } catch (error: any) {
-      console.error('Error starting in-road tracking:', error)
-      alert(error?.response?.data?.detail || 'Error starting in-road tracking. Please try again.')
-    }
-  }
-
   const handleMarkDischarged = async (cargo: Cargo) => {
     if (!window.confirm('Mark this cargo as discharged and move it to In-Road Complete?')) {
       return
@@ -1219,7 +1168,6 @@ export default function HomePage() {
               <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Sailing Fax Entry</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Documents Mailing</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Inspector Invoice</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 160 : 'auto', fontWeight: 'bold' }}>In-Road Tracking</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -1233,10 +1181,6 @@ export default function HomePage() {
               // Display contract_number (the field typed in Contract Management page)
               const contractNumber = contract?.contract_number || (cargo.contract_id ? `Contract ID: ${cargo.contract_id}` : '-')
               
-              const isCIFCargo = cargo.contract_type === 'CIF'
-              const isInRoadStatus = cargo.status === 'In-Road (Pending Discharge)'
-              const isInRoadCompleteStatus = cargo.status === 'In-Road Complete'
-
               return (
                 <TableRow 
                   key={cargo.id}
@@ -1414,28 +1358,7 @@ export default function HomePage() {
                     )}
                   </Box>
                 </TableCell>
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  {isCIFCargo ? (
-                    isInRoadCompleteStatus ? (
-                      <Chip label="Delivered" color="success" size="small" />
-                    ) : isInRoadStatus ? (
-                      <Chip label="In-Road Tracking" color="secondary" size="small" />
-                    ) : (
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleStartInRoad(cargo)
-                        }}
-                      >
-                        Start In-Road
-                      </Button>
-                    )
-                  ) : (
-                    '-'
-                  )}
-                </TableCell>
+                {/* In-Road tracking column removed as requested */}
               </TableRow>
               )
             })}
