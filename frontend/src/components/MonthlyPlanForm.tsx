@@ -17,9 +17,7 @@ import { MonthlyPlanStatus } from '../types'
 interface MonthlyPlanFormProps {
   quarterlyPlanId?: number
   quarterlyPlan?: any  // Quarterly plan object
-  editingPlan?: any  // Monthly plan being edited (not used in new design)
   onPlanCreated: () => void
-  onCancel?: () => void
 }
 
 const QUARTER_MONTHS: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', { months: number[], labels: string[] }> = {
@@ -77,7 +75,7 @@ interface MonthlyPlanEntry {
   laycan_2_days: string
 }
 
-export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editingPlan: _editingPlan, onPlanCreated, onCancel: _onCancel }: MonthlyPlanFormProps) {
+export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlanCreated }: MonthlyPlanFormProps) {
   // Changed to support multiple entries per month: key is "month-year", value is array of entries
   const [monthEntries, setMonthEntries] = useState<Record<string, MonthlyPlanEntry[]>>({})
   const [existingMonthlyPlans, setExistingMonthlyPlans] = useState<any[]>([])
