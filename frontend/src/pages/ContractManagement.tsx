@@ -25,14 +25,12 @@ import {
   InputLabel,
   Select,
   Checkbox,
-  Paper,
 } from '@mui/material'
 import { Add, Edit, Delete, Search, Dashboard } from '@mui/icons-material'
-import { contractAPI, customerAPI, quarterlyPlanAPI, monthlyPlanAPI } from '../api/client'
-import type { Contract, Customer, QuarterlyPlan, ContractProduct, MonthlyPlan } from '../types'
+import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
+import type { Contract, Customer, QuarterlyPlan, ContractProduct } from '../types'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
-import MonthlyPlanEditDialog from '../components/MonthlyPlanEditDialog'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -59,21 +57,6 @@ const PRODUCT_OPTIONS = ['JET A-1', 'GASOIL', 'GASOIL 10PPM', 'HFO', 'LSFO']
 
 export default function ContractManagement() {
   const navigate = useNavigate()
-  const monthNames = [
-    '',
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ]
   const [contracts, setContracts] = useState<Contract[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
@@ -82,10 +65,7 @@ export default function ContractManagement() {
   const [tabValue, setTabValue] = useState(0)
   const [editingContract, setEditingContract] = useState<Contract | null>(null)
   const [editingQuarterlyPlan, setEditingQuarterlyPlan] = useState<QuarterlyPlan | null>(null)
-  const [monthlyPlans, setMonthlyPlans] = useState<MonthlyPlan[]>([])
   const [selectedQuarterlyPlanId, setSelectedQuarterlyPlanId] = useState<number | null>(null)
-  const [editingMonthlyPlan, setEditingMonthlyPlan] = useState<MonthlyPlan | null>(null)
-  const [monthlyPlanDialogOpen, setMonthlyPlanDialogOpen] = useState(false)
   const [quarterlyPlanDialogOpen, setQuarterlyPlanDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [filterCustomer, setFilterCustomer] = useState<number[]>([])
@@ -102,15 +82,6 @@ export default function ContractManagement() {
 
   const dataLoadInProgress = useRef(false)
 
-  const loadMonthlyPlans = async (quarterlyPlanId: number) => {
-    try {
-      const monthlyRes = await monthlyPlanAPI.getAll(quarterlyPlanId)
-      setMonthlyPlans(monthlyRes.data || [])
-    } catch (error) {
-      console.error('Error loading monthly plans:', error)
-      setMonthlyPlans([])
-    }
-  }
 
   useEffect(() => {
     loadData()
@@ -127,15 +98,6 @@ export default function ContractManagement() {
       setQuarterlyPlans([])
     }
   }, [selectedContract])
-
-useEffect(() => {
-  if (selectedQuarterlyPlanId) {
-    loadMonthlyPlans(selectedQuarterlyPlanId)
-  } else {
-    setMonthlyPlans([])
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [selectedQuarterlyPlanId])
 
   const loadData = async () => {
     if (dataLoadInProgress.current) {
@@ -384,9 +346,6 @@ useEffect(() => {
     if (selectedContract && selectedContract.id) {
       try {
         await loadContractDetails(selectedContract.id)
-        if (selectedQuarterlyPlanId) {
-          await loadMonthlyPlans(selectedQuarterlyPlanId)
-        }
       } catch (error) {
         console.error('Error reloading contract details after plan creation:', error)
       }
@@ -398,28 +357,9 @@ useEffect(() => {
     setQuarterlyPlanDialogOpen(true)
   }
 
-  const handleEditMonthlyPlan = (plan: MonthlyPlan) => {
-    setEditingMonthlyPlan(plan)
-    setMonthlyPlanDialogOpen(true)
-  }
-
   const handleCloseQuarterlyPlanDialog = () => {
     setQuarterlyPlanDialogOpen(false)
     setEditingQuarterlyPlan(null)
-  }
-
-  const handleCloseMonthlyPlanDialog = () => {
-    setMonthlyPlanDialogOpen(false)
-    setEditingMonthlyPlan(null)
-  }
-
-  const handleMonthlyPlanUpdated = async () => {
-    if (selectedQuarterlyPlanId) {
-      await loadMonthlyPlans(selectedQuarterlyPlanId)
-    }
-    if (selectedContract?.id) {
-      await loadContractDetails(selectedContract.id)
-    }
   }
 
   // Error boundary for rendering
@@ -955,51 +895,6 @@ useEffect(() => {
                         </Typography>
                       )}
 
-                      <Box sx={{ mt: 4 }}>
-                        <Typography variant="h6" gutterBottom>
-                          Existing Monthly Plans
-                        </Typography>
-                        {monthlyPlans.length === 0 ? (
-                          <Typography color="text.secondary">
-                            No monthly plans have been created for this quarter yet.
-                          </Typography>
-                        ) : (
-                          <TableContainer component={Paper} sx={{ mt: 2 }}>
-                            <Table size="small">
-                              <TableHead>
-                                <TableRow>
-                                  <TableCell>Month</TableCell>
-                                  <TableCell>Quantity (KT)</TableCell>
-                                  <TableCell>Laycan 5 Days</TableCell>
-                                  <TableCell>Laycan 2 Days</TableCell>
-                                  <TableCell align="right">Actions</TableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {monthlyPlans.map((plan) => (
-                                  <TableRow key={plan.id} hover>
-                                    <TableCell>
-                                      {monthNames[plan.month]} {plan.year}
-                                    </TableCell>
-                                    <TableCell>{plan.month_quantity.toLocaleString()}</TableCell>
-                                    <TableCell>{plan.laycan_5_days || '—'}</TableCell>
-                                    <TableCell>{plan.laycan_2_days || '—'}</TableCell>
-                                    <TableCell align="right">
-                                      <IconButton
-                                        size="small"
-                                        onClick={() => handleEditMonthlyPlan(plan)}
-                                        title="Edit monthly plan"
-                                      >
-                                        <Edit fontSize="small" />
-                                      </IconButton>
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
-                        )}
-                      </Box>
                     </Box>
                   )
                 })() : (
@@ -1186,12 +1081,6 @@ useEffect(() => {
         </DialogActions>
       </Dialog>
 
-      <MonthlyPlanEditDialog
-        open={monthlyPlanDialogOpen}
-        plan={editingMonthlyPlan}
-        onClose={handleCloseMonthlyPlanDialog}
-        onUpdated={handleMonthlyPlanUpdated}
-      />
     </Box>
   )
 }
