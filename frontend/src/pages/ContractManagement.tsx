@@ -25,6 +25,8 @@ import {
   InputLabel,
   Select,
   Checkbox,
+  Breadcrumbs,
+  Link,
 } from '@mui/material'
 import { Add, Edit, Delete, Search, Dashboard, ArrowBack } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
@@ -362,19 +364,43 @@ export default function ContractManagement() {
 
   return (
     <Box>
-      <Typography 
-        variant="h4" 
-        gutterBottom
-        sx={{
-          fontWeight: 700,
-          color: '#000000',
-          mb: 4,
-          fontSize: { xs: '1.75rem', md: '2rem' },
-          letterSpacing: '-0.02em',
-        }}
-      >
-        Contract Management
-      </Typography>
+      {selectedContract ? (
+        <Box sx={{ mb: 3 }}>
+          <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 1 }}>
+            <Link
+              underline="hover"
+              color="inherit"
+              onClick={() => setSelectedContract(null)}
+              sx={{ cursor: 'pointer' }}
+            >
+              Contract Management
+            </Link>
+            <Typography color="text.primary">
+              {selectedContract.contract_number || 'Selected Contract'}
+            </Typography>
+            <Typography color="text.primary">
+              {tabValue === 0 ? 'Quarterly Plan' : 'Monthly Plan'}
+            </Typography>
+          </Breadcrumbs>
+          <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+            {selectedContract.contract_number}
+          </Typography>
+        </Box>
+      ) : (
+        <Typography 
+          variant="h4" 
+          gutterBottom
+          sx={{
+            fontWeight: 700,
+            color: '#000000',
+            mb: 4,
+            fontSize: { xs: '1.75rem', md: '2rem' },
+            letterSpacing: '-0.02em',
+          }}
+        >
+          Contract Management
+        </Typography>
+      )}
       
       {!selectedContract && (
         <>
