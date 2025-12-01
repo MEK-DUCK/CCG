@@ -382,9 +382,6 @@ export default function ContractManagement() {
               {tabValue === 0 ? 'Quarterly Plan' : 'Monthly Plan'}
             </Typography>
           </Breadcrumbs>
-          <Typography variant="h4" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
-            {selectedContract.contract_number}
-          </Typography>
         </Box>
       ) : (
         <Typography 
