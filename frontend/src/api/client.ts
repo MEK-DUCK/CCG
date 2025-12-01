@@ -1,0 +1,138 @@
+import axios from 'axios'
+
+// Use relative URL when running with Vite proxy, or absolute URL if VITE_API_URL is set
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+
+const client = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 30000,
+  maxRedirects: 5,
+})
+
+// Add request interceptor for debugging
+client.interceptors.request.use(
+  (config) => {
+    console.log('🚀 Axios Request:', config.method?.toUpperCase(), config.url, config.data)
+    return config
+  },
+  (error) => {
+    console.error('❌ Request Error:', error)
+    return Promise.reject(error)
+  }
+)
+
+// Add response interceptor for debugging
+client.interceptors.response.use(
+  (response) => {
+    console.log('✅ Axios Response:', response.status, response.config.url)
+    return response
+  },
+  (error) => {
+    console.error('❌ Axios Error Response:', error.response?.status, error.config?.url)
+    console.error('❌ Error message:', error.message)
+    console.error('❌ Error code:', error.code)
+    if (error.code === 'ERR_NETWORK') {
+      console.error('❌ Network Error - Request could not be made. Check:')
+      console.error('   1. Is the backend running on port 8000?')
+      console.error('   2. Is the Vite proxy configured correctly?')
+      console.error('   3. Try restarting the frontend dev server')
+    }
+    if (error.response) {
+      console.error('❌ Error response data:', error.response.data)
+    }
+    if (error.request) {
+      console.error('❌ Request was made but no response received:', error.request)
+    }
+    return Promise.reject(error)
+  }
+)
+
+export default client
+
+// Customer API
+export const customerAPI = {
+  getAll: () => client.get('/api/customers/'),
+  getById: (id: number) => client.get(`/api/customers/${id}`),
+  create: (data: any) => client.post('/api/customers/', data),
+  update: (id: number, data: any) => client.put(`/api/customers/${id}`, data),
+  delete: (id: number) => client.delete(`/api/customers/${id}`),
+}
+
+// Contract API
+export const contractAPI = {
+  getAll: (customerId?: number) => {
+    const params = customerId ? { customer_id: customerId } : {}
+    return client.get('/api/contracts/', { params })
+  },
+  getById: (id: number) => client.get(`/api/contracts/${id}`),
+  create: (data: any) => client.post('/api/contracts/', data),
+  update: (id: number, data: any) => client.put(`/api/contracts/${id}`, data),
+  delete: (id: number) => client.delete(`/api/contracts/${id}`),
+}
+
+// Quarterly Plan API
+export const quarterlyPlanAPI = {
+  getAll: (contractId?: number) => {
+    const params = contractId ? { contract_id: contractId } : {}
+    return client.get('/api/quarterly-plans/', { params })
+  },
+  getById: (id: number) => client.get(`/api/quarterly-plans/${id}`),
+  create: (data: any) => client.post('/api/quarterly-plans/', data),
+  update: (id: number, data: any) => client.put(`/api/quarterly-plans/${id}`, data),
+  delete: (id: number) => client.delete(`/api/quarterly-plans/${id}`),
+}
+
+// Monthly Plan API
+export const monthlyPlanAPI = {
+  getAll: (quarterlyPlanId?: number) => {
+    const params = quarterlyPlanId ? { quarterly_plan_id: quarterlyPlanId } : {}
+    return client.get('/api/monthly-plans/', { params })
+  },
+  getById: (id: number) => client.get(`/api/monthly-plans/${id}`),
+  getStatus: (id: number) => client.get(`/api/monthly-plans/${id}/status`),
+  create: (data: any) => client.post('/api/monthly-plans/', data),
+  update: (id: number, data: any) => client.put(`/api/monthly-plans/${id}`, data),
+  delete: (id: number) => client.delete(`/api/monthly-plans/${id}`),
+}
+
+// Cargo API
+export const cargoAPI = {
+  getAll: (params?: any) => client.get('/api/cargos/', { params }),
+  getPortMovement: (month?: number, year?: number) => {
+    const params: any = {}
+    if (month) params.month = month
+    if (year) params.year = year
+    return client.get('/api/cargos/port-movement', { params })
+  },
+  getCompletedCargos: (month?: number, year?: number) => {
+    const params: any = {}
+    if (month) params.month = month
+    if (year) params.year = year
+    return client.get('/api/cargos/completed-cargos', { params })
+  },
+  getInRoadCIF: () => client.get('/api/cargos/in-road-cif'),
+  getById: (id: number) => client.get(`/api/cargos/${id}`),
+  create: (data: any) => client.post('/api/cargos/', data),
+  update: (id: number, data: any) => client.put(`/api/cargos/${id}`, data),
+  delete: (id: number) => client.delete(`/api/cargos/${id}`),
+}
+
+// Audit Log API
+export const auditLogAPI = {
+  getCargoLogs: (params?: any) => client.get('/api/audit-logs/cargo', { params }),
+  getMonthlyPlanLogs: (params?: any) => client.get('/api/audit-logs/monthly-plan', { params }),
+  getQuarterlyPlanLogs: (params?: any) => client.get('/api/audit-logs/quarterly-plan', { params }),
+  getReconciliationLogs: (params?: any) => client.get('/api/audit-logs/reconciliation', { params }),
+}
+
+// Documents API
+export const documentsAPI = {
+  generateNomination: (cargoId: number) => 
+    client.get(`/api/documents/cargos/${cargoId}/nomination`, { 
+      responseType: 'blob' 
+    }),
+}
+
