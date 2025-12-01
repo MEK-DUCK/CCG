@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-// Use relative URL when running with Vite proxy, or absolute URL if VITE_API_URL is set
+// Determine API base URL dynamically
+// If VITE_API_URL is set, use it
+// Otherwise, use relative URLs (which go through Vite proxy)
+// This works for both localhost and network IP access
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 const client = axios.create({
@@ -27,7 +30,7 @@ client.interceptors.request.use(
 // Add response interceptor for debugging
 client.interceptors.response.use(
   (response) => {
-    console.log('✅ Axios Response:', response.status, response.config.url)
+    console.log('✅ Axios Response:', response.status, response.config.url, 'Data length:', response.data?.length || 'N/A')
     return response
   },
   (error) => {

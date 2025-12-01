@@ -28,17 +28,52 @@ export default function CustomerManagement() {
   const [formData, setFormData] = useState({
     name: '',
   })
+  const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    loadCustomers()
+    // Only load once on mount - use a ref to prevent duplicate calls
+    let mounted = true
+    if (mounted && !isLoading) {
+      loadCustomers()
+    }
+    return () => { mounted = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const loadCustomers = async () => {
+    // Prevent duplicate calls
+    if (isLoading) {
+      console.log('⏸️ Already loading, skipping duplicate call')
+      return
+    }
+    
+    setIsLoading(true)
     try {
+      console.log('🔄 Loading customers...')
       const response = await customerAPI.getAll()
-      setCustomers(response.data)
-    } catch (error) {
-      console.error('Error loading customers:', error)
+      console.log('✅ Response received:', response.status, response.data?.length || 0, 'customers')
+      console.log('✅ Customer data:', response.data)
+      
+      if (response.data && Array.isArray(response.data)) {
+        setCustomers(response.data)
+        console.log('✅ State updated with', response.data.length, 'customers')
+      } else {
+        console.warn('⚠️ Response data is not an array:', response.data)
+        setCustomers([])
+      }
+    } catch (error: any) {
+      console.error('❌ Error loading customers:', error)
+      console.error('❌ Error details:', {
+        message: error?.message,
+        code: error?.code,
+        response: error?.response,
+        request: error?.request
+      })
+      if (error?.code !== 'ECONNABORTED') {
+        alert(`Error loading customers: ${error?.message || 'Unknown error'}`)
+      }
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -66,7 +101,6 @@ export default function CustomerManagement() {
 
   const handleSubmit = async () => {
     if (isSubmitting) {
-      console.log('Already submitting, ignoring duplicate call')
       return
     }
     
@@ -77,32 +111,19 @@ export default function CustomerManagement() {
     
     setIsSubmitting(true)
     try {
-      console.log('Creating customer with data:', formData)
-      console.log('About to call customerAPI.create...')
-      
       if (editingCustomer) {
-        console.log('Updating customer:', editingCustomer.id)
         await customerAPI.update(editingCustomer.id, formData)
-        console.log('Customer updated successfully')
       } else {
-        console.log('Calling customerAPI.create...')
         const response = await customerAPI.create(formData)
-        console.log('✅ Customer created successfully:', response.data)
+        console.log('✅ Customer created:', response.data)
       }
       
-      console.log('Closing dialog...')
       handleClose()
-      console.log('Loading customers...')
+      // Reload immediately after successful creation
       await loadCustomers()
-      console.log('✅ Customer list refreshed')
+      console.log('✅ Customer list reloaded')
     } catch (error: any) {
-      console.error('❌ Error saving customer:', error)
-      console.error('Error type:', typeof error)
-      console.error('Error message:', error?.message)
-      console.error('Error code:', error?.code)
-      console.error('Error response:', error?.response)
-      console.error('Error response data:', error?.response?.data)
-      console.error('Error response status:', error?.response?.status)
+      console.error('Error saving customer:', error)
       const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error occurred'
       alert(`Error saving customer: ${errorMessage}`)
     } finally {
@@ -145,7 +166,7 @@ export default function CustomerManagement() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {loading ? (
+            {isLoading ? (
               <TableRow>
                 <TableCell colSpan={3} align="center">
                   <Typography variant="body2" color="text.secondary">
@@ -158,6 +179,9 @@ export default function CustomerManagement() {
                 <TableCell colSpan={3} align="center">
                   <Typography variant="body2" color="text.secondary">
                     No customers found. Click "Add Customer" to create one.
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    Debug: isLoading={isLoading ? 'true' : 'false'}, customers.length={customers.length}
                   </Typography>
                 </TableCell>
               </TableRow>
