@@ -5,10 +5,6 @@ import {
   TextField,
   Typography,
   Paper,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
 } from '@mui/material'
 import { Add } from '@mui/icons-material'
 import { cargoAPI } from '../api/client'
@@ -35,7 +31,6 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
     etd_load_port: '',
     eta_discharge_port: '',
     discharge_port_location: '',
-    route_via: '',
     notes: '',
   })
 
@@ -72,7 +67,6 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
       if (contract.contract_type === 'CIF') {
         if (formData.eta_discharge_port) payload.eta_discharge_port = toISODate(formData.eta_discharge_port)
         if (formData.discharge_port_location) payload.discharge_port_location = formData.discharge_port_location
-        if (formData.route_via) payload.route_via = formData.route_via
       }
 
       await cargoAPI.create(payload)
@@ -88,7 +82,6 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
         etd_load_port: '',
         eta_discharge_port: '',
         discharge_port_location: '',
-        route_via: '',
         notes: '',
       })
       onCargoCreated()
@@ -212,20 +205,6 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
               onChange={(e) => setFormData({ ...formData, discharge_port_location: e.target.value })}
               fullWidth
             />
-            <FormControl fullWidth>
-              <InputLabel>Route Via</InputLabel>
-              <Select
-                label="Route Via"
-                value={formData.route_via}
-                onChange={(e) => setFormData({ ...formData, route_via: e.target.value })}
-              >
-                <MenuItem value="">
-                  <em>Select Route</em>
-                </MenuItem>
-                <MenuItem value="SUEZ">SUEZ</MenuItem>
-                <MenuItem value="COGH">COGH</MenuItem>
-              </Select>
-            </FormControl>
           </>
         )}
         <TextField

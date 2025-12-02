@@ -113,7 +113,6 @@ export default function HomePage() {
     etc: '',
     eta_discharge_port: '',
     discharge_port_location: '',
-    route_via: '',
     discharge_completion_time: '',
     notes: '',
     status: 'Planned' as CargoStatus,
@@ -336,7 +335,6 @@ export default function HomePage() {
       eta_discharge_port: cargo.eta_discharge_port ? new Date(cargo.eta_discharge_port).toISOString().slice(0, 10) : '',
       discharge_port_location: cargo.discharge_port_location || '',
       discharge_completion_time: cargo.discharge_completion_time ? new Date(cargo.discharge_completion_time).toISOString().slice(0, 16) : '',
-      route_via: cargo.route_via || '',
       notes: cargo.notes || '',
       status: cargo.status,
       lc_status: cargo.lc_status || '',
@@ -432,7 +430,6 @@ export default function HomePage() {
       etc: '',
       eta_discharge_port: '',
       discharge_port_location: '',
-      route_via: '',
       discharge_completion_time: '',
       notes: '',
       status: 'Planned' as CargoStatus,
@@ -471,7 +468,6 @@ export default function HomePage() {
           etc: cargoFormData.etc || undefined,
           eta_discharge_port: etaDischargePortISO,
           discharge_port_location: cargoFormData.discharge_port_location || undefined,
-          route_via: cargoFormData.route_via || undefined,
           discharge_completion_time: cargoFormData.discharge_completion_time || undefined,
           notes: cargoFormData.notes || undefined,
           status: cargoFormData.status,
@@ -597,7 +593,6 @@ export default function HomePage() {
                 // CIF specific fields
                 eta_discharge_port: etaDischargeISO,
                 discharge_port_location: cargoFormData.discharge_port_location || undefined,
-                route_via: cargoFormData.route_via || undefined,
               }
               
               // Create the duplicate cargo
@@ -704,7 +699,6 @@ export default function HomePage() {
         if (contract.contract_type === 'CIF') {
           if (cargoFormData.eta_discharge_port) payload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
           if (cargoFormData.discharge_port_location) payload.discharge_port_location = cargoFormData.discharge_port_location
-          if (cargoFormData.route_via) payload.route_via = cargoFormData.route_via
           if (cargoFormData.discharge_completion_time) payload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
         }
 
@@ -732,7 +726,6 @@ export default function HomePage() {
           commenced: cargoFormData.commenced || undefined,
           etc: cargoFormData.etc || undefined,
           discharge_port_location: cargoFormData.discharge_port_location || undefined,
-          route_via: cargoFormData.route_via || undefined,
           status: 'Planned' as CargoStatus,
           notes: cargoFormData.notes || undefined,
           monthly_plan_id: cargoMonthlyPlanId,
@@ -939,7 +932,7 @@ export default function HomePage() {
                   <Chip label={formatStatusLabel(cargo.status)} color={getStatusColor(cargo.status)} size="small" />
                 </TableCell>
                 <TableCell>
-                  {cargo.eta_discharge_port ? format(new Date(cargo.eta_discharge_port), 'MMM dd, yyyy HH:mm') : 'TBA'}
+                  {cargo.eta_discharge_port ? format(new Date(cargo.eta_discharge_port), 'MMM dd, yyyy') : 'TBA'}
                 </TableCell>
                 <TableCell>{cargo.discharge_port_location || '-'}</TableCell>
                 <TableCell>{cargo.notes || '-'}</TableCell>
@@ -2591,24 +2584,6 @@ export default function HomePage() {
                             disabled={isCompletedCargo}
                             sx={isCompletedCargo ? disabledStyle : {}}
                           />
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                          <FormControl fullWidth>
-                            <InputLabel>Route Via</InputLabel>
-                            <Select
-                              label="Route Via"
-                              value={cargoFormData.route_via || ''}
-                              onChange={(e) => setCargoFormData({ ...cargoFormData, route_via: e.target.value })}
-                              disabled={isCompletedCargo}
-                              sx={isCompletedCargo ? disabledStyle : {}}
-                            >
-                              <MenuItem value="">
-                                <em>Select Route</em>
-                              </MenuItem>
-                              <MenuItem value="SUEZ">SUEZ</MenuItem>
-                              <MenuItem value="COGH">COGH</MenuItem>
-                            </Select>
-                          </FormControl>
                         </Grid>
                       </Grid>
                     </Box>

@@ -89,7 +89,6 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
         etd_load_port=cargo.etd_load_port,  # Legacy field
         eta_discharge_port=cargo.eta_discharge_port,
         discharge_port_location=cargo.discharge_port_location,
-               route_via=cargo.route_via,
         discharge_completion_time=cargo.discharge_completion_time,
         notes=cargo.notes,
         monthly_plan_id=cargo.monthly_plan_id,
@@ -289,13 +288,6 @@ def read_in_road_complete(db: Session = Depends(get_db)):
         print(f"[ERROR] {error_msg}")
         raise HTTPException(status_code=500, detail=error_msg)
 
-@router.get("/{cargo_id}", response_model=schemas.Cargo)
-def read_cargo(cargo_id: int, db: Session = Depends(get_db)):
-    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
-    if cargo is None:
-        raise HTTPException(status_code=404, detail="Cargo not found")
-    return cargo
-
 @router.put("/{cargo_id}", response_model=schemas.Cargo)
 def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depends(get_db)):
     """Update cargo - handles lc_status conversion from string to enum"""
@@ -379,6 +371,7 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
     
     # Debug logging
     print(f"[DEBUG] Updating cargo {cargo_id} with data: {update_data}")
+    print(f"[DEBUG] All keys in update_data: {list(update_data.keys())}")
     
     # Store old values for audit logging
     old_monthly_plan_id = db_cargo.monthly_plan_id
@@ -598,4 +591,13 @@ def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
     db.delete(db_cargo)
     db.commit()
     return {"message": "Cargo deleted successfully"}
+
+# IMPORTANT: This route must be LAST to avoid matching specific routes like "/in-road-complete"
+# FastAPI matches routes in order, so specific routes must come before parameterized routes
+@router.get("/{cargo_id}", response_model=schemas.Cargo)
+def read_cargo(cargo_id: int, db: Session = Depends(get_db)):
+    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
+    if cargo is None:
+        raise HTTPException(status_code=404, detail="Cargo not found")
+    return cargo
 

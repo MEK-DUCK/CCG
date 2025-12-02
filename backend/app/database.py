@@ -73,15 +73,11 @@ def ensure_schema_upgrades():
     """Apply lightweight schema adjustments that don't require full migrations."""
     try:
         inspector = inspect(engine)
-        cargo_columns = {col['name'] for col in inspector.get_columns('cargos')}
-        if 'route_via' not in cargo_columns:
-            print("→ Adding route_via column to cargos table")
-            with engine.begin() as conn:
-                if engine.dialect.name == 'sqlite':
-                    conn.execute(text("ALTER TABLE cargos ADD COLUMN route_via VARCHAR(20)"))
-                else:
-                    conn.execute(text("ALTER TABLE cargos ADD COLUMN IF NOT EXISTS route_via VARCHAR(20)"))
-            print("✓ route_via column added")
+        existing_tables = inspector.get_table_names()
+        
+        if 'cargos' in existing_tables:
+            cargo_columns = {col['name'] for col in inspector.get_columns('cargos')}
+            
     except Exception as exc:
         print(f"⚠ Could not verify/upgrade cargos table schema: {exc}")
 
