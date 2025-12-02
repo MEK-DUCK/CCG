@@ -126,6 +126,7 @@ class Cargo(Base):
     # CIF specific fields
     eta_discharge_port = Column(DateTime)
     discharge_port_location = Column(String)
+    route_via = Column(String)  # SUEZ or COGH for CIF cargos
     discharge_completion_time = Column(DateTime)
     
     # Completion tracking fields

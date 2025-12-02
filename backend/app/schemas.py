@@ -134,6 +134,7 @@ class CargoBase(BaseModel):
     etd_load_port: Optional[datetime] = None
     eta_discharge_port: Optional[datetime] = None
     discharge_port_location: Optional[str] = None
+    route_via: Optional[str] = None
     discharge_completion_time: Optional[datetime] = None
     notes: Optional[str] = None
     # Completion tracking fields
@@ -173,6 +174,7 @@ class CargoUpdate(BaseModel):
     eta_discharge_port: Optional[datetime] = None
     discharge_port_location: Optional[str] = None
     discharge_completion_time: Optional[datetime] = None
+    route_via: Optional[str] = None
     status: Optional[CargoStatus] = None
     notes: Optional[str] = None
     lc_status: Optional[LCStatus] = None  # LC status - EXACT duplicate of status pattern

@@ -19,6 +19,7 @@ import {
 import { ExpandMore, ExpandLess, Close } from '@mui/icons-material'
 import type { FilterConfig } from './types'
 import type { CargoStatus, ContractType, PaymentMethod } from '../../types'
+import { formatStatusLabel, IN_ROAD_STATUS_VALUE } from '../../utils/statusUtils'
 
 interface AdvancedFilterProps {
   open: boolean
@@ -35,7 +36,7 @@ const CARGO_STATUSES: CargoStatus[] = [
   'Planned',
   'Loading',
   'Pending Nomination',
-  'In-Road (Pending Discharge)',
+  IN_ROAD_STATUS_VALUE,
   'Completed Loading',
 ]
 
@@ -249,14 +250,14 @@ export default function AdvancedFilter({
                 onChange={(e) => handleMultiSelectChange('statuses', e.target.value)}
                 renderValue={(selected) => {
                   if (selected.length === 0) return 'All Statuses'
-                  if (selected.length === 1) return selected[0]
+                  if (selected.length === 1) return formatStatusLabel(selected[0])
                   return `${selected.length} selected`
                 }}
               >
                 {CARGO_STATUSES.map((status) => (
                   <MenuItem key={status} value={status}>
                     <Checkbox checked={(filters.statuses || []).includes(status)} />
-                    <ListItemText primary={status} />
+                    <ListItemText primary={formatStatusLabel(status)} />
                   </MenuItem>
                 ))}
               </Select>

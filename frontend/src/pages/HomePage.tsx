@@ -25,6 +25,7 @@ import {
   TextField,
   Grid,
   Checkbox,
+  ListItemText,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
@@ -36,6 +37,7 @@ import FilterChipsLegacy from '../components/FilterChipsLegacy'
 import QuickFilters from '../components/QuickFilters'
 import { parseLaycanDate } from '../utils/laycanParser'
 import { getLaycanAlertSeverity, getAlertColor, getAlertMessage } from '../utils/alertUtils'
+import { formatStatusLabel, IN_ROAD_STATUS_VALUE } from '../utils/statusUtils'
 import { Tooltip, Badge } from '@mui/material'
 import NotificationBadge from '../components/Notifications/NotificationBadge'
 import { useLaycanAlerts } from '../hooks/useLaycanAlerts'
@@ -83,6 +85,7 @@ export default function HomePage() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [completedMonth, setCompletedMonth] = useState<number | null>(null)
   const [completedYear, setCompletedYear] = useState<number | null>(null)
+  const [inRoadCustomerFilter, setInRoadCustomerFilter] = useState<number[]>([])
   // Port Movement filters
   const [portMovementFilterCustomer, setPortMovementFilterCustomer] = useState<number | null>(null)
   const [portMovementFilterContract, setPortMovementFilterContract] = useState<number | null>(null)
@@ -110,6 +113,7 @@ export default function HomePage() {
     etc: '',
     eta_discharge_port: '',
     discharge_port_location: '',
+    route_via: '',
     discharge_completion_time: '',
     notes: '',
     status: 'Planned' as CargoStatus,
@@ -276,6 +280,10 @@ export default function HomePage() {
     maxDays: 14,
   })
 
+  const filteredInRoadCIF = inRoadCustomerFilter.length
+    ? inRoadCIF.filter((cargo) => inRoadCustomerFilter.includes(cargo.customer_id))
+    : inRoadCIF
+
   const handleEditCargo = async (cargo: Cargo) => {
     setEditingCargo(cargo)
     setCargoMonthlyPlanId(cargo.monthly_plan_id)
@@ -325,9 +333,10 @@ export default function HomePage() {
       berthed: cargo.berthed || '',
       commenced: cargo.commenced || '',
       etc: cargo.etc || '',
-      eta_discharge_port: cargo.eta_discharge_port ? new Date(cargo.eta_discharge_port).toISOString().slice(0, 16) : '',
+      eta_discharge_port: cargo.eta_discharge_port ? new Date(cargo.eta_discharge_port).toISOString().slice(0, 10) : '',
       discharge_port_location: cargo.discharge_port_location || '',
       discharge_completion_time: cargo.discharge_completion_time ? new Date(cargo.discharge_completion_time).toISOString().slice(0, 16) : '',
+      route_via: cargo.route_via || '',
       notes: cargo.notes || '',
       status: cargo.status,
       lc_status: cargo.lc_status || '',
@@ -423,6 +432,7 @@ export default function HomePage() {
       etc: '',
       eta_discharge_port: '',
       discharge_port_location: '',
+      route_via: '',
       discharge_completion_time: '',
       notes: '',
       status: 'Planned' as CargoStatus,
@@ -445,6 +455,10 @@ export default function HomePage() {
         const isCIF = editingCargo.contract_type === 'CIF'
         
         // Prepare update payload
+        const etaDischargePortISO = cargoFormData.eta_discharge_port
+          ? new Date(cargoFormData.eta_discharge_port).toISOString()
+          : undefined
+
         const updatePayload: any = {
           vessel_name: cargoFormData.vessel_name,
           load_ports: cargoFormData.load_ports,
@@ -455,8 +469,9 @@ export default function HomePage() {
           berthed: cargoFormData.berthed || undefined,
           commenced: cargoFormData.commenced || undefined,
           etc: cargoFormData.etc || undefined,
-          eta_discharge_port: cargoFormData.eta_discharge_port || undefined,
+          eta_discharge_port: etaDischargePortISO,
           discharge_port_location: cargoFormData.discharge_port_location || undefined,
+          route_via: cargoFormData.route_via || undefined,
           discharge_completion_time: cargoFormData.discharge_completion_time || undefined,
           notes: cargoFormData.notes || undefined,
           status: cargoFormData.status,
@@ -559,6 +574,9 @@ export default function HomePage() {
           const createDuplicate = async () => {
             try {
               console.log('Creating duplicate CIF cargo for In-Road tracking...', editingCargo)
+              const etaDischargeISO = cargoFormData.eta_discharge_port
+                ? new Date(cargoFormData.eta_discharge_port).toISOString()
+                : undefined
               
               // Create a duplicate cargo (will be created as "Planned" status)
               const duplicatePayload: any = {
@@ -577,8 +595,9 @@ export default function HomePage() {
                 etc: cargoFormData.etc || undefined,
                 notes: cargoFormData.notes || undefined,
                 // CIF specific fields
-                eta_discharge_port: cargoFormData.eta_discharge_port || undefined,
+                eta_discharge_port: etaDischargeISO,
                 discharge_port_location: cargoFormData.discharge_port_location || undefined,
+                route_via: cargoFormData.route_via || undefined,
               }
               
               // Create the duplicate cargo
@@ -591,13 +610,13 @@ export default function HomePage() {
                 // Optimistically add to In-Road CIF list
                 const duplicateCargo: Cargo = {
                   ...duplicateResponse.data,
-                  status: 'In-Road (Pending Discharge)' as CargoStatus,
+                  status: IN_ROAD_STATUS_VALUE as CargoStatus,
                 }
                 setInRoadCIF(prev => [...prev, duplicateCargo])
                 
                 // Update status via API
                 await cargoAPI.update(duplicateId, {
-                  status: 'In-Road (Pending Discharge)',
+                  status: IN_ROAD_STATUS_VALUE,
                 })
                 
                 // Refresh In-Road data in background
@@ -685,6 +704,7 @@ export default function HomePage() {
         if (contract.contract_type === 'CIF') {
           if (cargoFormData.eta_discharge_port) payload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
           if (cargoFormData.discharge_port_location) payload.discharge_port_location = cargoFormData.discharge_port_location
+          if (cargoFormData.route_via) payload.route_via = cargoFormData.route_via
           if (cargoFormData.discharge_completion_time) payload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
         }
 
@@ -711,6 +731,8 @@ export default function HomePage() {
           berthed: cargoFormData.berthed || undefined,
           commenced: cargoFormData.commenced || undefined,
           etc: cargoFormData.etc || undefined,
+          discharge_port_location: cargoFormData.discharge_port_location || undefined,
+          route_via: cargoFormData.route_via || undefined,
           status: 'Planned' as CargoStatus,
           notes: cargoFormData.notes || undefined,
           monthly_plan_id: cargoMonthlyPlanId,
@@ -814,10 +836,10 @@ export default function HomePage() {
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
-      'Planned': 'info',
-      'Loading': 'warning',
+      Planned: 'info',
+      Loading: 'warning',
       'Completed Loading': 'success',
-      'In-Road (Pending Discharge)': 'secondary',
+      [IN_ROAD_STATUS_VALUE]: 'secondary',
       'In-Road Complete': 'success',
     }
     return colors[status] || 'default'
@@ -914,7 +936,7 @@ export default function HomePage() {
                 <TableCell>{getProductName(cargo.product_name)}</TableCell>
                 <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
                 <TableCell>
-                  <Chip label={cargo.status} color={getStatusColor(cargo.status)} size="small" />
+                  <Chip label={formatStatusLabel(cargo.status)} color={getStatusColor(cargo.status)} size="small" />
                 </TableCell>
                 <TableCell>
                   {cargo.eta_discharge_port ? format(new Date(cargo.eta_discharge_port), 'MMM dd, yyyy HH:mm') : 'TBA'}
@@ -1758,7 +1780,9 @@ export default function HomePage() {
                   <MenuItem value="Planned" sx={{ fontSize: '0.875rem' }}>Planned</MenuItem>
                   <MenuItem value="Loading" sx={{ fontSize: '0.875rem' }}>Loading</MenuItem>
                   <MenuItem value="Completed Loading" sx={{ fontSize: '0.875rem' }}>Completed Loading</MenuItem>
-                  <MenuItem value="In-Road (Pending Discharge)" sx={{ fontSize: '0.875rem' }}>In-Road (Pending Discharge)</MenuItem>
+                  <MenuItem value={IN_ROAD_STATUS_VALUE} sx={{ fontSize: '0.875rem' }}>
+                    {formatStatusLabel(IN_ROAD_STATUS_VALUE)}
+                  </MenuItem>
                   <MenuItem value="Not Created" sx={{ fontSize: '0.875rem' }}>Not Created</MenuItem>
                 </Select>
               </FormControl>
@@ -2060,7 +2084,7 @@ export default function HomePage() {
                         wordBreak: 'normal'
                       }}>
                         {cargo ? (
-                          <Chip label={cargo.status} color={getStatusColor(cargo.status)} size="small" />
+                          <Chip label={formatStatusLabel(cargo.status)} color={getStatusColor(cargo.status)} size="small" />
                         ) : (
                       <Chip label="Not Created" color="default" size="small" />
                         )}
@@ -2185,7 +2209,7 @@ export default function HomePage() {
               } else if (filterType === 'completed') {
                 setPortMovementFilterStatus('Completed Loading')
               } else if (filterType === 'in-road') {
-                setPortMovementFilterStatus('In-Road (Pending Discharge)')
+                setPortMovementFilterStatus(IN_ROAD_STATUS_VALUE)
               }
             }}
             currentMonth={new Date().getMonth() + 1}
@@ -2295,10 +2319,65 @@ export default function HomePage() {
           {renderCompletedCargosTable()}
         </TabPanel>
         <TabPanel value={value} index={2}>
-          <Typography variant="h6" gutterBottom>
-            In-Road CIF Cargos (Pending Discharge)
-          </Typography>
-          {renderInRoadCIFTable(inRoadCIF)}
+          <Box
+            sx={{
+              mb: 2,
+              display: 'flex',
+              flexDirection: isMobile ? 'column' : 'row',
+              gap: 2,
+              alignItems: isMobile ? 'stretch' : 'center',
+            }}
+          >
+            <Typography variant="h6">
+              In-Road CIF Cargos
+            </Typography>
+            <Box sx={{ flex: 1 }} />
+            <FormControl
+              size="small"
+              sx={{ minWidth: isMobile ? '100%' : 240 }}
+            >
+              <InputLabel id="in-road-customer-filter-label">Customer Filter</InputLabel>
+              <Select
+                labelId="in-road-customer-filter-label"
+                multiple
+                value={inRoadCustomerFilter}
+                label="Customer Filter"
+                renderValue={(selected) => {
+                  if (selected.length === 0) return 'All Customers'
+                  if (selected.length === 1) {
+                    const customer = customers.find((c) => c.id === selected[0])
+                    return customer?.name || 'Unknown'
+                  }
+                  return `${selected.length} customers`
+                }}
+                onChange={(event) => {
+                  const value = event.target.value
+                  if (typeof value === 'string') {
+                    setInRoadCustomerFilter(value.split(',').map(Number))
+                  } else {
+                    setInRoadCustomerFilter(value as number[])
+                  }
+                }}
+              >
+                {customers.map((customer) => (
+                  <MenuItem key={customer.id} value={customer.id}>
+                    <Checkbox checked={inRoadCustomerFilter.includes(customer.id)} />
+                    <ListItemText primary={customer.name} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {inRoadCustomerFilter.length > 0 && (
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => setInRoadCustomerFilter([])}
+              >
+                Clear
+              </Button>
+            )}
+          </Box>
+          {renderInRoadCIFTable(filteredInRoadCIF)}
         </TabPanel>
         <TabPanel value={value} index={3}>
           <Typography variant="h6" gutterBottom>
@@ -2327,7 +2406,14 @@ export default function HomePage() {
           {editingCargo ? 'Edit Vessel Details' : 'Add Vessel Details'}
         </DialogTitle>
         <DialogContent sx={{ px: isMobile ? 2 : 3, py: isMobile ? 2 : 3, overflowY: 'auto' }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1.5 : 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: isMobile ? 1.5 : 2,
+              pt: isMobile ? 1.5 : 1,
+            }}
+          >
             {(() => {
               // Check if this is a completed cargo
               const isCompletedCargo = !!(editingCargo && editingCargo.status === 'Completed Loading')
@@ -2426,50 +2512,6 @@ export default function HomePage() {
                   }}
                 />
               </Grid>
-              {((editingCargo && editingCargo.contract_type === 'CIF') || 
-                (!editingCargo && cargoContract && cargoContract.contract_type === 'CIF')) && (
-                <>
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>
-                      CIF Specific Fields:
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      label="ETA Discharge Port"
-                      type="datetime-local"
-                      value={cargoFormData.eta_discharge_port}
-                      onChange={(e) => setCargoFormData({ ...cargoFormData, eta_discharge_port: e.target.value })}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      disabled={isCompletedCargo}
-                      sx={isCompletedCargo ? disabledStyle : {}}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      label="Discharge Port Location"
-                      value={cargoFormData.discharge_port_location}
-                      onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_port_location: e.target.value })}
-                      fullWidth
-                      disabled={isCompletedCargo}
-                      sx={isCompletedCargo ? disabledStyle : {}}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      label="Discharge Completion Time"
-                      type="datetime-local"
-                      value={cargoFormData.discharge_completion_time}
-                      onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_completion_time: e.target.value })}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      disabled={isCompletedCargo}
-                      sx={isCompletedCargo ? disabledStyle : {}}
-                    />
-                  </Grid>
-                </>
-              )}
               <Grid item xs={12}>
                 <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 2 }}>
                   <Typography variant="subtitle1" gutterBottom>
@@ -2521,6 +2563,56 @@ export default function HomePage() {
                       />
                     </Grid>
                   </Grid>
+                  {((editingCargo && editingCargo.contract_type === 'CIF') || 
+                    (!editingCargo && cargoContract && cargoContract.contract_type === 'CIF')) && (
+                    <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        CIF Specific Fields
+                      </Typography>
+                      <Grid container spacing={2} sx={{ mt: 1 }}>
+                        <Grid item xs={12} md={6}>
+                          <TextField
+                            label="ETA Discharge Port"
+                            type="date"
+                            value={cargoFormData.eta_discharge_port}
+                            onChange={(e) => setCargoFormData({ ...cargoFormData, eta_discharge_port: e.target.value })}
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                            disabled={isCompletedCargo}
+                            sx={isCompletedCargo ? disabledStyle : {}}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField
+                            label="Discharge Port Location"
+                            value={cargoFormData.discharge_port_location}
+                            onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_port_location: e.target.value })}
+                            fullWidth
+                            disabled={isCompletedCargo}
+                            sx={isCompletedCargo ? disabledStyle : {}}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <FormControl fullWidth>
+                            <InputLabel>Route Via</InputLabel>
+                            <Select
+                              label="Route Via"
+                              value={cargoFormData.route_via || ''}
+                              onChange={(e) => setCargoFormData({ ...cargoFormData, route_via: e.target.value })}
+                              disabled={isCompletedCargo}
+                              sx={isCompletedCargo ? disabledStyle : {}}
+                            >
+                              <MenuItem value="">
+                                <em>Select Route</em>
+                              </MenuItem>
+                              <MenuItem value="SUEZ">SUEZ</MenuItem>
+                              <MenuItem value="COGH">COGH</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                      </Grid>
+                    </Box>
+                  )}
                 </Box>
               </Grid>
               {editingCargo && (

@@ -1,5 +1,6 @@
 import { Box, Chip, Typography, Button } from '@mui/material'
 import { Clear } from '@mui/icons-material'
+import { formatStatusLabel } from '../utils/statusUtils'
 
 interface FilterChipsLegacyProps {
   filterCustomer: number | null
@@ -74,7 +75,7 @@ export default function FilterChipsLegacy({
   if (filterStatus) {
     activeFilters.push({
       key: 'status',
-      label: `Status: ${filterStatus}`,
+      label: `Status: ${formatStatusLabel(filterStatus)}`,
     })
   }
 

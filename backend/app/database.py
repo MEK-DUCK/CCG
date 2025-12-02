@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
@@ -68,6 +68,22 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+def ensure_schema_upgrades():
+    """Apply lightweight schema adjustments that don't require full migrations."""
+    try:
+        inspector = inspect(engine)
+        cargo_columns = {col['name'] for col in inspector.get_columns('cargos')}
+        if 'route_via' not in cargo_columns:
+            print("→ Adding route_via column to cargos table")
+            with engine.begin() as conn:
+                if engine.dialect.name == 'sqlite':
+                    conn.execute(text("ALTER TABLE cargos ADD COLUMN route_via VARCHAR(20)"))
+                else:
+                    conn.execute(text("ALTER TABLE cargos ADD COLUMN IF NOT EXISTS route_via VARCHAR(20)"))
+            print("✓ route_via column added")
+    except Exception as exc:
+        print(f"⚠ Could not verify/upgrade cargos table schema: {exc}")
 
 def get_db():
     """Dependency for getting database session"""

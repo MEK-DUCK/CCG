@@ -163,7 +163,7 @@ Customer
 - **Planned** → **Loading** → **Completed Loading** → **Completed Cargos** tab
 
 ### CIF Cargo Status Flow
-- **Planned** → **Loading** → **Completed Loading** → **In-Road (Pending Discharge)** → **Fully Completed** → **Completed Cargos** tab
+- **Planned** → **Loading** → **Completed Loading** → **In-Road** → **Fully Completed** → **Completed Cargos** tab
 
 ## API Endpoints
 

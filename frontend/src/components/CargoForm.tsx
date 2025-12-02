@@ -5,6 +5,10 @@ import {
   TextField,
   Typography,
   Paper,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material'
 import { Add } from '@mui/icons-material'
 import { cargoAPI } from '../api/client'
@@ -31,7 +35,7 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
     etd_load_port: '',
     eta_discharge_port: '',
     discharge_port_location: '',
-    discharge_completion_time: '',
+    route_via: '',
     notes: '',
   })
 
@@ -46,7 +50,9 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
       return
     }
     try {
-      await cargoAPI.create({
+      const toISODate = (value: string) => (value ? new Date(value).toISOString() : undefined)
+
+      const payload: any = {
         customer_id: contract.customer_id,
         product_name: selectedProduct,
         contract_id: contract.id,
@@ -60,11 +66,16 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
         loading_start_time: formData.loading_start_time || undefined,
         loading_completion_time: formData.loading_completion_time || undefined,
         etd_load_port: formData.etd_load_port || undefined,
-        eta_discharge_port: contract.contract_type === 'CIF' ? (formData.eta_discharge_port || undefined) : undefined,
-        discharge_port_location: contract.contract_type === 'CIF' ? (formData.discharge_port_location || undefined) : undefined,
-        discharge_completion_time: contract.contract_type === 'CIF' ? (formData.discharge_completion_time || undefined) : undefined,
         notes: formData.notes || undefined,
-      })
+      }
+
+      if (contract.contract_type === 'CIF') {
+        if (formData.eta_discharge_port) payload.eta_discharge_port = toISODate(formData.eta_discharge_port)
+        if (formData.discharge_port_location) payload.discharge_port_location = formData.discharge_port_location
+        if (formData.route_via) payload.route_via = formData.route_via
+      }
+
+      await cargoAPI.create(payload)
       setFormData({
         vessel_name: '',
         load_ports: '',
@@ -77,7 +88,7 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
         etd_load_port: '',
         eta_discharge_port: '',
         discharge_port_location: '',
-        discharge_completion_time: '',
+        route_via: '',
         notes: '',
       })
       onCargoCreated()
@@ -189,7 +200,7 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
             </Typography>
             <TextField
               label="ETA Discharge Port"
-              type="datetime-local"
+              type="date"
               value={formData.eta_discharge_port}
               onChange={(e) => setFormData({ ...formData, eta_discharge_port: e.target.value })}
               fullWidth
@@ -201,14 +212,20 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
               onChange={(e) => setFormData({ ...formData, discharge_port_location: e.target.value })}
               fullWidth
             />
-            <TextField
-              label="Discharge Completion Time"
-              type="datetime-local"
-              value={formData.discharge_completion_time}
-              onChange={(e) => setFormData({ ...formData, discharge_completion_time: e.target.value })}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-            />
+            <FormControl fullWidth>
+              <InputLabel>Route Via</InputLabel>
+              <Select
+                label="Route Via"
+                value={formData.route_via}
+                onChange={(e) => setFormData({ ...formData, route_via: e.target.value })}
+              >
+                <MenuItem value="">
+                  <em>Select Route</em>
+                </MenuItem>
+                <MenuItem value="SUEZ">SUEZ</MenuItem>
+                <MenuItem value="COGH">COGH</MenuItem>
+              </Select>
+            </FormControl>
           </>
         )}
         <TextField

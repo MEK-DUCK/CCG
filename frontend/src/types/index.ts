@@ -100,6 +100,7 @@ export interface Cargo {
   etd_load_port?: string
   eta_discharge_port?: string
   discharge_port_location?: string
+         route_via?: string
   discharge_completion_time?: string
   status: CargoStatus
   notes?: string

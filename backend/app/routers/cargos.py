@@ -89,6 +89,7 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
         etd_load_port=cargo.etd_load_port,  # Legacy field
         eta_discharge_port=cargo.eta_discharge_port,
         discharge_port_location=cargo.discharge_port_location,
+               route_via=cargo.route_via,
         discharge_completion_time=cargo.discharge_completion_time,
         notes=cargo.notes,
         monthly_plan_id=cargo.monthly_plan_id,

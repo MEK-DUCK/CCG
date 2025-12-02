@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import engine, Base
+from app.database import engine, Base, ensure_schema_upgrades
 from app.routers import customers, contracts, quarterly_plans, monthly_plans, cargos, audit_logs, documents
 
-# Create database tables
+# Create database tables and apply lightweight schema upgrades
 Base.metadata.create_all(bind=engine)
+ensure_schema_upgrades()
 
 app = FastAPI(
     title="Oil Lifting Program API", 

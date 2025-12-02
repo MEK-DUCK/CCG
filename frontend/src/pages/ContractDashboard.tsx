@@ -24,6 +24,7 @@ import {
 import { ArrowBack, Edit } from '@mui/icons-material'
 import { contractAPI, cargoAPI, quarterlyPlanAPI, monthlyPlanAPI, customerAPI } from '../api/client'
 import type { Contract, Cargo, QuarterlyPlan, MonthlyPlan, Customer, CargoStatus } from '../types'
+import { formatStatusLabel, IN_ROAD_STATUS_VALUE } from '../utils/statusUtils'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -110,7 +111,7 @@ export default function ContractDashboard() {
     const counts: Partial<Record<CargoStatus, number>> = {
       'Planned': 0,
       'Pending Nomination': 0,
-      'In-Road (Pending Discharge)': 0,
+      [IN_ROAD_STATUS_VALUE]: 0,
       'Completed Loading': 0,
       'Loading': 0,
     }
@@ -327,7 +328,7 @@ export default function ContractDashboard() {
             <Grid item xs={6} sm={3}>
               <Box textAlign="center">
                 <Typography variant="h4" color="info.main">
-                  {statusCounts['In-Road (Pending Discharge)'] || 0}
+                  {statusCounts[IN_ROAD_STATUS_VALUE] || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   In Road
@@ -461,12 +462,12 @@ export default function ContractDashboard() {
                       <TableCell>{cargo.cargo_quantity} KT</TableCell>
                       <TableCell>
                         <Chip
-                          label={cargo.status}
+                          label={formatStatusLabel(cargo.status)}
                           size="small"
                           color={
                             cargo.status === 'Completed Loading'
                               ? 'success'
-                              : cargo.status === 'In-Road (Pending Discharge)'
+                              : cargo.status === IN_ROAD_STATUS_VALUE
                               ? 'info'
                               : cargo.status === 'Pending Nomination'
                               ? 'warning'
