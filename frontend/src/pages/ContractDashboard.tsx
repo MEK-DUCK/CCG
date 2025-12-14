@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -44,6 +44,33 @@ function TabPanel(props: TabPanelProps) {
     >
       {value === index && <Box sx={{ p: 2 }}>{children}</Box>}
     </div>
+  )
+}
+
+const formatShortMonthName = (month: number) => {
+  const date = new Date(2000, month - 1, 1)
+  return date.toLocaleString('default', { month: 'short' })
+}
+
+const renderCIFMonthlyPlanLaycan = (plan: MonthlyPlan): ReactNode => {
+  const loadingMonthName = formatShortMonthName(plan.month)
+  const nextMonth = plan.month === 12 ? 1 : plan.month + 1
+  const deliveryMonthName = formatShortMonthName(nextMonth)
+  const loadingWindow = plan.laycan_2_days || 'TBA'
+  const dwWindow = plan.laycan_5_days || 'TBA'
+
+  return (
+    <Box>
+      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        Loading {loadingMonthName}, Del {deliveryMonthName}
+      </Typography>
+      <Typography variant="caption" display="block" color="text.secondary">
+        Loading: {loadingWindow}
+      </Typography>
+      <Typography variant="caption" display="block" color="text.secondary">
+        DW: {dwWindow}
+      </Typography>
+    </Box>
   )
 }
 
@@ -539,14 +566,22 @@ export default function ContractDashboard() {
                     )
                   }
 
+                  const isCIFContract = contract?.contract_type === 'CIF'
                   return sortedGroups.map(([key, { plans, cargos: monthCargos }]) => {
                     const [year, month] = key.split('-').map(Number)
                     const totalPlanned = plans.reduce((sum, p) => sum + (p.month_quantity || 0), 0)
                     const totalCargo = monthCargos.reduce((sum, c) => sum + (c.cargo_quantity || 0), 0)
-                    const laycans = plans
+                    const laycansString = plans
                       .map(p => p.laycan_5_days || p.laycan_2_days)
                       .filter(Boolean)
                       .join(', ') || '-'
+                    const laycanContent = isCIFContract && plans[0]
+                      ? renderCIFMonthlyPlanLaycan(plans[0])
+                      : (
+                        <Typography variant="body2">
+                          {laycansString}
+                        </Typography>
+                      )
 
                     return (
                       <TableRow key={key} hover>
@@ -587,7 +622,7 @@ export default function ContractDashboard() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">{laycans}</Typography>
+                          {laycanContent}
                         </TableCell>
                       </TableRow>
                     )

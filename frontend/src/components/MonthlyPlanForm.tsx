@@ -9,6 +9,10 @@ import {
   Divider,
   IconButton,
   InputAdornment,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material'
 import { Save, Add, Delete, Lock } from '@mui/icons-material'
 import { monthlyPlanAPI, quarterlyPlanAPI, contractAPI } from '../api/client'
@@ -31,6 +35,52 @@ const QUARTER_MONTHS: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', { months: number[], labe
 const getMonthName = (month: number): string => {
   const date = new Date(2000, month - 1, 1)
   return date.toLocaleString('default', { month: 'long' })
+}
+
+// Parse CIF laycan format: "02-03/07" or "/07" or "02-03" -> { dates: "02-03", month: 7 }
+const parseCIFLaycan = (laycan: string): { dates: string, month: number | undefined } => {
+  if (!laycan) return { dates: '', month: undefined }
+  
+  // Format: "/07" (just month, no dates)
+  const monthOnlyMatch = laycan.match(/^\/(\d{1,2})$/)
+  if (monthOnlyMatch) {
+    return {
+      dates: '',
+      month: parseInt(monthOnlyMatch[1], 10)
+    }
+  }
+  
+  // Format: "02-03/07" (dates and month)
+  const fullMatch = laycan.match(/^(\d{1,2}-\d{1,2})(?:\/(\d{1,2}))?$/)
+  if (fullMatch) {
+    return {
+      dates: fullMatch[1],
+      month: fullMatch[2] ? parseInt(fullMatch[2], 10) : undefined
+    }
+  }
+  
+  // If no match, return as-is for dates (assume it's just dates without month)
+  return { dates: laycan, month: undefined }
+}
+
+// Format CIF laycan: combine dates and month -> "02-03/07" or "/07" or "02-03"
+const formatCIFLaycan = (dates: string, month: number | undefined): string => {
+  const hasDates = dates && dates.trim().length > 0
+  const hasMonth = month !== undefined && month !== null
+  
+  if (!hasDates && !hasMonth) return ''
+  
+  if (hasMonth) {
+    const monthStr = month.toString().padStart(2, '0')
+    if (hasDates) {
+      return `${dates}/${monthStr}`
+    } else {
+      return `/${monthStr}`  // Just month, no dates yet
+    }
+  }
+  
+  // Only dates, no month
+  return dates
 }
 
 // Determine quarter order based on contract start month
@@ -73,6 +123,11 @@ interface MonthlyPlanEntry {
   quantity: string
   laycan_5_days: string
   laycan_2_days: string
+  // CIF specific fields (for UI only, will be combined when saving)
+  loading_month?: number  // 1-12 for loading month
+  delivery_month?: number  // 1-12 for delivery month
+  loading_dates?: string  // e.g., "02-03"
+  delivery_dates?: string  // e.g., "11-20"
 }
 
 export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlanCreated }: MonthlyPlanFormProps) {
@@ -156,11 +211,28 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
           if (!entries[key]) {
             entries[key] = []
           }
+          
+          // Parse CIF laycan values if contract is CIF
+          let loading_month, delivery_month, loading_dates, delivery_dates
+          if (contract?.contract_type === 'CIF') {
+            const loadingParsed = parseCIFLaycan(plan.laycan_2_days || '')
+            const deliveryParsed = parseCIFLaycan(plan.laycan_5_days || '')
+            loading_month = loadingParsed.month
+            loading_dates = loadingParsed.dates
+            delivery_month = deliveryParsed.month
+            delivery_dates = deliveryParsed.dates
+            
+          }
+          
           entries[key].push({
             id: plan.id,
             quantity: plan.month_quantity.toString(),
             laycan_5_days: plan.laycan_5_days || '',
             laycan_2_days: plan.laycan_2_days || '',
+            loading_month,
+            delivery_month,
+            loading_dates,
+            delivery_dates,
           })
         })
         
@@ -173,7 +245,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
     if (quarterlyPlanId) {
       loadExistingMonthlyPlans()
     }
-  }, [quarterlyPlanId])
+  }, [quarterlyPlanId, contract])
 
   const handleLaycanChange = (month: number, year: number, entryIndex: number, field: 'laycan_5_days' | 'laycan_2_days', value: string) => {
     const key = `${month}-${year}`
@@ -183,6 +255,48 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
       ...updatedEntries[entryIndex],
       [field]: value,
     }
+    setMonthEntries({
+      ...monthEntries,
+      [key]: updatedEntries,
+    })
+  }
+
+  const handleCIFLaycanChange = (
+    month: number, 
+    year: number, 
+    entryIndex: number, 
+    type: 'loading' | 'delivery',
+    field: 'month' | 'dates',
+    value: string | number | undefined
+  ) => {
+    const key = `${month}-${year}`
+    const entries = monthEntries[key] || []
+    const updatedEntries = [...entries]
+    const entry = updatedEntries[entryIndex] || { quantity: '', laycan_5_days: '', laycan_2_days: '' }
+    
+    if (type === 'loading') {
+      if (field === 'month') {
+        entry.loading_month = value as number | undefined
+        // Auto-update laycan_2_days when month or dates change
+        entry.laycan_2_days = formatCIFLaycan(entry.loading_dates || '', entry.loading_month)
+      } else {
+        entry.loading_dates = value as string
+        // Auto-update laycan_2_days when month or dates change
+        entry.laycan_2_days = formatCIFLaycan(entry.loading_dates, entry.loading_month)
+      }
+    } else {
+      if (field === 'month') {
+        entry.delivery_month = value as number | undefined
+        // Auto-update laycan_5_days when month or dates change
+        entry.laycan_5_days = formatCIFLaycan(entry.delivery_dates || '', entry.delivery_month)
+      } else {
+        entry.delivery_dates = value as string
+        // Auto-update laycan_5_days when month or dates change
+        entry.laycan_5_days = formatCIFLaycan(entry.delivery_dates, entry.delivery_month)
+      }
+    }
+    
+    updatedEntries[entryIndex] = entry
     setMonthEntries({
       ...monthEntries,
       [key]: updatedEntries,
@@ -203,6 +317,10 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
         ...updatedEntries[entryIndex],
         laycan_5_days: '',
         laycan_2_days: '',
+        loading_month: undefined,
+        delivery_month: undefined,
+        loading_dates: '',
+        delivery_dates: '',
       }
     }
     setMonthEntries({
@@ -216,7 +334,15 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
     const entries = monthEntries[key] || []
     setMonthEntries({
       ...monthEntries,
-      [key]: [...entries, { quantity: '', laycan_5_days: '', laycan_2_days: '' }],
+      [key]: [...entries, { 
+        quantity: '', 
+        laycan_5_days: '', 
+        laycan_2_days: '',
+        loading_month: undefined,
+        delivery_month: undefined,
+        loading_dates: '',
+        delivery_dates: '',
+      }],
     })
   }
 
@@ -368,13 +494,29 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
           if (entry) {
             // Check if plan is locked - if so, prevent month/year changes
             const status = planStatuses[existingPlan.id]
+            // For CIF contracts, combine month + dates into laycan fields
+            let laycan_5_days = entry.laycan_5_days || undefined
+            let laycan_2_days = entry.laycan_2_days || undefined
+            
+            if (contract?.contract_type === 'CIF' && parseFloat(entry.quantity || '0') > 0) {
+              // Combine loading month + dates (allow saving just month, just dates, or both)
+              const formattedLoading = formatCIFLaycan(entry.loading_dates || '', entry.loading_month)
+              laycan_2_days = formattedLoading ? formattedLoading : undefined
+              
+              // Combine delivery month + dates (allow saving just month, just dates, or both)
+              const formattedDelivery = formatCIFLaycan(entry.delivery_dates || '', entry.delivery_month)
+              laycan_5_days = formattedDelivery ? formattedDelivery : undefined
+              
+            }
+            
             const updateData: any = {
               month_quantity: parseFloat(entry.quantity || '0'),
               number_of_liftings: 1,
               planned_lifting_sizes: undefined,
-              laycan_5_days: parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
-              laycan_2_days: parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
+              laycan_5_days: parseFloat(entry.quantity || '0') > 0 ? laycan_5_days : undefined,
+              laycan_2_days: parseFloat(entry.quantity || '0') > 0 ? laycan_2_days : undefined,
             }
+            
             
             // Only allow month/year changes if plan is not locked
             if (!status?.is_locked) {
@@ -402,16 +544,35 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
       // Create new plans
       const createPromises = plansToCreate.map(async ({ month, year, entry }) => {
         const quantity = parseFloat(entry.quantity || '0')
-        return monthlyPlanAPI.create({
+        
+        // For CIF contracts, combine month + dates into laycan fields
+        let laycan_5_days = entry.laycan_5_days || undefined
+        let laycan_2_days = entry.laycan_2_days || undefined
+        
+        if (contract?.contract_type === 'CIF' && quantity > 0) {
+          // Combine loading month + dates (allow saving just month, just dates, or both)
+          const formattedLoading = formatCIFLaycan(entry.loading_dates || '', entry.loading_month)
+          laycan_2_days = formattedLoading ? formattedLoading : undefined
+          
+          // Combine delivery month + dates (allow saving just month, just dates, or both)
+          const formattedDelivery = formatCIFLaycan(entry.delivery_dates || '', entry.delivery_month)
+          laycan_5_days = formattedDelivery ? formattedDelivery : undefined
+          
+        }
+        
+        const createData = {
           quarterly_plan_id: quarterlyPlanId,
           month: month,
           year: year,
           month_quantity: quantity,
           number_of_liftings: 1,
           planned_lifting_sizes: undefined,
-          laycan_5_days: quantity > 0 ? (entry.laycan_5_days || undefined) : undefined,
-          laycan_2_days: quantity > 0 ? (entry.laycan_2_days || undefined) : undefined,
-        })
+          laycan_5_days: quantity > 0 ? laycan_5_days : undefined,
+          laycan_2_days: quantity > 0 ? laycan_2_days : undefined,
+        }
+        
+        
+        return monthlyPlanAPI.create(createData)
       })
 
       await Promise.all(createPromises)
@@ -428,11 +589,28 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
         if (!entries[key]) {
           entries[key] = []
         }
+        
+        // Parse CIF laycan values if contract is CIF
+        let loading_month, delivery_month, loading_dates, delivery_dates
+        if (contract?.contract_type === 'CIF') {
+          const loadingParsed = parseCIFLaycan(plan.laycan_2_days || '')
+          const deliveryParsed = parseCIFLaycan(plan.laycan_5_days || '')
+          loading_month = loadingParsed.month
+          loading_dates = loadingParsed.dates
+          delivery_month = deliveryParsed.month
+          delivery_dates = deliveryParsed.dates
+          
+        }
+        
         entries[key].push({
           id: plan.id,
           quantity: plan.month_quantity.toString(),
           laycan_5_days: plan.laycan_5_days || '',
           laycan_2_days: plan.laycan_2_days || '',
+          loading_month,
+          delivery_month,
+          loading_dates,
+          delivery_dates,
         })
       })
       setMonthEntries(entries)
@@ -592,43 +770,114 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
                                 }}
                               />
                               {showLaycans && (
-                                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                                  <TextField
-                                    label="5 Days:"
-                                    size="small"
-                                    value={entry.laycan_5_days}
-                                    onChange={(e) => handleLaycanChange(month, year, entryIndex, 'laycan_5_days', e.target.value)}
-                                    placeholder="User Entry"
-                                    fullWidth
-                                    disabled={isLocked}
-                                    sx={{
-                                      '& .MuiInputBase-root': {
-                                        height: '32px',
-                                        fontSize: '0.875rem',
-                                      },
-                                      '& .MuiInputBase-input': {
-                                        padding: '6px 8px',
-                                      },
-                                    }}
-                                  />
-                                  <TextField
-                                    label="2 Days:"
-                                    size="small"
-                                    value={entry.laycan_2_days}
-                                    onChange={(e) => handleLaycanChange(month, year, entryIndex, 'laycan_2_days', e.target.value)}
-                                    placeholder="User Entry"
-                                    fullWidth
-                                    disabled={isLocked}
-                                    sx={{
-                                      '& .MuiInputBase-root': {
-                                        height: '32px',
-                                        fontSize: '0.875rem',
-                                      },
-                                      '& .MuiInputBase-input': {
-                                        padding: '6px 8px',
-                                      },
-                                    }}
-                                  />
+                                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                  {contract?.contract_type === 'CIF' ? (
+                                    <>
+                                      {/* Loading: Month + Dates */}
+                                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                                        <FormControl size="small" sx={{ minWidth: 120 }} disabled={isLocked}>
+                                          <InputLabel>Loading Month</InputLabel>
+                                          <Select
+                                            value={entry.loading_month ?? ''}
+                                            label="Loading Month"
+                                            onChange={(e) => {
+                                              const monthValue = e.target.value === '' ? undefined : Number(e.target.value)
+                                              handleCIFLaycanChange(month, year, entryIndex, 'loading', 'month', monthValue as number)
+                                            }}
+                                          >
+                                            <MenuItem value="">
+                                              <em>None</em>
+                                            </MenuItem>
+                                            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                                              <MenuItem key={m} value={m}>
+                                                {getMonthName(m)}
+                                              </MenuItem>
+                                            ))}
+                                          </Select>
+                                        </FormControl>
+                                        <TextField
+                                          label="Loading Dates"
+                                          size="small"
+                                          value={entry.loading_dates || ''}
+                                          onChange={(e) => handleCIFLaycanChange(month, year, entryIndex, 'loading', 'dates', e.target.value)}
+                                          placeholder="e.g., 02-03"
+                                          sx={{ flex: 1 }}
+                                          disabled={isLocked}
+                                        />
+                                      </Box>
+                                      {/* DW: Month + Dates */}
+                                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                                        <FormControl size="small" sx={{ minWidth: 120 }} disabled={isLocked}>
+                                          <InputLabel>DW Month</InputLabel>
+                                          <Select
+                                            value={entry.delivery_month ?? ''}
+                                            label="DW Month"
+                                            onChange={(e) => {
+                                              const monthValue = e.target.value === '' ? undefined : Number(e.target.value)
+                                              handleCIFLaycanChange(month, year, entryIndex, 'delivery', 'month', monthValue as number)
+                                            }}
+                                          >
+                                            <MenuItem value="">
+                                              <em>None</em>
+                                            </MenuItem>
+                                            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                                              <MenuItem key={m} value={m}>
+                                                {getMonthName(m)}
+                                              </MenuItem>
+                                            ))}
+                                          </Select>
+                                        </FormControl>
+                                        <TextField
+                                          label="DW Dates"
+                                          size="small"
+                                          value={entry.delivery_dates || ''}
+                                          onChange={(e) => handleCIFLaycanChange(month, year, entryIndex, 'delivery', 'dates', e.target.value)}
+                                          placeholder="e.g., 11-20"
+                                          sx={{ flex: 1 }}
+                                          disabled={isLocked}
+                                        />
+                                      </Box>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <TextField
+                                        label="5 Days:"
+                                        size="small"
+                                        value={entry.laycan_5_days}
+                                        onChange={(e) => handleLaycanChange(month, year, entryIndex, 'laycan_5_days', e.target.value)}
+                                        placeholder="User Entry"
+                                        fullWidth
+                                        disabled={isLocked}
+                                        sx={{
+                                          '& .MuiInputBase-root': {
+                                            height: '32px',
+                                            fontSize: '0.875rem',
+                                          },
+                                          '& .MuiInputBase-input': {
+                                            padding: '6px 8px',
+                                          },
+                                        }}
+                                      />
+                                      <TextField
+                                        label="2 Days:"
+                                        size="small"
+                                        value={entry.laycan_2_days}
+                                        onChange={(e) => handleLaycanChange(month, year, entryIndex, 'laycan_2_days', e.target.value)}
+                                        placeholder="User Entry"
+                                        fullWidth
+                                        disabled={isLocked}
+                                        sx={{
+                                          '& .MuiInputBase-root': {
+                                            height: '32px',
+                                            fontSize: '0.875rem',
+                                          },
+                                          '& .MuiInputBase-input': {
+                                            padding: '6px 8px',
+                                          },
+                                        }}
+                                      />
+                                    </>
+                                  )}
                                 </Box>
                               )}
                             </Box>
