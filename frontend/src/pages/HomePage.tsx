@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import {
   Box,
   Tabs,
@@ -792,13 +792,12 @@ export default function HomePage() {
     return productName || '-'
   }
 
-  const getLaycanDisplay = (monthlyPlan: MonthlyPlan, contract: Contract | null) => {
-    // Only show laycan for FOB contracts
-    if (!contract || contract.contract_type !== 'FOB') {
-      return 'TBA'
-    }
-    
-    // Priority: 2 days > 5 days > TBA
+  const formatShortMonthName = (month: number) => {
+    const date = new Date(2000, month - 1, 1)
+    return date.toLocaleString('default', { month: 'short' })
+  }
+
+  const getLaycanText = (monthlyPlan: MonthlyPlan): string => {
     if (monthlyPlan.laycan_2_days) {
       return monthlyPlan.laycan_2_days
     }
@@ -806,6 +805,35 @@ export default function HomePage() {
       return monthlyPlan.laycan_5_days
     }
     return 'TBA'
+  }
+
+  const getLaycanDisplay = (monthlyPlan: MonthlyPlan, contract: Contract | null): ReactNode => {
+    if (!contract) return 'TBA'
+
+    if (contract.contract_type === 'CIF') {
+      const loadingMonthName = formatShortMonthName(monthlyPlan.month)
+      const nextMonth = monthlyPlan.month === 12 ? 1 : monthlyPlan.month + 1
+      const deliveryMonthName = formatShortMonthName(nextMonth)
+      const loadingWindow = monthlyPlan.laycan_2_days || 'TBA'
+      const deliveryWindow = monthlyPlan.laycan_5_days || 'TBA'
+
+      return (
+        <Box sx={{ minWidth: 180 }}>
+          <Typography variant="body2" fontWeight="bold" lineHeight={1.1}>
+            Loading {loadingMonthName}, Del {deliveryMonthName}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" display="block">
+            Loading: {loadingWindow}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" display="block">
+            DW: {deliveryWindow}
+          </Typography>
+        </Box>
+      )
+    }
+
+    // Only show laycan for FOB contracts
+    return getLaycanText(monthlyPlan)
   }
 
   const getContractNumber = (contractId: number) => {
@@ -1398,8 +1426,7 @@ export default function HomePage() {
       // Always get from monthly plan, priority: laycan_2_days > laycan_5_days > TBA
       const monthlyPlan = monthlyPlans.find(mp => mp.id === cargo.monthly_plan_id)
       if (monthlyPlan) {
-        const contract = getContractForMonthlyPlan(monthlyPlan)
-        return getLaycanDisplay(monthlyPlan, contract)
+        return getLaycanText(monthlyPlan)
       }
       return 'TBA'
     }
@@ -1472,13 +1499,7 @@ export default function HomePage() {
       const contract = getContractForMonthlyPlan(monthlyPlan)
       const customer = contract ? customers.find(c => c.id === contract.customer_id) : null
       
-      // Get laycan from monthly plan (2 days > 5 days > TBA)
-      let laycan = 'TBA'
-      if (monthlyPlan.laycan_2_days) {
-        laycan = monthlyPlan.laycan_2_days
-      } else if (monthlyPlan.laycan_5_days) {
-        laycan = monthlyPlan.laycan_5_days
-      }
+      const laycan = getLaycanText(monthlyPlan)
       
       return {
         cargo: null, // No cargo yet
