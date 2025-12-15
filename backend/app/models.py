@@ -142,7 +142,7 @@ class Cargo(Base):
     
     status = Column(Enum(CargoStatus), default=CargoStatus.PLANNED)
     notes = Column(Text)
-    monthly_plan_id = Column(Integer, ForeignKey("monthly_plans.id"), nullable=False)
+    monthly_plan_id = Column(Integer, ForeignKey("monthly_plans.id"), nullable=False, unique=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     

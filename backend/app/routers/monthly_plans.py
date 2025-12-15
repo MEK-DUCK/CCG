@@ -27,7 +27,6 @@ def get_cargo_info(monthly_plan_id: int, db: Session) -> Dict:
 
 @router.post("/", response_model=schemas.MonthlyPlan)
 def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(get_db)):
-    import json
     # Verify quarterly plan exists
     quarterly_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == plan.quarterly_plan_id).first()
     if not quarterly_plan:
@@ -100,7 +99,6 @@ def read_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
 
 @router.put("/{plan_id}", response_model=schemas.MonthlyPlan)
 def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Session = Depends(get_db)):
-    import json
     db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
     if db_plan is None:
         raise HTTPException(status_code=404, detail="Monthly plan not found")
