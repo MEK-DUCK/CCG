@@ -293,9 +293,15 @@ export default function HomePage() {
       berthed: cargo.berthed || '',
       commenced: cargo.commenced || '',
       etc: cargo.etc || '',
-      eta_discharge_port: cargo.eta_discharge_port ? new Date(cargo.eta_discharge_port).toISOString().slice(0, 16) : '',
+      eta_discharge_port: cargo.eta_discharge_port ? (() => {
+        const d = new Date(cargo.eta_discharge_port)
+        return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16)
+      })() : '',
       discharge_port_location: cargo.discharge_port_location || '',
-      discharge_completion_time: cargo.discharge_completion_time ? new Date(cargo.discharge_completion_time).toISOString().slice(0, 16) : '',
+      discharge_completion_time: cargo.discharge_completion_time ? (() => {
+        const d = new Date(cargo.discharge_completion_time)
+        return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16)
+      })() : '',
       notes: cargo.notes || '',
       status: cargo.status,
       lc_status: cargo.lc_status || '',
@@ -658,7 +664,9 @@ export default function HomePage() {
           if (!dateTimeLocal) return undefined
           // datetime-local format: "YYYY-MM-DDTHH:mm"
           // Convert to ISO format: "YYYY-MM-DDTHH:mm:ss.sssZ"
-          return new Date(dateTimeLocal).toISOString()
+          const d = new Date(dateTimeLocal)
+          if (Number.isNaN(d.getTime())) return undefined
+          return d.toISOString()
         }
 
         // Add optional fields

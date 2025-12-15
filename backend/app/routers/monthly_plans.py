@@ -81,11 +81,11 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
 @router.get("/", response_model=List[schemas.MonthlyPlan])
 def read_monthly_plans(quarterly_plan_id: int = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     try:
-    query = db.query(models.MonthlyPlan)
-    if quarterly_plan_id:
-        query = query.filter(models.MonthlyPlan.quarterly_plan_id == quarterly_plan_id)
-    plans = query.offset(skip).limit(limit).all()
-    return plans
+        query = db.query(models.MonthlyPlan)
+        if quarterly_plan_id:
+            query = query.filter(models.MonthlyPlan.quarterly_plan_id == quarterly_plan_id)
+        plans = query.offset(skip).limit(limit).all()
+        return plans
     except Exception as e:
         import traceback
         print(f"[ERROR] Error reading monthly plans: {str(e)}\n{traceback.format_exc()}")
