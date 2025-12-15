@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text, inspect
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
@@ -68,18 +68,6 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
-
-def ensure_schema_upgrades():
-    """Apply lightweight schema adjustments that don't require full migrations."""
-    try:
-        inspector = inspect(engine)
-        existing_tables = inspector.get_table_names()
-        
-        if 'cargos' in existing_tables:
-            cargo_columns = {col['name'] for col in inspector.get_columns('cargos')}
-            
-    except Exception as exc:
-        print(f"⚠ Could not verify/upgrade cargos table schema: {exc}")
 
 def get_db():
     """Dependency for getting database session"""

@@ -117,9 +117,6 @@ export const cargoAPI = {
     return client.get('/api/cargos/completed-cargos', { params })
   },
   getInRoadCIF: () => client.get('/api/cargos/in-road-cif'),
-  getInRoadComplete: () => client.get('/api/cargos/in-road-complete'),
-  startInRoad: (id: number, data?: any) => client.post(`/api/cargos/${id}/start-in-road`, data || {}),
-  markDischarged: (id: number, data?: any) => client.post(`/api/cargos/${id}/mark-discharged`, data || {}),
   getById: (id: number) => client.get(`/api/cargos/${id}`),
   create: (data: any) => client.post('/api/cargos/', data),
   update: (id: number, data: any) => client.put(`/api/cargos/${id}`, data),
@@ -138,7 +135,10 @@ export const auditLogAPI = {
 export const documentsAPI = {
   generateNomination: (cargoId: number) => 
     client.get(`/api/documents/cargos/${cargoId}/nomination`, { 
-      responseType: 'blob' 
+      responseType: 'arraybuffer', // Use arraybuffer for better Safari compatibility
+      headers: {
+        'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }
     }),
 }
 

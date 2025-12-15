@@ -109,6 +109,10 @@ export default function ReconciliationPage() {
     return 'month' in log && 'year' in log
   }
 
+  const isQuarterlyPlanLog = (log: PlanAuditLog): log is QuarterlyPlanAuditLog => {
+    return !('month' in log)
+  }
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>

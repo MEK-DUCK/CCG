@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ReactNode } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Box,
   Tabs,
@@ -25,7 +25,6 @@ import {
   TextField,
   Grid,
   Checkbox,
-  ListItemText,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
@@ -33,11 +32,8 @@ import { FileDownload, Search, Description } from '@mui/icons-material'
 import { format } from 'date-fns'
 import { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, quarterlyPlanAPI, documentsAPI } from '../api/client'
 import type { Cargo, Customer, Contract, MonthlyPlan, CargoStatus, ContractProduct, LCStatus } from '../types'
-import FilterChipsLegacy from '../components/FilterChipsLegacy'
-import QuickFilters from '../components/QuickFilters'
 import { parseLaycanDate } from '../utils/laycanParser'
 import { getLaycanAlertSeverity, getAlertColor, getAlertMessage } from '../utils/alertUtils'
-import { formatStatusLabel, IN_ROAD_STATUS_VALUE } from '../utils/statusUtils'
 import { Tooltip, Badge } from '@mui/material'
 import NotificationBadge from '../components/Notifications/NotificationBadge'
 import { useLaycanAlerts } from '../hooks/useLaycanAlerts'
@@ -75,7 +71,6 @@ export default function HomePage() {
   const [portMovement, setPortMovement] = useState<Cargo[]>([])
   const [completedCargos, setCompletedCargos] = useState<Cargo[]>([])
   const [inRoadCIF, setInRoadCIF] = useState<Cargo[]>([])
-  const [inRoadComplete, setInRoadComplete] = useState<Cargo[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
   const [monthlyPlans, setMonthlyPlans] = useState<MonthlyPlan[]>([])
@@ -85,7 +80,6 @@ export default function HomePage() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [completedMonth, setCompletedMonth] = useState<number | null>(null)
   const [completedYear, setCompletedYear] = useState<number | null>(null)
-  const [inRoadCustomerFilter, setInRoadCustomerFilter] = useState<number[]>([])
   // Port Movement filters
   const [portMovementFilterCustomer, setPortMovementFilterCustomer] = useState<number | null>(null)
   const [portMovementFilterContract, setPortMovementFilterContract] = useState<number | null>(null)
@@ -100,6 +94,7 @@ export default function HomePage() {
   const [cargoContractId, setCargoContractId] = useState<number | null>(null)
   const [cargoContract, setCargoContract] = useState<Contract | null>(null)
   const [cargoProductName, setCargoProductName] = useState<string | null>(null)
+  const [cargoMonthlyPlan, setCargoMonthlyPlan] = useState<MonthlyPlan | null>(null)
   const [newCargoMonthlyPlanId, setNewCargoMonthlyPlanId] = useState<number | null>(null) // For moving cargo
   const [cargoFormData, setCargoFormData] = useState({
     vessel_name: '',
@@ -120,23 +115,6 @@ export default function HomePage() {
   })
 
   const [isInitialLoad, setIsInitialLoad] = useState(true)
-  const activeRequests = useRef(0)
-  const dataLoadInProgress = useRef(false)
-  const portMovementLoadInProgress = useRef(false)
-
-  const beginLoading = () => {
-    activeRequests.current += 1
-    if (activeRequests.current === 1) {
-      setLoading(true)
-    }
-  }
-
-  const endLoading = () => {
-    activeRequests.current = Math.max(0, activeRequests.current - 1)
-    if (activeRequests.current === 0) {
-      setLoading(false)
-    }
-  }
 
   useEffect(() => {
     if (isInitialLoad) {
@@ -149,7 +127,7 @@ export default function HomePage() {
 
   useEffect(() => {
     // Reload completed cargos when month/year filter changes
-    if (value === 1 && !isInitialLoad) { // Completed Cargos tab is index 1
+    if (value === 2 && !isInitialLoad) { // Completed Cargos tab is index 2
       loadData()
       loadMonthlyPlansForPortMovement()
     }
@@ -165,13 +143,8 @@ export default function HomePage() {
   }, [selectedMonth, selectedYear, value])
 
   const loadPortMovement = async () => {
-    if (portMovementLoadInProgress.current) {
-      console.log('⏸️ Port movement request already in flight, skipping duplicate call')
-      return
-    }
-    portMovementLoadInProgress.current = true
-    beginLoading()
     try {
+      setLoading(true)
       console.log(`Loading port movement for month ${selectedMonth}, year ${selectedYear}`)
       const portRes = await cargoAPI.getPortMovement(selectedMonth, selectedYear)
       console.log(`Port movement API response:`, portRes)
@@ -181,38 +154,29 @@ export default function HomePage() {
       console.error('Error loading port movement:', error)
       setPortMovement([])
     } finally {
-      portMovementLoadInProgress.current = false
-      endLoading()
+      setLoading(false)
     }
   }
 
   const loadData = async () => {
-    if (dataLoadInProgress.current) {
-      console.log('⏸️ Data request already in flight, skipping duplicate call')
-      return
-    }
-    dataLoadInProgress.current = true
-    beginLoading()
     try {
+      setLoading(true)
       // Load customers and contracts in parallel - they're independent
-      const [customersRes, contractsRes, completedRes, inRoadRes, inRoadCompleteRes] = await Promise.all([
+      const [customersRes, contractsRes, completedRes, inRoadRes] = await Promise.all([
         customerAPI.getAll().catch(() => ({ data: [] })),
         contractAPI.getAll().catch(() => ({ data: [] })),
         cargoAPI.getCompletedCargos(completedMonth || undefined, completedYear || undefined).catch(() => ({ data: [] })),
-        cargoAPI.getInRoadCIF().catch(() => ({ data: [] })),
-        cargoAPI.getInRoadComplete().catch(() => ({ data: [] }))
+        cargoAPI.getInRoadCIF().catch(() => ({ data: [] }))
       ])
       
       setCustomers(customersRes.data || [])
       setContracts(contractsRes.data || [])
       setCompletedCargos(completedRes.data || [])
       setInRoadCIF(inRoadRes.data || [])
-      setInRoadComplete(inRoadCompleteRes.data || [])
     } catch (error: any) {
       console.error('Error loading data:', error)
     } finally {
-      dataLoadInProgress.current = false
-      endLoading()
+      setLoading(false)
     }
   }
 
@@ -279,10 +243,6 @@ export default function HomePage() {
     maxDays: 14,
   })
 
-  const filteredInRoadCIF = inRoadCustomerFilter.length
-    ? inRoadCIF.filter((cargo) => inRoadCustomerFilter.includes(cargo.customer_id))
-    : inRoadCIF
-
   const handleEditCargo = async (cargo: Cargo) => {
     setEditingCargo(cargo)
     setCargoMonthlyPlanId(cargo.monthly_plan_id)
@@ -296,6 +256,7 @@ export default function HomePage() {
     try {
       const monthlyPlanRes = await monthlyPlanAPI.getById(cargo.monthly_plan_id)
       const monthlyPlan = monthlyPlanRes.data
+      setCargoMonthlyPlan(monthlyPlan)
       
       // Get laycan window from monthly plan: priority is laycan_2_days > laycan_5_days > TBA
       if (monthlyPlan.laycan_2_days) {
@@ -332,7 +293,7 @@ export default function HomePage() {
       berthed: cargo.berthed || '',
       commenced: cargo.commenced || '',
       etc: cargo.etc || '',
-      eta_discharge_port: cargo.eta_discharge_port ? new Date(cargo.eta_discharge_port).toISOString().slice(0, 10) : '',
+      eta_discharge_port: cargo.eta_discharge_port ? new Date(cargo.eta_discharge_port).toISOString().slice(0, 16) : '',
       discharge_port_location: cargo.discharge_port_location || '',
       discharge_completion_time: cargo.discharge_completion_time ? new Date(cargo.discharge_completion_time).toISOString().slice(0, 16) : '',
       notes: cargo.notes || '',
@@ -348,29 +309,52 @@ export default function HomePage() {
     try {
       const response = await documentsAPI.generateNomination(cargoId)
       
-      // Create blob URL and trigger download
-      const blob = new Blob([response.data], { 
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-      })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      
       // Get filename from response headers or use default
       const contentDisposition = response.headers['content-disposition']
       let filename = `Nomination_${cargoId}.xlsx`
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i)
-        if (filenameMatch) {
-          filename = filenameMatch[1]
+        // Try to extract filename from Content-Disposition header
+        // Handle both quoted and unquoted filenames
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
+        if (filenameMatch && filenameMatch[1]) {
+          // Remove quotes if present
+          filename = filenameMatch[1].replace(/['"]/g, '')
+          // Handle URL encoding if needed
+          try {
+            filename = decodeURIComponent(filename)
+          } catch {
+            // If decoding fails, use as-is
+          }
         }
       }
       
-      link.setAttribute('download', filename)
+      // Ensure filename has .xlsx extension
+      if (!filename.toLowerCase().endsWith('.xlsx')) {
+        filename = `${filename}.xlsx`
+      }
+      
+      // Create blob URL and trigger download
+      // Use explicit MIME type for Safari compatibility
+      // response.data is now arraybuffer, convert to blob
+      const blob = new Blob([response.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      })
+      
+      // Safari-compatible download approach
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.style.display = 'none'
+      
       document.body.appendChild(link)
       link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
+      
+      // Clean up after a short delay to ensure download starts
+      setTimeout(() => {
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      }, 100)
     } catch (error: any) {
       console.error('Error generating nomination:', error)
       alert(`Error generating nomination: ${error.response?.data?.detail || error.message || 'Unknown error'}`)
@@ -378,6 +362,18 @@ export default function HomePage() {
   }
 
   const handleCreateCargoForPlan = async (monthlyPlan: MonthlyPlan & { quarterlyPlanId?: number }) => {
+    // Check if this monthly plan already has a cargo
+    const existingCargo = [...portMovement, ...completedCargos, ...inRoadCIF].find(
+      cargo => cargo.monthly_plan_id === monthlyPlan.id
+    )
+    
+    if (existingCargo) {
+      alert(`This monthly plan already has a cargo assigned (Cargo ID: ${existingCargo.cargo_id}, Vessel: ${existingCargo.vessel_name}). Please edit the existing cargo instead of creating a new one.`)
+      // Optionally, open the edit dialog for the existing cargo
+      handleEditCargo(existingCargo)
+      return
+    }
+    
     // Find the contract for this monthly plan through quarterly plan
     const qpId = monthlyPlan.quarterly_plan_id || (monthlyPlan as any).quarterlyPlanId
     const quarterlyPlan = quarterlyPlansMap.get(qpId)
@@ -418,6 +414,8 @@ export default function HomePage() {
     }
     
     // Store monthly plan for reference
+    setCargoMonthlyPlan(monthlyPlan)
+    
     setCargoFormData({
       vessel_name: 'TBA',
       load_ports: contract.allowed_load_ports || '',
@@ -452,10 +450,6 @@ export default function HomePage() {
         const isCIF = editingCargo.contract_type === 'CIF'
         
         // Prepare update payload
-        const etaDischargePortISO = cargoFormData.eta_discharge_port
-          ? new Date(cargoFormData.eta_discharge_port).toISOString()
-          : undefined
-
         const updatePayload: any = {
           vessel_name: cargoFormData.vessel_name,
           load_ports: cargoFormData.load_ports,
@@ -466,7 +460,7 @@ export default function HomePage() {
           berthed: cargoFormData.berthed || undefined,
           commenced: cargoFormData.commenced || undefined,
           etc: cargoFormData.etc || undefined,
-          eta_discharge_port: etaDischargePortISO,
+          eta_discharge_port: cargoFormData.eta_discharge_port || undefined,
           discharge_port_location: cargoFormData.discharge_port_location || undefined,
           discharge_completion_time: cargoFormData.discharge_completion_time || undefined,
           notes: cargoFormData.notes || undefined,
@@ -511,13 +505,6 @@ export default function HomePage() {
           )
         )
         
-        // Update in In-Road Complete tab if it exists there
-        setInRoadComplete(prevCargos =>
-          prevCargos.map(cargo =>
-            cargo.id === editingCargo.id ? updatedCargo : cargo
-          )
-        )
-        
         // Close dialog immediately
         setCargoDialogOpen(false)
         
@@ -552,12 +539,6 @@ export default function HomePage() {
                 cargo.id === editingCargo.id ? originalCargo : cargo
               )
             )
-            // Revert In-Road Complete
-            setInRoadComplete(prevCargos =>
-              prevCargos.map(cargo =>
-                cargo.id === editingCargo.id ? originalCargo : cargo
-              )
-            )
             
             // Reopen dialog with original data
             setCargoDialogOpen(true)
@@ -570,9 +551,6 @@ export default function HomePage() {
           const createDuplicate = async () => {
             try {
               console.log('Creating duplicate CIF cargo for In-Road tracking...', editingCargo)
-              const etaDischargeISO = cargoFormData.eta_discharge_port
-                ? new Date(cargoFormData.eta_discharge_port).toISOString()
-                : undefined
               
               // Create a duplicate cargo (will be created as "Planned" status)
               const duplicatePayload: any = {
@@ -591,7 +569,7 @@ export default function HomePage() {
                 etc: cargoFormData.etc || undefined,
                 notes: cargoFormData.notes || undefined,
                 // CIF specific fields
-                eta_discharge_port: etaDischargeISO,
+                eta_discharge_port: cargoFormData.eta_discharge_port || undefined,
                 discharge_port_location: cargoFormData.discharge_port_location || undefined,
               }
               
@@ -605,13 +583,13 @@ export default function HomePage() {
                 // Optimistically add to In-Road CIF list
                 const duplicateCargo: Cargo = {
                   ...duplicateResponse.data,
-                  status: IN_ROAD_STATUS_VALUE as CargoStatus,
+                  status: 'In-Road (Pending Discharge)' as CargoStatus,
                 }
                 setInRoadCIF(prev => [...prev, duplicateCargo])
                 
                 // Update status via API
                 await cargoAPI.update(duplicateId, {
-                  status: IN_ROAD_STATUS_VALUE,
+                  status: 'In-Road (Pending Discharge)',
                 })
                 
                 // Refresh In-Road data in background
@@ -725,7 +703,6 @@ export default function HomePage() {
           berthed: cargoFormData.berthed || undefined,
           commenced: cargoFormData.commenced || undefined,
           etc: cargoFormData.etc || undefined,
-          discharge_port_location: cargoFormData.discharge_port_location || undefined,
           status: 'Planned' as CargoStatus,
           notes: cargoFormData.notes || undefined,
           monthly_plan_id: cargoMonthlyPlanId,
@@ -792,12 +769,13 @@ export default function HomePage() {
     return productName || '-'
   }
 
-  const formatShortMonthName = (month: number) => {
-    const date = new Date(2000, month - 1, 1)
-    return date.toLocaleString('default', { month: 'short' })
-  }
-
-  const getLaycanText = (monthlyPlan: MonthlyPlan): string => {
+  const getLaycanDisplay = (monthlyPlan: MonthlyPlan, contract: Contract | null) => {
+    // Only show laycan for FOB contracts
+    if (!contract || contract.contract_type !== 'FOB') {
+      return 'TBA'
+    }
+    
+    // Priority: 2 days > 5 days > TBA
     if (monthlyPlan.laycan_2_days) {
       return monthlyPlan.laycan_2_days
     }
@@ -805,35 +783,6 @@ export default function HomePage() {
       return monthlyPlan.laycan_5_days
     }
     return 'TBA'
-  }
-
-  const getLaycanDisplay = (monthlyPlan: MonthlyPlan, contract: Contract | null): ReactNode => {
-    if (!contract) return 'TBA'
-
-    if (contract.contract_type === 'CIF') {
-      const loadingMonthName = formatShortMonthName(monthlyPlan.month)
-      const nextMonth = monthlyPlan.month === 12 ? 1 : monthlyPlan.month + 1
-      const deliveryMonthName = formatShortMonthName(nextMonth)
-      const loadingWindow = monthlyPlan.laycan_2_days || 'TBA'
-      const deliveryWindow = monthlyPlan.laycan_5_days || 'TBA'
-
-      return (
-        <Box sx={{ minWidth: 180 }}>
-          <Typography variant="body2" fontWeight="bold" lineHeight={1.1}>
-            Loading {loadingMonthName}, Del {deliveryMonthName}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" display="block">
-            Loading: {loadingWindow}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" display="block">
-            DW: {deliveryWindow}
-          </Typography>
-        </Box>
-      )
-    }
-
-    // Only show laycan for FOB contracts
-    return getLaycanText(monthlyPlan)
   }
 
   const getContractNumber = (contractId: number) => {
@@ -847,21 +796,19 @@ export default function HomePage() {
 
   const handleChange = (_event: React.SyntheticEvent, newValue: number) => {
     setValue(newValue)
-    if (newValue === 1) {
+    // When switching to Completed Cargos tab, ensure data is loaded
+    if (newValue === 2) {
       loadData()
       loadMonthlyPlansForPortMovement()
-    } else if (newValue === 2 || newValue === 3) {
-      loadData()
     }
   }
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
-      Planned: 'info',
-      Loading: 'warning',
+      'Planned': 'info',
+      'Loading': 'warning',
       'Completed Loading': 'success',
-      [IN_ROAD_STATUS_VALUE]: 'secondary',
-      'In-Road Complete': 'success',
+      'In-Road (Pending Discharge)': 'secondary',
     }
     return colors[status] || 'default'
   }
@@ -881,22 +828,7 @@ export default function HomePage() {
     }
   }
 
-  const renderChecklistChip = (completed?: boolean, initials?: string, date?: string) => (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-      <Chip
-        label={completed ? 'Complete' : 'Pending'}
-        color={completed ? 'success' : 'default'}
-        size="small"
-      />
-      {completed && (
-        <Typography variant="caption">
-          {initials || '-'} {date ? `• ${format(new Date(date), 'MMM dd, yyyy')}` : ''}
-        </Typography>
-      )}
-    </Box>
-  )
-
-  const renderInRoadCIFTable = (cargos: Cargo[]) => {
+  const renderCargoTable = (cargos: Cargo[]) => {
     if (loading) {
       return (
         <Box display="flex" justifyContent="center" p={4}>
@@ -932,10 +864,8 @@ export default function HomePage() {
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Status</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 140 : 'auto', fontWeight: 'bold' }}>ETA (Discharge)</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 140 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 140 : 'auto', fontWeight: 'bold' }}>Transit Notes</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Actions</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Load Port(s)</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Remark</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -957,106 +887,10 @@ export default function HomePage() {
                 <TableCell>{getProductName(cargo.product_name)}</TableCell>
                 <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
                 <TableCell>
-                  <Chip label={formatStatusLabel(cargo.status)} color={getStatusColor(cargo.status)} size="small" />
+                  <Chip label={cargo.status} color={getStatusColor(cargo.status)} size="small" />
                 </TableCell>
-                <TableCell>
-                  {cargo.eta_discharge_port ? format(new Date(cargo.eta_discharge_port), 'MMM dd, yyyy') : 'TBA'}
-                </TableCell>
-                <TableCell>{cargo.discharge_port_location || '-'}</TableCell>
+                <TableCell>{cargo.load_ports}</TableCell>
                 <TableCell>{cargo.notes || '-'}</TableCell>
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={() => handleMarkDischarged(cargo)}
-                  >
-                    Mark Discharged
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    )
-  }
-
-  const renderInRoadCompleteTable = (cargos: Cargo[]) => {
-    if (loading) {
-      return (
-        <Box display="flex" justifyContent="center" p={4}>
-          <CircularProgress />
-        </Box>
-      )
-    }
-
-    if (cargos.length === 0) {
-      return (
-        <Typography variant="body1" color="text.secondary" sx={{ p: 2 }}>
-          No cargos found
-        </Typography>
-      )
-    }
-
-    return (
-      <TableContainer component={Paper}>
-        <Table stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell>Vessel Name</TableCell>
-              <TableCell>Customer</TableCell>
-              <TableCell>Product</TableCell>
-              <TableCell>Contract</TableCell>
-              <TableCell>Discharge Completed</TableCell>
-              <TableCell>Discharge Port</TableCell>
-              <TableCell>Notes</TableCell>
-              <TableCell>Sailing Fax</TableCell>
-              <TableCell>Documents Mailing</TableCell>
-              <TableCell>Inspector Invoice</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {cargos.map((cargo) => (
-              <TableRow 
-                key={cargo.id}
-                onClick={() => handleEditCargo(cargo)}
-                sx={{ 
-                  cursor: 'pointer',
-                  '&:hover': { bgcolor: 'action.hover' },
-                }}
-              >
-                <TableCell>{cargo.vessel_name}</TableCell>
-                <TableCell>{getCustomerName(cargo.customer_id)}</TableCell>
-                <TableCell>{getProductName(cargo.product_name)}</TableCell>
-                <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
-                <TableCell>
-                  {cargo.discharge_completion_time
-                    ? format(new Date(cargo.discharge_completion_time), 'MMM dd, yyyy HH:mm')
-                    : '-'}
-                </TableCell>
-                <TableCell>{cargo.discharge_port_location || '-'}</TableCell>
-                <TableCell>{cargo.notes || '-'}</TableCell>
-                <TableCell>
-                  {renderChecklistChip(
-                    cargo.sailing_fax_entry_completed,
-                    cargo.sailing_fax_entry_initials,
-                    cargo.sailing_fax_entry_date
-                  )}
-                </TableCell>
-                <TableCell>
-                  {renderChecklistChip(
-                    cargo.documents_mailing_completed,
-                    cargo.documents_mailing_initials,
-                    cargo.documents_mailing_date
-                  )}
-                </TableCell>
-                <TableCell>
-                  {renderChecklistChip(
-                    cargo.inspector_invoice_completed,
-                    cargo.inspector_invoice_initials,
-                    cargo.inspector_invoice_date
-                  )}
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -1097,7 +931,6 @@ export default function HomePage() {
       setPortMovement(prev => prev.map(c => c.id === cargoId ? updatedCargo : c))
       setCompletedCargos(prev => prev.map(c => c.id === cargoId ? updatedCargo : c))
       setInRoadCIF(prev => prev.map(c => c.id === cargoId ? updatedCargo : c))
-      setInRoadComplete(prev => prev.map(c => c.id === cargoId ? updatedCargo : c))
       
       // Send API call in background
       cargoAPI.update(cargoId, updateData)
@@ -1111,29 +944,11 @@ export default function HomePage() {
           setPortMovement(prev => prev.map(c => c.id === cargoId ? originalCargo : c))
           setCompletedCargos(prev => prev.map(c => c.id === cargoId ? originalCargo : c))
           setInRoadCIF(prev => prev.map(c => c.id === cargoId ? originalCargo : c))
-          setInRoadComplete(prev => prev.map(c => c.id === cargoId ? originalCargo : c))
           alert('Error updating task. Changes have been reverted. Please try again.')
         })
     } catch (error) {
       console.error('Error updating task:', error)
       alert('Error updating task. Please try again.')
-    }
-  }
-
-  const handleMarkDischarged = async (cargo: Cargo) => {
-    if (!window.confirm('Mark this cargo as discharged and move it to In-Road Complete?')) {
-      return
-    }
-    try {
-      await cargoAPI.markDischarged(cargo.id, {
-        discharge_completion_time: cargo.discharge_completion_time || new Date().toISOString(),
-        notes: cargo.notes,
-      })
-      await loadData()
-      alert('Cargo marked as discharged.')
-    } catch (error: any) {
-      console.error('Error marking discharged:', error)
-      alert(error?.response?.data?.detail || 'Error marking cargo discharged. Please try again.')
     }
   }
 
@@ -1401,7 +1216,6 @@ export default function HomePage() {
                     )}
                   </Box>
                 </TableCell>
-                {/* In-Road tracking column removed as requested */}
               </TableRow>
               )
             })}
@@ -1426,7 +1240,8 @@ export default function HomePage() {
       // Always get from monthly plan, priority: laycan_2_days > laycan_5_days > TBA
       const monthlyPlan = monthlyPlans.find(mp => mp.id === cargo.monthly_plan_id)
       if (monthlyPlan) {
-        return getLaycanText(monthlyPlan)
+        const contract = getContractForMonthlyPlan(monthlyPlan)
+        return getLaycanDisplay(monthlyPlan, contract)
       }
       return 'TBA'
     }
@@ -1470,7 +1285,19 @@ export default function HomePage() {
     }
 
     // Get all cargos with their laycan and contract info
-    const cargosWithInfo = portMovement.map(cargo => {
+    // Deduplicate cargos: if multiple cargos have same vessel_name, contract_id, monthly_plan_id, and product_name, keep only the most recent one
+    const seenCargos = new Map<string, Cargo>()
+    portMovement.forEach(cargo => {
+      const key = `${cargo.vessel_name}_${cargo.contract_id}_${cargo.monthly_plan_id}_${cargo.product_name}`
+      const existing = seenCargos.get(key)
+      if (!existing || (cargo.id && existing.id && cargo.id > existing.id)) {
+        // Keep the cargo with the higher ID (more recent)
+        seenCargos.set(key, cargo)
+      }
+    })
+    const uniqueCargos = Array.from(seenCargos.values())
+    
+    const cargosWithInfo = uniqueCargos.map(cargo => {
       const monthlyPlan = monthlyPlans.find(mp => mp.id === cargo.monthly_plan_id)
       const contract = monthlyPlan ? getContractForMonthlyPlan(monthlyPlan) : null
       const customer = contract ? customers.find(c => c.id === contract.customer_id) : null
@@ -1499,7 +1326,13 @@ export default function HomePage() {
       const contract = getContractForMonthlyPlan(monthlyPlan)
       const customer = contract ? customers.find(c => c.id === contract.customer_id) : null
       
-      const laycan = getLaycanText(monthlyPlan)
+      // Get laycan from monthly plan (2 days > 5 days > TBA)
+      let laycan = 'TBA'
+      if (monthlyPlan.laycan_2_days) {
+        laycan = monthlyPlan.laycan_2_days
+      } else if (monthlyPlan.laycan_5_days) {
+        laycan = monthlyPlan.laycan_5_days
+      }
       
       return {
         cargo: null, // No cargo yet
@@ -1794,9 +1627,7 @@ export default function HomePage() {
                   <MenuItem value="Planned" sx={{ fontSize: '0.875rem' }}>Planned</MenuItem>
                   <MenuItem value="Loading" sx={{ fontSize: '0.875rem' }}>Loading</MenuItem>
                   <MenuItem value="Completed Loading" sx={{ fontSize: '0.875rem' }}>Completed Loading</MenuItem>
-                  <MenuItem value={IN_ROAD_STATUS_VALUE} sx={{ fontSize: '0.875rem' }}>
-                    {formatStatusLabel(IN_ROAD_STATUS_VALUE)}
-                  </MenuItem>
+                  <MenuItem value="In-Road (Pending Discharge)" sx={{ fontSize: '0.875rem' }}>In-Road (Pending Discharge)</MenuItem>
                   <MenuItem value="Not Created" sx={{ fontSize: '0.875rem' }}>Not Created</MenuItem>
                 </Select>
               </FormControl>
@@ -2098,7 +1929,7 @@ export default function HomePage() {
                         wordBreak: 'normal'
                       }}>
                         {cargo ? (
-                          <Chip label={formatStatusLabel(cargo.status)} color={getStatusColor(cargo.status)} size="small" />
+                          <Chip label={cargo.status} color={getStatusColor(cargo.status)} size="small" />
                         ) : (
                       <Chip label="Not Created" color="default" size="small" />
                         )}
@@ -2175,7 +2006,6 @@ export default function HomePage() {
             <Tab label={isMobile ? "Port" : "Port Movement"} />
             <Tab label={isMobile ? "Completed" : "Completed Cargos"} />
             <Tab label={isMobile ? "In-Road" : "In-Road CIF Cargos"} />
-            <Tab label={isMobile ? "In-Rd Done" : "In-Road Complete"} />
           </Tabs>
         </Box>
         <TabPanel value={value} index={0}>
@@ -2214,60 +2044,6 @@ export default function HomePage() {
               </FormControl>
             </Box>
           </Box>
-          
-          {/* Quick Filters */}
-          <QuickFilters
-            onFilterSelect={(filterType: string) => {
-              if (filterType === 'pending') {
-                setPortMovementFilterStatus('Planned')
-              } else if (filterType === 'completed') {
-                setPortMovementFilterStatus('Completed Loading')
-              } else if (filterType === 'in-road') {
-                setPortMovementFilterStatus(IN_ROAD_STATUS_VALUE)
-              }
-            }}
-            currentMonth={new Date().getMonth() + 1}
-            currentYear={new Date().getFullYear()}
-            selectedMonth={selectedMonth}
-            selectedYear={selectedYear}
-            onMonthChange={setSelectedMonth}
-            onYearChange={setSelectedYear}
-          />
-          
-          {/* Filter Chips */}
-          <FilterChipsLegacy
-            filterCustomer={portMovementFilterCustomer}
-            filterContract={portMovementFilterContract}
-            filterType={portMovementFilterType}
-            filterProduct={portMovementFilterProduct}
-            filterStatus={portMovementFilterStatus}
-            searchText={portMovementSearch}
-            customers={customers}
-            contracts={contracts}
-            onRemoveFilter={(filterKey: string) => {
-              if (filterKey === 'searchText') {
-                setPortMovementSearch('')
-              } else if (filterKey === 'customer') {
-                setPortMovementFilterCustomer(null)
-              } else if (filterKey === 'contract') {
-                setPortMovementFilterContract(null)
-              } else if (filterKey === 'type') {
-                setPortMovementFilterType(null)
-              } else if (filterKey === 'product') {
-                setPortMovementFilterProduct(null)
-              } else if (filterKey === 'status') {
-                setPortMovementFilterStatus(null)
-              }
-            }}
-            onClearAll={() => {
-              setPortMovementFilterCustomer(null)
-              setPortMovementFilterContract(null)
-              setPortMovementFilterType(null)
-              setPortMovementFilterProduct(null)
-              setPortMovementFilterStatus(null)
-              setPortMovementSearch('')
-            }}
-          />
           
           {renderPortMovementTable()}
         </TabPanel>
@@ -2333,71 +2109,10 @@ export default function HomePage() {
           {renderCompletedCargosTable()}
         </TabPanel>
         <TabPanel value={value} index={2}>
-          <Box
-            sx={{
-              mb: 2,
-              display: 'flex',
-              flexDirection: isMobile ? 'column' : 'row',
-              gap: 2,
-              alignItems: isMobile ? 'stretch' : 'center',
-            }}
-          >
-            <Typography variant="h6">
-              In-Road CIF Cargos
-            </Typography>
-            <Box sx={{ flex: 1 }} />
-            <FormControl
-              size="small"
-              sx={{ minWidth: isMobile ? '100%' : 240 }}
-            >
-              <InputLabel id="in-road-customer-filter-label">Customer Filter</InputLabel>
-              <Select
-                labelId="in-road-customer-filter-label"
-                multiple
-                value={inRoadCustomerFilter}
-                label="Customer Filter"
-                renderValue={(selected) => {
-                  if (selected.length === 0) return 'All Customers'
-                  if (selected.length === 1) {
-                    const customer = customers.find((c) => c.id === selected[0])
-                    return customer?.name || 'Unknown'
-                  }
-                  return `${selected.length} customers`
-                }}
-                onChange={(event) => {
-                  const value = event.target.value
-                  if (typeof value === 'string') {
-                    setInRoadCustomerFilter(value.split(',').map(Number))
-                  } else {
-                    setInRoadCustomerFilter(value as number[])
-                  }
-                }}
-              >
-                {customers.map((customer) => (
-                  <MenuItem key={customer.id} value={customer.id}>
-                    <Checkbox checked={inRoadCustomerFilter.includes(customer.id)} />
-                    <ListItemText primary={customer.name} />
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            {inRoadCustomerFilter.length > 0 && (
-              <Button
-                variant="text"
-                size="small"
-                onClick={() => setInRoadCustomerFilter([])}
-              >
-                Clear
-              </Button>
-            )}
-          </Box>
-          {renderInRoadCIFTable(filteredInRoadCIF)}
-        </TabPanel>
-        <TabPanel value={value} index={3}>
           <Typography variant="h6" gutterBottom>
-            In-Road Complete (Delivered CIF Cargos)
+            In-Road CIF Cargos (Pending Discharge)
           </Typography>
-          {renderInRoadCompleteTable(inRoadComplete)}
+          {renderCargoTable(inRoadCIF)}
         </TabPanel>
       </Paper>
 
@@ -2419,15 +2134,8 @@ export default function HomePage() {
         <DialogTitle sx={{ fontSize: isMobile ? '1.25rem' : '1.5rem', pb: isMobile ? 1 : 2 }}>
           {editingCargo ? 'Edit Vessel Details' : 'Add Vessel Details'}
         </DialogTitle>
-        <DialogContent sx={{ px: isMobile ? 2 : 3, py: isMobile ? 2 : 3, overflowY: 'auto' }}>
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: isMobile ? 1.5 : 2,
-              pt: isMobile ? 1.5 : 1,
-            }}
-          >
+        <DialogContent sx={{ px: isMobile ? 2 : 3, pt: isMobile ? 3 : 4, pb: isMobile ? 2 : 3, overflowY: 'auto' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1.5 : 2, pt: 1 }}>
             {(() => {
               // Check if this is a completed cargo
               const isCompletedCargo = !!(editingCargo && editingCargo.status === 'Completed Loading')
@@ -2526,6 +2234,50 @@ export default function HomePage() {
                   }}
                 />
               </Grid>
+              {((editingCargo && editingCargo.contract_type === 'CIF') || 
+                (!editingCargo && cargoContract && cargoContract.contract_type === 'CIF')) && (
+                <>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>
+                      CIF Specific Fields:
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label="ETA Discharge Port"
+                      type="datetime-local"
+                      value={cargoFormData.eta_discharge_port}
+                      onChange={(e) => setCargoFormData({ ...cargoFormData, eta_discharge_port: e.target.value })}
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      disabled={isCompletedCargo}
+                      sx={isCompletedCargo ? disabledStyle : {}}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label="Discharge Port Location"
+                      value={cargoFormData.discharge_port_location}
+                      onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_port_location: e.target.value })}
+                      fullWidth
+                      disabled={isCompletedCargo}
+                      sx={isCompletedCargo ? disabledStyle : {}}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label="Discharge Completion Time"
+                      type="datetime-local"
+                      value={cargoFormData.discharge_completion_time}
+                      onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_completion_time: e.target.value })}
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      disabled={isCompletedCargo}
+                      sx={isCompletedCargo ? disabledStyle : {}}
+                    />
+                  </Grid>
+                </>
+              )}
               <Grid item xs={12}>
                 <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 2 }}>
                   <Typography variant="subtitle1" gutterBottom>
@@ -2577,38 +2329,6 @@ export default function HomePage() {
                       />
                     </Grid>
                   </Grid>
-                  {((editingCargo && editingCargo.contract_type === 'CIF') || 
-                    (!editingCargo && cargoContract && cargoContract.contract_type === 'CIF')) && (
-                    <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 2 }}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        CIF Specific Fields
-                      </Typography>
-                      <Grid container spacing={2} sx={{ mt: 1 }}>
-                        <Grid item xs={12} md={6}>
-                          <TextField
-                            label="ETA Discharge Port"
-                            type="date"
-                            value={cargoFormData.eta_discharge_port}
-                            onChange={(e) => setCargoFormData({ ...cargoFormData, eta_discharge_port: e.target.value })}
-                            fullWidth
-                            InputLabelProps={{ shrink: true }}
-                            disabled={isCompletedCargo}
-                            sx={isCompletedCargo ? disabledStyle : {}}
-                          />
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                          <TextField
-                            label="Discharge Port Location"
-                            value={cargoFormData.discharge_port_location}
-                            onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_port_location: e.target.value })}
-                            fullWidth
-                            disabled={isCompletedCargo}
-                            sx={isCompletedCargo ? disabledStyle : {}}
-                          />
-                        </Grid>
-                      </Grid>
-                    </Box>
-                  )}
                 </Box>
               </Grid>
               {editingCargo && (

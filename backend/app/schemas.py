@@ -132,7 +132,7 @@ class CargoBase(BaseModel):
     loading_start_time: Optional[datetime] = None
     loading_completion_time: Optional[datetime] = None
     etd_load_port: Optional[datetime] = None
-    eta_discharge_port: Optional[date] = None  # Date only, no time
+    eta_discharge_port: Optional[datetime] = None
     discharge_port_location: Optional[str] = None
     discharge_completion_time: Optional[datetime] = None
     notes: Optional[str] = None
@@ -170,7 +170,7 @@ class CargoUpdate(BaseModel):
     loading_start_time: Optional[datetime] = None
     loading_completion_time: Optional[datetime] = None
     etd_load_port: Optional[datetime] = None
-    eta_discharge_port: Optional[date] = None  # Date only, no time
+    eta_discharge_port: Optional[datetime] = None
     discharge_port_location: Optional[str] = None
     discharge_completion_time: Optional[datetime] = None
     status: Optional[CargoStatus] = None
@@ -202,17 +202,6 @@ class Cargo(CargoBase):
     class Config:
         from_attributes = True
         use_enum_values = True
-
-class CargoInRoadStart(BaseModel):
-    vessel_name: Optional[str] = None
-    eta_discharge_port: Optional[datetime] = None
-    discharge_port_location: Optional[str] = None
-    eta: Optional[str] = None
-    notes: Optional[str] = None
-
-class CargoDischarge(BaseModel):
-    discharge_completion_time: Optional[datetime] = None
-    notes: Optional[str] = None
 
 # Cargo Audit Log Schemas
 class CargoAuditLog(BaseModel):

@@ -6,7 +6,6 @@ from app.database import get_db
 from app import models, schemas
 from app.models import ContractType, CargoStatus, LCStatus
 from app.audit_utils import log_cargo_action
-from sqlalchemy import and_, or_
 import uuid
 import json
 
@@ -57,6 +56,18 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
         print(f"[ERROR] Monthly plan {cargo.monthly_plan_id} not found")
         raise HTTPException(status_code=404, detail="Monthly plan not found")
     print(f"[DEBUG] Monthly plan found: Month {monthly_plan.month}, Year {monthly_plan.year}")
+    
+    # Check if this monthly plan already has a cargo
+    existing_cargo = db.query(models.Cargo).filter(
+        models.Cargo.monthly_plan_id == cargo.monthly_plan_id
+    ).first()
+    
+    if existing_cargo:
+        # Monthly plan already has a cargo assigned - return error with existing cargo info
+        raise HTTPException(
+            status_code=400,
+            detail=f"This monthly plan already has a cargo assigned (Cargo ID: {existing_cargo.cargo_id}, Vessel: {existing_cargo.vessel_name}). Please edit the existing cargo instead of creating a new one."
+        )
     
     # Generate system cargo_id
     cargo_id = f"CARGO-{uuid.uuid4().hex[:8].upper()}"
@@ -194,7 +205,6 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
                 or_(
                     models.Cargo.status == CargoStatus.COMPLETED_LOADING,  # All completed loading cargos
                     models.Cargo.status == CargoStatus.IN_ROAD,  # In-Road cargos
-                    models.Cargo.status == CargoStatus.IN_ROAD_COMPLETE,
                     and_(
                         models.Cargo.status == CargoStatus.PENDING_NOMINATION,
                         models.Cargo.contract_type == ContractType.CIF
@@ -212,7 +222,8 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
 
 @router.get("/completed-cargos", response_model=List[schemas.Cargo])
 def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = None, db: Session = Depends(get_db)):
-    """Get FOB completed cargos and CIF cargos in documentation/in-road stage"""
+    """Get FOB completed cargos and CIF cargos after loading completion, optionally filtered by month/year"""
+    from sqlalchemy import or_, and_
     query = db.query(models.Cargo).filter(
         or_(
             and_(
@@ -220,8 +231,8 @@ def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = Non
                 models.Cargo.contract_type == ContractType.FOB
             ),
             and_(
-                models.Cargo.contract_type == ContractType.CIF,
-                models.Cargo.status.in_([CargoStatus.COMPLETED_LOADING, CargoStatus.IN_ROAD])
+                models.Cargo.status == CargoStatus.COMPLETED_LOADING,
+                models.Cargo.contract_type == ContractType.CIF
             )
         )
     )
@@ -241,6 +252,8 @@ def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = Non
 def read_in_road_cif(db: Session = Depends(get_db)):
     """Get CIF cargos that completed loading but not discharge"""
     try:
+        from sqlalchemy import or_
+        
         # Query for CIF cargos with IN_ROAD status
         # PostgreSQL handles enums natively, direct comparison works
         query = db.query(models.Cargo).filter(
@@ -269,24 +282,12 @@ def read_in_road_cif(db: Session = Depends(get_db)):
         print(f"[ERROR] {error_msg}")
         raise HTTPException(status_code=500, detail=error_msg)
 
-@router.get("/in-road-complete", response_model=List[schemas.Cargo])
-def read_in_road_complete(db: Session = Depends(get_db)):
-    """Get CIF cargos that have completed discharge"""
-    try:
-        cargos = (
-            db.query(models.Cargo)
-            .filter(
-                models.Cargo.contract_type == ContractType.CIF,
-                models.Cargo.status == CargoStatus.IN_ROAD_COMPLETE
-            )
-            .all()
-        )
-        return cargos
-    except Exception as e:
-        import traceback
-        error_msg = f"Error in read_in_road_complete: {str(e)}\n{traceback.format_exc()}"
-        print(f"[ERROR] {error_msg}")
-        raise HTTPException(status_code=500, detail=error_msg)
+@router.get("/{cargo_id}", response_model=schemas.Cargo)
+def read_cargo(cargo_id: int, db: Session = Depends(get_db)):
+    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
+    if cargo is None:
+        raise HTTPException(status_code=404, detail="Cargo not found")
+    return cargo
 
 @router.put("/{cargo_id}", response_model=schemas.Cargo)
 def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depends(get_db)):
@@ -371,7 +372,6 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
     
     # Debug logging
     print(f"[DEBUG] Updating cargo {cargo_id} with data: {update_data}")
-    print(f"[DEBUG] All keys in update_data: {list(update_data.keys())}")
     
     # Store old values for audit logging
     old_monthly_plan_id = db_cargo.monthly_plan_id
@@ -513,67 +513,6 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
         print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error committing cargo update: {str(e)}")
 
-@router.post("/{cargo_id}/start-in-road", response_model=schemas.Cargo)
-def start_in_road_tracking(cargo_id: int, payload: schemas.CargoInRoadStart = schemas.CargoInRoadStart(), db: Session = Depends(get_db)):
-    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
-    if cargo is None:
-        raise HTTPException(status_code=404, detail="Cargo not found")
-    if cargo.contract_type != ContractType.CIF:
-        raise HTTPException(status_code=400, detail="In-road tracking is only applicable to CIF cargos")
-    if cargo.status == CargoStatus.IN_ROAD_COMPLETE:
-        raise HTTPException(status_code=400, detail="Cargo already completed discharge")
-
-    previous_status = cargo.status
-    cargo.status = CargoStatus.IN_ROAD
-
-    # Update optional voyage fields
-    for field in ["vessel_name", "eta_discharge_port", "discharge_port_location", "eta", "notes"]:
-        value = getattr(payload, field)
-        if value is not None:
-            setattr(cargo, field, value)
-
-    log_cargo_action(
-        db=db,
-        action='UPDATE',
-        cargo=cargo,
-        field_name='status',
-        old_value=previous_status.value if previous_status else None,
-        new_value=cargo.status.value
-    )
-
-    db.commit()
-    db.refresh(cargo)
-    return cargo
-
-@router.post("/{cargo_id}/mark-discharged", response_model=schemas.Cargo)
-def mark_cargo_discharged(cargo_id: int, payload: schemas.CargoDischarge = schemas.CargoDischarge(), db: Session = Depends(get_db)):
-    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
-    if cargo is None:
-        raise HTTPException(status_code=404, detail="Cargo not found")
-    if cargo.contract_type != ContractType.CIF:
-        raise HTTPException(status_code=400, detail="Discharge tracking is only applicable to CIF cargos")
-    if cargo.status == CargoStatus.IN_ROAD_COMPLETE:
-        raise HTTPException(status_code=400, detail="Cargo already marked as discharged")
-
-    previous_status = cargo.status
-    cargo.status = CargoStatus.IN_ROAD_COMPLETE
-    cargo.discharge_completion_time = payload.discharge_completion_time or datetime.utcnow()
-    if payload.notes is not None:
-        cargo.notes = payload.notes
-
-    log_cargo_action(
-        db=db,
-        action='UPDATE',
-        cargo=cargo,
-        field_name='status',
-        old_value=previous_status.value if previous_status else None,
-        new_value=cargo.status.value
-    )
-
-    db.commit()
-    db.refresh(cargo)
-    return cargo
-
 @router.delete("/{cargo_id}")
 def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
     db_cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
@@ -591,13 +530,4 @@ def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
     db.delete(db_cargo)
     db.commit()
     return {"message": "Cargo deleted successfully"}
-
-# IMPORTANT: This route must be LAST to avoid matching specific routes like "/in-road-complete"
-# FastAPI matches routes in order, so specific routes must come before parameterized routes
-@router.get("/{cargo_id}", response_model=schemas.Cargo)
-def read_cargo(cargo_id: int, db: Session = Depends(get_db)):
-    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
-    if cargo is None:
-        raise HTTPException(status_code=404, detail="Cargo not found")
-    return cargo
 

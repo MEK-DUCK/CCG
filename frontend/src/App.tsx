@@ -7,6 +7,7 @@ import ContractManagement from './pages/ContractManagement'
 import ContractDashboard from './pages/ContractDashboard'
 import LiftingPlanPage from './pages/LiftingPlanPage'
 import ReconciliationPage from './pages/ReconciliationPage'
+import DashboardPage from './pages/DashboardPage'
 import Layout from './components/Layout'
 
 const theme = createTheme({
@@ -91,6 +92,37 @@ const theme = createTheme({
   shape: {
     borderRadius: 12,
   },
+  shadows: [
+    'none',
+    '0px 1px 3px rgba(0, 0, 0, 0.05)',
+    '0px 2px 6px rgba(0, 0, 0, 0.05)',
+    '0px 4px 12px rgba(0, 0, 0, 0.05)',
+    '0px 8px 24px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+    '0px 16px 48px rgba(0, 0, 0, 0.05)',
+  ],
   components: {
     MuiPaper: {
       styleOverrides: {
@@ -238,6 +270,7 @@ function App() {
             <Route path="/contracts" element={<ContractManagement />} />
             <Route path="/contracts/:contractId/dashboard" element={<ContractDashboard />} />
             <Route path="/lifting-plan" element={<LiftingPlanPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/reconciliation" element={<ReconciliationPage />} />
           </Routes>
         </Layout>

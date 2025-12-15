@@ -8,7 +8,6 @@ export type CargoStatus =
   | 'Completed Loading'
   | 'In-Road (Pending Discharge)'
   | 'Pending Nomination'
-  | 'In-Road Complete'
 
 export interface Customer {
   id: number

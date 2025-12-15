@@ -348,13 +348,17 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
             pass
         
         # Return file as response
-        # Use filename* for proper UTF-8 encoding support
+        # Use proper Content-Disposition header for Safari compatibility
+        # Safari requires filename to be quoted and may need filename* for UTF-8
+        import urllib.parse
+        filename_encoded = urllib.parse.quote(filename)
         return Response(
             content=file_content,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
-                "Content-Disposition": f'attachment; filename="{filename}"',
-                "Content-Length": str(len(file_content))
+                "Content-Disposition": f'attachment; filename="{filename}"; filename*=UTF-8\'\'{filename_encoded}',
+                "Content-Length": str(len(file_content)),
+                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             }
         )
     except Exception as e:

@@ -27,7 +27,6 @@ class CargoStatus(str, enum.Enum):
     COMPLETED_LOADING = "Completed Loading"
     IN_ROAD = "In-Road (Pending Discharge)"
     PENDING_NOMINATION = "Pending Nomination"
-    IN_ROAD_COMPLETE = "In-Road Complete"
 
 
 class Customer(Base):
@@ -124,7 +123,7 @@ class Cargo(Base):
     etd_load_port = Column(DateTime, nullable=True)
     
     # CIF specific fields
-    eta_discharge_port = Column(Date)  # Date only, no time
+    eta_discharge_port = Column(DateTime)
     discharge_port_location = Column(String)
     discharge_completion_time = Column(DateTime)
     

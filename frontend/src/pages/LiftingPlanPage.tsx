@@ -221,7 +221,7 @@ export default function LiftingPlanPage() {
 
       const exportData: any[] = dataArray.map((data) => {
         // Format month 1 entries
-        const month1Parts = data.month1Entries.map((entry) => {
+        const month1Parts = data.month1Entries.map((entry, idx) => {
           let laycanText = ''
           if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
             const parts: string[] = []
@@ -234,7 +234,7 @@ export default function LiftingPlanPage() {
         const month1Text = month1Parts.length > 0 ? month1Parts.join('\n') : '-'
         
         // Format month 2 entries
-        const month2Parts = data.month2Entries.map((entry) => {
+        const month2Parts = data.month2Entries.map((entry, idx) => {
           let laycanText = ''
           if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
             const parts: string[] = []
@@ -247,7 +247,7 @@ export default function LiftingPlanPage() {
         const month2Text = month2Parts.length > 0 ? month2Parts.join('\n') : '-'
         
         // Format month 3 entries
-        const month3Parts = data.month3Entries.map((entry) => {
+        const month3Parts = data.month3Entries.map((entry, idx) => {
           let laycanText = ''
           if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
             const parts: string[] = []
