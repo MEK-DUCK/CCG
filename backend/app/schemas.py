@@ -175,7 +175,8 @@ class CargoUpdate(BaseModel):
     discharge_completion_time: Optional[datetime] = None
     status: Optional[CargoStatus] = None
     notes: Optional[str] = None
-    lc_status: Optional[LCStatus] = None  # LC status - EXACT duplicate of status pattern
+    # Accept empty string from UI; router converts '' -> None before writing to DB.
+    lc_status: Optional[Union[LCStatus, str]] = None  # LC status - EXACT duplicate of status pattern
     # Completion tracking fields
     sailing_fax_entry_completed: Optional[bool] = None
     sailing_fax_entry_initials: Optional[str] = None

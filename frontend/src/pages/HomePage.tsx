@@ -120,6 +120,7 @@ export default function HomePage() {
     if (isInitialLoad) {
       setIsInitialLoad(false)
       loadData()
+      loadPortMovement()
       loadMonthlyPlansForPortMovement()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -815,24 +816,135 @@ export default function HomePage() {
     const colors: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
       'Planned': 'info',
       'Loading': 'warning',
+      'Pending Nomination': 'warning', // Will use custom yellow styling instead
+      'Pending TL Approval': 'error', // Will use custom red styling instead
+      'Nomination Released': 'success', // Will use custom light green styling instead
       'Completed Loading': 'success',
       'In-Road (Pending Discharge)': 'secondary',
     }
     return colors[status] || 'default'
   }
 
-  // Helper function to get LC status color
-  const getLCStatusColor = (status: LCStatus | undefined): 'success' | 'error' | 'warning' | 'info' | 'default' => {
-    if (!status) return 'default'
+  // Helper function to get custom styling for status chips
+  const getStatusChipProps = (status: string) => {
+    if (status === 'Planned') {
+      return {
+        sx: {
+          backgroundColor: '#bbdefb', // Light blue
+          color: '#0d47a1',
+          '&:hover': {
+            backgroundColor: '#90caf9',
+          }
+        }
+      }
+    }
+    if (status === 'Loading') {
+      return {
+        sx: {
+          backgroundColor: '#ffcc80', // Light orange
+          color: '#000',
+          '&:hover': {
+            backgroundColor: '#ffb74d', // Slightly darker light orange on hover
+          }
+        }
+      }
+    }
+    if (status === 'Pending Nomination') {
+      return {
+        sx: {
+          backgroundColor: '#ffeb3b', // Yellow
+          color: '#000',
+          '&:hover': {
+            backgroundColor: '#fdd835', // Darker yellow on hover
+          }
+        }
+      }
+    }
+    if (status === 'Pending TL Approval') {
+      return {
+        sx: {
+          backgroundColor: '#f44336', // Red
+          color: '#fff',
+          '&:hover': {
+            backgroundColor: '#d32f2f', // Darker red on hover
+          }
+        }
+      }
+    }
+    if (status === 'Nomination Released') {
+      return {
+        sx: {
+          backgroundColor: '#c8e6c9', // Light green
+          color: '#1b5e20', // Dark green text for contrast
+          '&:hover': {
+            backgroundColor: '#a5d6a7', // Slightly darker light green on hover
+          }
+        }
+      }
+    }
+    if (status === 'Completed Loading') {
+      return {
+        sx: {
+          backgroundColor: '#c8e6c9', // Light green
+          color: '#1b5e20',
+          '&:hover': {
+            backgroundColor: '#a5d6a7',
+          }
+        }
+      }
+    }
+    if (status === 'In-Road (Pending Discharge)') {
+      return {
+        sx: {
+          backgroundColor: '#e0e0e0', // Light grey
+          color: '#424242',
+          '&:hover': {
+            backgroundColor: '#d5d5d5',
+          }
+        }
+      }
+    }
+    return {}
+  }
+
+  // Helper function to get custom styling for LC status chips (pastel/light colors)
+  const getLCStatusChipProps = (status: LCStatus | undefined) => {
+    if (!status) return {}
+
     switch (status) {
       case 'LC in Order':
-        return 'success'  // Green
+        return {
+          sx: {
+            backgroundColor: '#c8e6c9', // Light green
+            color: '#1b5e20',
+            '&:hover': { backgroundColor: '#a5d6a7' }
+          }
+        }
       case 'LC Not in Order':
-        return 'error'  // Red
+        return {
+          sx: {
+            backgroundColor: '#ffcdd2', // Light red
+            color: '#b71c1c',
+            '&:hover': { backgroundColor: '#ef9a9a' }
+          }
+        }
       case 'Pending LC':
+        return {
+          sx: {
+            backgroundColor: '#ffe0b2', // Light orange
+            color: '#e65100',
+            '&:hover': { backgroundColor: '#ffcc80' }
+          }
+        }
       case 'LC Memo Issued':
       default:
-        return 'warning'  // Orange
+        return {
+          sx: {
+            backgroundColor: '#fff9c4', // Light yellow
+            color: '#7a5d00',
+            '&:hover': { backgroundColor: '#fff59d' }
+          }
+        }
     }
   }
 
@@ -895,7 +1007,12 @@ export default function HomePage() {
                 <TableCell>{getProductName(cargo.product_name)}</TableCell>
                 <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
                 <TableCell>
-                  <Chip label={cargo.status} color={getStatusColor(cargo.status)} size="small" />
+                  <Chip 
+                    label={cargo.status} 
+                    color={getStatusColor(cargo.status)} 
+                    size="small" 
+                    {...getStatusChipProps(cargo.status)}
+                  />
                 </TableCell>
                 <TableCell>{cargo.load_ports}</TableCell>
                 <TableCell>{cargo.notes || '-'}</TableCell>
@@ -1090,8 +1207,9 @@ export default function HomePage() {
                       cargo && cargo.lc_status ? (
                         <Chip
                           label={cargo.lc_status}
-                          color={getLCStatusColor(cargo.lc_status)}
+                          color="default"
                           size="small"
+                          {...getLCStatusChipProps(cargo.lc_status)}
                         />
                       ) : (
                         <Chip label="-" color="default" size="small" />
@@ -1824,8 +1942,9 @@ export default function HomePage() {
                             cargo && cargo.lc_status ? (
                               <Chip
                                 label={cargo.lc_status}
-                                color={getLCStatusColor(cargo.lc_status)}
+                                color="default"
                                 size="small"
+                                {...getLCStatusChipProps(cargo.lc_status)}
                               />
                             ) : (
                               <Chip label="-" color="default" size="small" />
@@ -1937,7 +2056,12 @@ export default function HomePage() {
                         wordBreak: 'normal'
                       }}>
                         {cargo ? (
-                          <Chip label={cargo.status} color={getStatusColor(cargo.status)} size="small" />
+                          <Chip 
+                            label={cargo.status} 
+                            color={getStatusColor(cargo.status)} 
+                            size="small" 
+                            {...getStatusChipProps(cargo.status)}
+                          />
                         ) : (
                       <Chip label="Not Created" color="default" size="small" />
                         )}
@@ -2356,6 +2480,18 @@ export default function HomePage() {
                           >
                             <MenuItem value="Planned">Planned</MenuItem>
                             <MenuItem value="Loading">Loading</MenuItem>
+                            {/* Show Pending Nomination only when editing from Port Movement tab */}
+                            {value === 0 && (
+                              <MenuItem value="Pending Nomination">Pending Nomination</MenuItem>
+                            )}
+                            {/* Show Pending TL Approval only when editing from Port Movement tab */}
+                            {value === 0 && (
+                              <MenuItem value="Pending TL Approval">Pending TL Approval</MenuItem>
+                            )}
+                            {/* Show Nomination Released only when editing from Port Movement tab */}
+                            {value === 0 && (
+                              <MenuItem value="Nomination Released">Nomination Released</MenuItem>
+                            )}
                             <MenuItem value="Completed Loading">Completed Loading</MenuItem>
                           </Select>
                         </FormControl>
