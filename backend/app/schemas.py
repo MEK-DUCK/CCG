@@ -36,6 +36,7 @@ class ContractBase(BaseModel):
     start_period: date
     end_period: date
     products: List[ContractProduct]  # List of products with quantities
+    discharge_ranges: Optional[str] = None
 
 class ContractCreate(ContractBase):
     customer_id: int
@@ -47,6 +48,7 @@ class ContractUpdate(BaseModel):
     start_period: Optional[date] = None
     end_period: Optional[date] = None
     products: Optional[List[ContractProduct]] = None
+    discharge_ranges: Optional[str] = None
     customer_id: Optional[int] = None
 
 class Contract(ContractBase):

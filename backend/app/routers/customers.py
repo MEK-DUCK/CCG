@@ -15,7 +15,7 @@ def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(get_
         
         db_customer = models.Customer(
             customer_id=customer_id,
-            name=customer.name
+            name=customer.name,
         )
         db.add(db_customer)
         db.commit()

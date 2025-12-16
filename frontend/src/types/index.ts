@@ -34,6 +34,7 @@ export interface Contract {
   start_period: string
   end_period: string
   products: ContractProduct[]  // List of products with quantities
+  discharge_ranges?: string
   customer_id: number
   created_at: string
   updated_at?: string

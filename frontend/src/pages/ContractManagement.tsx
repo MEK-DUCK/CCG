@@ -80,6 +80,7 @@ export default function ContractManagement() {
     start_period: '',
     end_period: '',
     products: [] as ContractProduct[],  // Array of products with quantities
+    discharge_ranges: '',
   })
 
   useEffect(() => {
@@ -158,6 +159,7 @@ export default function ContractManagement() {
         start_period: contract.start_period,
         end_period: contract.end_period,
         products: contract.products || [],
+        discharge_ranges: contract.discharge_ranges || '',
       })
     } else {
       setEditingContract(null)
@@ -169,6 +171,7 @@ export default function ContractManagement() {
         start_period: '',
         end_period: '',
         products: [],
+        discharge_ranges: '',
       })
     }
     setOpen(true)
@@ -206,6 +209,7 @@ export default function ContractManagement() {
       start_period: '',
       end_period: '',
       products: [],
+      discharge_ranges: '',
     })
   }
 
@@ -245,7 +249,8 @@ export default function ContractManagement() {
           name: p.name,
           total_quantity: p.total_quantity,
           optional_quantity: p.optional_quantity || 0
-        }))
+        })),
+        discharge_ranges: formData.discharge_ranges || undefined,
       }
 
       console.log('Submitting contract:', payload)
@@ -954,6 +959,16 @@ export default function ContractManagement() {
                 />
               </Grid>
             </Grid>
+
+            <TextField
+              label="Discharge Ranges"
+              value={formData.discharge_ranges}
+              onChange={(e) => setFormData({ ...formData, discharge_ranges: e.target.value })}
+              fullWidth
+              multiline
+              minRows={5}
+              placeholder="Enter discharge ranges (for reference)..."
+            />
             
             <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>

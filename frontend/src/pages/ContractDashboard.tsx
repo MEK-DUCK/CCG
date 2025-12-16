@@ -193,6 +193,15 @@ export default function ContractDashboard() {
           <Typography variant="body2" color="text.secondary">
             {customer?.name || 'Unknown Customer'}
           </Typography>
+          {contract.discharge_ranges && (
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}
+            >
+              Discharge Ranges: {contract.discharge_ranges}
+            </Typography>
+          )}
         </Box>
       </Box>
 

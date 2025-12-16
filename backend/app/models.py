@@ -53,6 +53,7 @@ class Contract(Base):
     start_period = Column(Date, nullable=False)
     end_period = Column(Date, nullable=False)
     products = Column(Text, nullable=False)  # JSON: [{"name": "JET A-1", "total_quantity": 1000, "optional_quantity": 200}]
+    discharge_ranges = Column(Text, nullable=True)  # Free-form notes for user reference
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     # Legacy fields for backward compatibility (will be removed in future migration)
     total_quantity = Column(Float, nullable=True, default=0)  # Calculated from products
