@@ -89,6 +89,8 @@ class MonthlyPlan(Base):
     planned_lifting_sizes = Column(Text)  # JSON string or comma-separated
     laycan_5_days = Column(String, nullable=True)  # For FOB contracts only
     laycan_2_days = Column(String, nullable=True)  # For FOB contracts only
+    loading_window = Column(String, nullable=True)  # For CIF contracts only
+    delivery_window = Column(String, nullable=True)  # For CIF contracts only
     quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

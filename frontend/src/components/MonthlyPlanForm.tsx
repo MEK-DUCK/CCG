@@ -75,6 +75,8 @@ interface MonthlyPlanEntry {
   quantity: string
   laycan_5_days: string
   laycan_2_days: string
+  loading_window: string
+  delivery_window: string
 }
 
 export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editingPlan, onPlanCreated, onCancel }: MonthlyPlanFormProps) {
@@ -165,6 +167,8 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
             quantity: plan.month_quantity.toString(),
             laycan_5_days: plan.laycan_5_days || '',
             laycan_2_days: plan.laycan_2_days || '',
+            loading_window: plan.loading_window || '',
+            delivery_window: plan.delivery_window || '',
           })
         })
         
@@ -179,7 +183,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
     }
   }, [quarterlyPlanId])
 
-  const handleLaycanChange = (month: number, year: number, entryIndex: number, field: 'laycan_5_days' | 'laycan_2_days', value: string) => {
+  const handleLaycanChange = (month: number, year: number, entryIndex: number, field: 'laycan_5_days' | 'laycan_2_days' | 'loading_window' | 'delivery_window', value: string) => {
     const key = `${month}-${year}`
     const entries = monthEntries[key] || []
     const updatedEntries = [...entries]
@@ -220,7 +224,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
     const entries = monthEntries[key] || []
     setMonthEntries({
       ...monthEntries,
-      [key]: [...entries, { quantity: '', laycan_5_days: '', laycan_2_days: '' }],
+      [key]: [...entries, { quantity: '', laycan_5_days: '', laycan_2_days: '', loading_window: '', delivery_window: '' }],
     })
   }
 
@@ -378,6 +382,8 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
               planned_lifting_sizes: undefined,
               laycan_5_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
               laycan_2_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
+              loading_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_window || undefined) : undefined,
+              delivery_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window || undefined) : undefined,
             }
             
             // Only allow month/year changes if plan is not locked
@@ -415,6 +421,8 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
           planned_lifting_sizes: undefined,
           laycan_5_days: contractType === 'FOB' && quantity > 0 ? (entry.laycan_5_days || undefined) : undefined,
           laycan_2_days: contractType === 'FOB' && quantity > 0 ? (entry.laycan_2_days || undefined) : undefined,
+          loading_window: contractType === 'CIF' && quantity > 0 ? (entry.loading_window || undefined) : undefined,
+          delivery_window: contractType === 'CIF' && quantity > 0 ? (entry.delivery_window || undefined) : undefined,
         })
       })
 
@@ -437,6 +445,8 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
           quantity: plan.month_quantity.toString(),
           laycan_5_days: plan.laycan_5_days || '',
           laycan_2_days: plan.laycan_2_days || '',
+          loading_window: plan.loading_window || '',
+          delivery_window: plan.delivery_window || '',
         })
       })
       setMonthEntries(entries)
@@ -559,6 +569,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
                         {entries.map((entry, entryIndex) => {
                           const quantity = parseFloat(entry.quantity || '0')
                           const showLaycans = contractType === 'FOB' && quantity > 0
+                          const showCifWindows = contractType === 'CIF' && quantity > 0
                           const status = entry.id ? planStatuses[entry.id] : null
                           const isLocked = status?.is_locked || false
                           const hasCargos = status?.has_cargos || false
@@ -620,6 +631,46 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
                                     size="small"
                                     value={entry.laycan_2_days}
                                     onChange={(e) => handleLaycanChange(month, year, entryIndex, 'laycan_2_days', e.target.value)}
+                                    placeholder="User Entry"
+                                    fullWidth
+                                    disabled={isLocked}
+                                    sx={{
+                                      '& .MuiInputBase-root': {
+                                        height: '32px',
+                                        fontSize: '0.875rem',
+                                      },
+                                      '& .MuiInputBase-input': {
+                                        padding: '6px 8px',
+                                      },
+                                    }}
+                                  />
+                                </Box>
+                              )}
+                              {showCifWindows && (
+                                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                  <TextField
+                                    label="Loading Window:"
+                                    size="small"
+                                    value={entry.loading_window}
+                                    onChange={(e) => handleLaycanChange(month, year, entryIndex, 'loading_window', e.target.value)}
+                                    placeholder="User Entry"
+                                    fullWidth
+                                    disabled={isLocked}
+                                    sx={{
+                                      '& .MuiInputBase-root': {
+                                        height: '32px',
+                                        fontSize: '0.875rem',
+                                      },
+                                      '& .MuiInputBase-input': {
+                                        padding: '6px 8px',
+                                      },
+                                    }}
+                                  />
+                                  <TextField
+                                    label="Delivery Window:"
+                                    size="small"
+                                    value={entry.delivery_window}
+                                    onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
                                     placeholder="User Entry"
                                     fullWidth
                                     disabled={isLocked}

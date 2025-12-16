@@ -259,8 +259,12 @@ export default function HomePage() {
       const monthlyPlan = monthlyPlanRes.data
       setCargoMonthlyPlan(monthlyPlan)
       
-      // Get laycan window from monthly plan: priority is laycan_2_days > laycan_5_days > TBA
-      if (monthlyPlan.laycan_2_days) {
+      // Get laycan window from monthly plan:
+      // - CIF: use loading_window
+      // - FOB: laycan_2_days > laycan_5_days > TBA
+      if (cargo.contract_type === 'CIF') {
+        laycanWindow = monthlyPlan.loading_window || 'TBA'
+      } else if (monthlyPlan.laycan_2_days) {
         laycanWindow = monthlyPlan.laycan_2_days
       } else if (monthlyPlan.laycan_5_days) {
         laycanWindow = monthlyPlan.laycan_5_days
@@ -412,9 +416,13 @@ export default function HomePage() {
     // Get quantity from monthly plan
     const cargoQuantity = monthlyPlan.month_quantity.toString()
     
-    // Get laycan window from monthly plan: priority is laycan_2_days > laycan_5_days > TBA
+    // Get laycan window from monthly plan:
+    // - CIF: use loading_window
+    // - FOB: laycan_2_days > laycan_5_days > TBA
     let laycanWindow = 'TBA'
-    if (monthlyPlan.laycan_2_days) {
+    if (contract.contract_type === 'CIF') {
+      laycanWindow = monthlyPlan.loading_window || 'TBA'
+    } else if (monthlyPlan.laycan_2_days) {
       laycanWindow = monthlyPlan.laycan_2_days
     } else if (monthlyPlan.laycan_5_days) {
       laycanWindow = monthlyPlan.laycan_5_days
@@ -779,11 +787,20 @@ export default function HomePage() {
   }
 
   const getLaycanDisplay = (monthlyPlan: MonthlyPlan, contract: Contract | null) => {
-    // Only show laycan for FOB contracts
-    if (!contract || contract.contract_type !== 'FOB') {
+    if (!contract) {
       return 'TBA'
     }
+
+    // CIF: use Loading Window as the laycan shown in Port Movement
+    if (contract.contract_type === 'CIF') {
+      return monthlyPlan.loading_window || 'TBA'
+    }
     
+    // FOB laycan display
+    if (contract.contract_type !== 'FOB') {
+      return 'TBA'
+    }
+
     // Priority: 2 days > 5 days > TBA
     if (monthlyPlan.laycan_2_days) {
       return monthlyPlan.laycan_2_days
@@ -1452,13 +1469,10 @@ export default function HomePage() {
       const contract = getContractForMonthlyPlan(monthlyPlan)
       const customer = contract ? customers.find(c => c.id === contract.customer_id) : null
       
-      // Get laycan from monthly plan (2 days > 5 days > TBA)
-      let laycan = 'TBA'
-      if (monthlyPlan.laycan_2_days) {
-        laycan = monthlyPlan.laycan_2_days
-      } else if (monthlyPlan.laycan_5_days) {
-        laycan = monthlyPlan.laycan_5_days
-      }
+      // Get laycan from monthly plan:
+      // - FOB: laycan_2_days > laycan_5_days > TBA
+      // - CIF: loading_window (fallback TBA)
+      const laycan = getLaycanDisplay(monthlyPlan, contract)
       
       return {
         cargo: null, // No cargo yet
@@ -2106,19 +2120,16 @@ export default function HomePage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4" sx={{ mb: 0 }}>
-          Oil Lifting Program Dashboard
-        </Typography>
-        {laycanAlerts.totalCount > 0 && (
+      {laycanAlerts.totalCount > 0 && (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
           <NotificationBadge
             alerts={laycanAlerts.alerts}
             criticalCount={laycanAlerts.criticalCount}
             warningCount={laycanAlerts.warningCount}
             infoCount={laycanAlerts.infoCount}
           />
-        )}
-      </Box>
+        </Box>
+      )}
       <Paper sx={{ mt: 3 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs 
@@ -2138,6 +2149,7 @@ export default function HomePage() {
             <Tab label={isMobile ? "Port" : "Port Movement"} />
             <Tab label={isMobile ? "Completed" : "Completed Cargos"} />
             <Tab label={isMobile ? "In-Road" : "In-Road CIF Cargos"} />
+            <Tab label={isMobile ? "Completed In-Road" : "Completed In-Road CIF"} />
           </Tabs>
         </Box>
         <TabPanel value={value} index={0}>
@@ -2245,6 +2257,12 @@ export default function HomePage() {
             In-Road CIF Cargos (Pending Discharge)
           </Typography>
           {renderCargoTable(inRoadCIF)}
+        </TabPanel>
+        <TabPanel value={value} index={3}>
+          <Typography variant="h6" gutterBottom>
+            Completed In-Road CIF Cargos
+          </Typography>
+          {/* Content to be added later */}
         </TabPanel>
       </Paper>
 

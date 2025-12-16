@@ -58,6 +58,8 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         planned_lifting_sizes=plan.planned_lifting_sizes,
         laycan_5_days=plan.laycan_5_days,
         laycan_2_days=plan.laycan_2_days,
+        loading_window=getattr(plan, "loading_window", None),
+        delivery_window=getattr(plan, "delivery_window", None),
         quarterly_plan_id=plan.quarterly_plan_id
     )
     db.add(db_plan)
@@ -152,7 +154,17 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
     
     # Store old values for audit logging
     old_values = {}
-    for field in ['month_quantity', 'number_of_liftings', 'planned_lifting_sizes', 'laycan_5_days', 'laycan_2_days', 'month', 'year']:
+    for field in [
+        'month_quantity',
+        'number_of_liftings',
+        'planned_lifting_sizes',
+        'laycan_5_days',
+        'laycan_2_days',
+        'loading_window',
+        'delivery_window',
+        'month',
+        'year',
+    ]:
         if hasattr(db_plan, field):
             old_values[field] = getattr(db_plan, field)
     for field, value in update_data.items():
