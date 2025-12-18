@@ -41,6 +41,7 @@ class ContractBase(BaseModel):
     fax_received_date: Optional[date] = None
     concluded_memo_received: Optional[bool] = None
     concluded_memo_received_date: Optional[date] = None
+    remarks: Optional[str] = None
 
 class ContractCreate(ContractBase):
     customer_id: int
@@ -57,6 +58,7 @@ class ContractUpdate(BaseModel):
     fax_received_date: Optional[date] = None
     concluded_memo_received: Optional[bool] = None
     concluded_memo_received_date: Optional[date] = None
+    remarks: Optional[str] = None
     customer_id: Optional[int] = None
 
 class Contract(ContractBase):

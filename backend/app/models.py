@@ -58,6 +58,7 @@ class Contract(Base):
     fax_received_date = Column(Date, nullable=True)  # Optional date if fax_received == True
     concluded_memo_received = Column(Boolean, nullable=True)  # Yes/No
     concluded_memo_received_date = Column(Date, nullable=True)  # Optional date if concluded_memo_received == True
+    remarks = Column(Text, nullable=True)  # User remarks (editable in Contract Summary)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     # Legacy fields for backward compatibility (will be removed in future migration)
     total_quantity = Column(Float, nullable=True, default=0)  # Calculated from products

@@ -17,7 +17,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material'
-import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard } from '@mui/icons-material'
+import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize } from '@mui/icons-material'
 
 interface LayoutProps {
   children: ReactNode
@@ -37,6 +37,7 @@ export default function Layout({ children }: LayoutProps) {
     { label: 'Lifting Plan', path: '/lifting-plan', icon: <CalendarMonth /> },
     { label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
     { label: 'Reconciliation', path: '/reconciliation', icon: <History /> },
+    { label: 'Contract Summary', path: '/contract-summary', icon: <Summarize /> },
   ]
 
   const handleDrawerToggle = () => {

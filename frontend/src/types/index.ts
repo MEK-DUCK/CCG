@@ -39,6 +39,7 @@ export interface Contract {
   fax_received_date?: string
   concluded_memo_received?: boolean
   concluded_memo_received_date?: string
+  remarks?: string
   customer_id: number
   created_at: string
   updated_at?: string

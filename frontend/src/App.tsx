@@ -8,6 +8,7 @@ import ContractDashboard from './pages/ContractDashboard'
 import LiftingPlanPage from './pages/LiftingPlanPage'
 import ReconciliationPage from './pages/ReconciliationPage'
 import DashboardPage from './pages/DashboardPage'
+import ContractSummaryPage from './pages/ContractSummaryPage'
 import Layout from './components/Layout'
 
 const theme = createTheme({
@@ -272,6 +273,7 @@ function App() {
             <Route path="/lifting-plan" element={<LiftingPlanPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/reconciliation" element={<ReconciliationPage />} />
+            <Route path="/contract-summary" element={<ContractSummaryPage />} />
           </Routes>
         </Layout>
       </Router>
