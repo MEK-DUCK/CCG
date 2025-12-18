@@ -1,11 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
+from sqlalchemy import inspect
 from typing import List
 from app.database import get_db
 from app import models, schemas
 import uuid
 
 router = APIRouter()
+
+def _contracts_has_column(db: Session, column_name: str) -> bool:
+    """Backward-compatible guard for deployments where DB schema lags behind code."""
+    try:
+        cols = inspect(db.bind).get_columns("contracts")
+        return any(c.get("name") == column_name for c in cols)
+    except Exception:
+        return False
 
 @router.post("/", response_model=schemas.Contract)
 def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_db)):
@@ -31,6 +40,8 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         # Calculate total quantity from products for backward compatibility with old schema
         total_quantity = sum(p.total_quantity for p in contract.products)
         
+        has_remarks = _contracts_has_column(db, "remarks")
+
         db_contract = models.Contract(
             contract_id=contract_id,
             contract_number=contract.contract_number,
@@ -44,7 +55,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             fax_received_date=getattr(contract, "fax_received_date", None),
             concluded_memo_received=getattr(contract, "concluded_memo_received", None),
             concluded_memo_received_date=getattr(contract, "concluded_memo_received_date", None),
-            remarks=getattr(contract, "remarks", None),
+            **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
             customer_id=contract.customer_id,
             total_quantity=total_quantity,  # Set for backward compatibility
             product_id=0  # Legacy field, set to 0 for backward compatibility
@@ -68,7 +79,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             "fax_received_date": getattr(db_contract, "fax_received_date", None),
             "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
             "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
-            "remarks": getattr(db_contract, "remarks", None),
+            **({"remarks": getattr(db_contract, "remarks", None)} if has_remarks else {}),
             "customer_id": db_contract.customer_id,
             "created_at": db_contract.created_at,
             "updated_at": db_contract.updated_at
@@ -87,7 +98,10 @@ def read_contracts(customer_id: int = None, skip: int = 0, limit: int = 100, db:
     try:
         import json
         from sqlalchemy import desc
+        has_remarks = _contracts_has_column(db, "remarks")
         query = db.query(models.Contract)
+        if not has_remarks:
+            query = query.options(defer(models.Contract.remarks))
         if customer_id:
             query = query.filter(models.Contract.customer_id == customer_id)
         # Order by created_at descending to get newest contracts first
@@ -119,7 +133,7 @@ def read_contracts(customer_id: int = None, skip: int = 0, limit: int = 100, db:
                 "fax_received_date": getattr(contract, "fax_received_date", None),
                 "concluded_memo_received": getattr(contract, "concluded_memo_received", None),
                 "concluded_memo_received_date": getattr(contract, "concluded_memo_received_date", None),
-                "remarks": getattr(contract, "remarks", None),
+                **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
                 "customer_id": contract.customer_id,
                 "created_at": contract.created_at,
                 "updated_at": contract.updated_at
@@ -136,7 +150,11 @@ def read_contracts(customer_id: int = None, skip: int = 0, limit: int = 100, db:
 def read_contract(contract_id: int, db: Session = Depends(get_db)):
     import json
     try:
-        contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
+        has_remarks = _contracts_has_column(db, "remarks")
+        query = db.query(models.Contract)
+        if not has_remarks:
+            query = query.options(defer(models.Contract.remarks))
+        contract = query.filter(models.Contract.id == contract_id).first()
         if contract is None:
             raise HTTPException(status_code=404, detail="Contract not found")
         
@@ -165,7 +183,7 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
             "fax_received_date": getattr(contract, "fax_received_date", None),
             "concluded_memo_received": getattr(contract, "concluded_memo_received", None),
             "concluded_memo_received_date": getattr(contract, "concluded_memo_received_date", None),
-            "remarks": getattr(contract, "remarks", None),
+            **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
             "customer_id": contract.customer_id,
             "created_at": contract.created_at,
             "updated_at": contract.updated_at
@@ -182,11 +200,21 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
 @router.put("/{contract_id}", response_model=schemas.Contract)
 def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Session = Depends(get_db)):
     import json
-    db_contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
+    has_remarks = _contracts_has_column(db, "remarks")
+    query = db.query(models.Contract)
+    if not has_remarks:
+        query = query.options(defer(models.Contract.remarks))
+    db_contract = query.filter(models.Contract.id == contract_id).first()
     if db_contract is None:
         raise HTTPException(status_code=404, detail="Contract not found")
     
     update_data = contract.dict(exclude_unset=True)
+
+    if "remarks" in update_data and not has_remarks:
+        raise HTTPException(
+            status_code=400,
+            detail="Contract remarks field is not available in the database yet. Please apply the remarks migration and try again."
+        )
     
     # Handle products conversion to JSON
     if "products" in update_data:
@@ -223,7 +251,7 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         "fax_received_date": getattr(db_contract, "fax_received_date", None),
         "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
         "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
-        "remarks": getattr(db_contract, "remarks", None),
+        **({"remarks": getattr(db_contract, "remarks", None)} if has_remarks else {}),
         "customer_id": db_contract.customer_id,
         "created_at": db_contract.created_at,
         "updated_at": db_contract.updated_at
