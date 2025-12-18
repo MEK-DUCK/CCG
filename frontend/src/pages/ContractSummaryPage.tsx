@@ -44,6 +44,7 @@ export default function ContractSummaryPage() {
   const [saveErrorById, setSaveErrorById] = useState<Record<number, string>>({})
   const [remarksDraftById, setRemarksDraftById] = useState<Record<number, string>>({})
   const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear())
+  const [remarksEnabled, setRemarksEnabled] = useState(true)
   const autosaveTimersRef = useRef<Record<number, any>>({})
   const lastSavedRemarksRef = useRef<Record<number, string>>({})
 
@@ -134,6 +135,7 @@ export default function ContractSummaryPage() {
   const optionalTotalFor = (c: Contract) => c.products.reduce((acc, p) => acc + (Number(p.optional_quantity) || 0), 0)
 
   const saveRemarks = async (contractId: number) => {
+    if (!remarksEnabled) return
     const value = (remarksDraftById[contractId] ?? '').trimEnd()
     const lastSaved = lastSavedRemarksRef.current[contractId] ?? ''
     if (value === lastSaved) {
@@ -156,6 +158,9 @@ export default function ContractSummaryPage() {
         e?.message ||
         'Failed to save remarks'
       setSaveErrorById((prev) => ({ ...prev, [contractId]: String(msg) }))
+      if (String(msg).includes('Contract remarks field is not available in the database yet')) {
+        setRemarksEnabled(false)
+      }
     } finally {
       setSavingById((prev) => ({ ...prev, [contractId]: false }))
     }
@@ -178,6 +183,11 @@ export default function ContractSummaryPage() {
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           Read-only contract summary. Only “Remarks” can be edited here.
         </Typography>
+        {!remarksEnabled && (
+          <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+            Remarks are disabled because the database is missing the <b>contracts.remarks</b> column. Apply the remarks migration, then refresh.
+          </Typography>
+        )}
       </Box>
 
       <Card sx={{ mb: 3 }}>
@@ -317,13 +327,22 @@ export default function ContractSummaryPage() {
                           multiline
                           minRows={2}
                           placeholder="Add remarks if needed"
+                          disabled={!remarksEnabled}
                         />
                         <Typography
                           variant="caption"
                           color={err ? 'error' : 'text.secondary'}
                           sx={{ display: 'block', mt: 0.5 }}
                         >
-                          {err ? err : saving ? 'Saving…' : saved ? 'Saved' : ' '}
+                          {!remarksEnabled
+                            ? 'Remarks disabled until DB migration is applied'
+                            : err
+                              ? err
+                              : saving
+                                ? 'Saving…'
+                                : saved
+                                  ? 'Saved'
+                                  : ' '}
                         </Typography>
                       </Box>
                     </TableCell>
