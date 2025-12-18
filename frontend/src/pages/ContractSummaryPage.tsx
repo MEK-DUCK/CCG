@@ -34,6 +34,23 @@ const formatDateOnly = (value?: string) => {
   return value
 }
 
+const getContractTypeChipProps = (contractType: Contract['contract_type']) => {
+  return {
+    color: contractType === 'FOB' ? 'primary' : 'secondary',
+    variant: 'filled' as const,
+  }
+}
+
+const getPaymentMethodChipProps = (paymentMethod?: Contract['payment_method']) => {
+  if (paymentMethod === 'T/T') {
+    return { color: 'success', variant: 'filled' as const }
+  }
+  if (paymentMethod === 'LC') {
+    return { color: 'warning', variant: 'filled' as const }
+  }
+  return { color: 'default', variant: 'outlined' as const }
+}
+
 export default function ContractSummaryPage() {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -280,10 +297,10 @@ export default function ContractSummaryPage() {
                       <Chip label={`${firmTotalFor(c)}`} size="small" variant="outlined" />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Chip label={c.contract_type} size="small" />
+                      <Chip label={c.contract_type} size="small" {...getContractTypeChipProps(c.contract_type)} />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Chip label={c.payment_method || '-'} size="small" variant="outlined" />
+                      <Chip label={c.payment_method || '-'} size="small" {...getPaymentMethodChipProps(c.payment_method)} />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
