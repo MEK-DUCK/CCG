@@ -175,6 +175,17 @@ export default function ContractDashboard() {
   const totalCargo = getTotalCargoQuantity()
   const contractProgress = getContractProgress()
 
+  const firmTotal = (contract.products || []).reduce((sum: number, p: any) => {
+    return sum + (Number(p?.total_quantity) || 0)
+  }, 0)
+
+  const optionalTotal = (contract.products || []).reduce((sum: number, p: any) => {
+    return sum + (Number(p?.optional_quantity) || 0)
+  }, 0)
+
+  const remainingFirm = firmTotal - totalCargo
+  const remainingWithOptional = (firmTotal + optionalTotal) - totalCargo
+
   return (
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
       {/* Header */}
@@ -300,6 +311,66 @@ export default function ContractDashboard() {
           </Card>
         </Grid>
       </Grid>
+
+      {/* Remaining Quantities */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Remaining Quantities
+          </Typography>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Firm Total
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                  {firmTotal.toLocaleString()} KT
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Optional Total
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                  {optionalTotal.toLocaleString()} KT
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Lifted (Cargos)
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 600, color: 'success.main' }}>
+                  {totalCargo.toLocaleString()} KT
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Remaining (Firm)
+                </Typography>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight: 600,
+                    color: remainingFirm < 0 ? 'error.main' : 'primary.main',
+                  }}
+                >
+                  {remainingFirm.toLocaleString()} KT
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Remaining incl. optional: {remainingWithOptional.toLocaleString()} KT
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
       {/* Status Breakdown */}
       <Card sx={{ mb: 3 }}>
