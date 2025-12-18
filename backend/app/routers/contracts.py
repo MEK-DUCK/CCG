@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, defer
 from sqlalchemy import inspect
 from typing import List
@@ -94,7 +94,12 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail=f"Error creating contract: {str(e)}")
 
 @router.get("/", response_model=List[schemas.Contract])
-def read_contracts(customer_id: int = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_contracts(
+    customer_id: int = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
     try:
         import json
         from sqlalchemy import desc
@@ -215,6 +220,12 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
             status_code=400,
             detail="Contract remarks field is not available in the database yet. Please apply the remarks migration and try again."
         )
+
+    # Validate date range even for partial updates (one side changed)
+    new_start = update_data.get("start_period", db_contract.start_period)
+    new_end = update_data.get("end_period", db_contract.end_period)
+    if new_start and new_end and new_start > new_end:
+        raise HTTPException(status_code=400, detail="start_period must be on or before end_period")
     
     # Handle products conversion to JSON
     if "products" in update_data:
@@ -260,11 +271,41 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
 
 @router.delete("/{contract_id}")
 def delete_contract(contract_id: int, db: Session = Depends(get_db)):
-    db_contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
-    if db_contract is None:
-        raise HTTPException(status_code=404, detail="Contract not found")
-    
-    db.delete(db_contract)
-    db.commit()
-    return {"message": "Contract deleted successfully"}
+    try:
+        db_contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
+        if db_contract is None:
+            raise HTTPException(status_code=404, detail="Contract not found")
+
+        # IMPORTANT: audit logs must not block cascading deletes.
+        # Null FK references first, preserve history via snapshots + identifiers.
+        cargo_ids = [c.id for c in db.query(models.Cargo.id).filter(models.Cargo.contract_id == contract_id).all()]
+        if cargo_ids:
+            db.query(models.CargoAuditLog).filter(models.CargoAuditLog.cargo_id.in_(cargo_ids)).update(
+                {models.CargoAuditLog.cargo_id: None},
+                synchronize_session=False
+            )
+
+        quarterly_ids = [q.id for q in db.query(models.QuarterlyPlan.id).filter(models.QuarterlyPlan.contract_id == contract_id).all()]
+        if quarterly_ids:
+            monthly_ids = [m.id for m in db.query(models.MonthlyPlan.id).filter(models.MonthlyPlan.quarterly_plan_id.in_(quarterly_ids)).all()]
+            if monthly_ids:
+                db.query(models.MonthlyPlanAuditLog).filter(models.MonthlyPlanAuditLog.monthly_plan_id.in_(monthly_ids)).update(
+                    {models.MonthlyPlanAuditLog.monthly_plan_id: None},
+                    synchronize_session=False
+                )
+            db.query(models.QuarterlyPlanAuditLog).filter(models.QuarterlyPlanAuditLog.quarterly_plan_id.in_(quarterly_ids)).update(
+                {models.QuarterlyPlanAuditLog.quarterly_plan_id: None},
+                synchronize_session=False
+            )
+
+        db.delete(db_contract)
+        db.commit()
+        return {"message": "Contract deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        print(f"[ERROR] Error deleting contract: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error deleting contract: {str(e)}")
 

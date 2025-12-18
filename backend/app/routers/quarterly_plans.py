@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -71,7 +71,12 @@ def create_quarterly_plan(plan: schemas.QuarterlyPlanCreate, db: Session = Depen
     return db_plan
 
 @router.get("/", response_model=List[schemas.QuarterlyPlan])
-def read_quarterly_plans(contract_id: int = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_quarterly_plans(
+    contract_id: int = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
     try:
         query = db.query(models.QuarterlyPlan)
         if contract_id:
@@ -164,14 +169,45 @@ def delete_quarterly_plan(plan_id: int, db: Session = Depends(get_db)):
     if db_plan is None:
         raise HTTPException(status_code=404, detail="Quarterly plan not found")
     
-    # Log the deletion before deleting
-    log_quarterly_plan_action(
-        db=db,
-        action='DELETE',
-        quarterly_plan=db_plan
-    )
-    
-    db.delete(db_plan)
-    db.commit()
-    return {"message": "Quarterly plan deleted successfully"}
+    try:
+        # IMPORTANT: audit logs must not block cascading deletes from quarterly -> monthly -> cargos.
+        monthly_ids = [m.id for m in db.query(models.MonthlyPlan.id).filter(models.MonthlyPlan.quarterly_plan_id == plan_id).all()]
+        if monthly_ids:
+            cargo_ids = [c.id for c in db.query(models.Cargo.id).filter(models.Cargo.monthly_plan_id.in_(monthly_ids)).all()]
+            if cargo_ids:
+                db.query(models.CargoAuditLog).filter(models.CargoAuditLog.cargo_id.in_(cargo_ids)).update(
+                    {models.CargoAuditLog.cargo_id: None},
+                    synchronize_session=False
+                )
+            db.query(models.MonthlyPlanAuditLog).filter(models.MonthlyPlanAuditLog.monthly_plan_id.in_(monthly_ids)).update(
+                {models.MonthlyPlanAuditLog.monthly_plan_id: None},
+                synchronize_session=False
+            )
+
+        # Log the deletion before deleting
+        log_quarterly_plan_action(
+            db=db,
+            action='DELETE',
+            quarterly_plan=db_plan
+        )
+        db.flush()
+
+        # IMPORTANT: audit log FK must not block plan deletion.
+        db.query(models.QuarterlyPlanAuditLog).filter(
+            models.QuarterlyPlanAuditLog.quarterly_plan_id == db_plan.id
+        ).update(
+            {models.QuarterlyPlanAuditLog.quarterly_plan_id: None},
+            synchronize_session=False
+        )
+
+        db.delete(db_plan)
+        db.commit()
+        return {"message": "Quarterly plan deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        print(f"[ERROR] Error deleting quarterly plan: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error deleting quarterly plan: {str(e)}")
 

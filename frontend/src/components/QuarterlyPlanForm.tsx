@@ -330,7 +330,6 @@ export default function QuarterlyPlanForm({ contractId, contract, editingPlan, o
               const q4 = parseFloat(formData.q4_quantity) || 0
               const quarterlyTotal = q1 + q2 + q3 + q4
               const contractTotal = contractProducts.reduce((sum: number, p: any) => sum + (p?.total_quantity || 0), 0)
-              const isValid = quarterlyTotal === contractTotal
               
               return (
                 <>

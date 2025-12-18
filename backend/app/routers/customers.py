@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -27,7 +27,11 @@ def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.get("/", response_model=List[schemas.Customer])
-def read_customers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_customers(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
     try:
         customers = db.query(models.Customer).offset(skip).limit(limit).all()
         return customers
@@ -71,7 +75,30 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
         db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
         if db_customer is None:
             raise HTTPException(status_code=404, detail="Customer not found")
-        
+
+        # IMPORTANT: audit logs must not block cascading deletes from customer -> contracts -> plans -> cargos.
+        contract_ids = [c.id for c in db.query(models.Contract.id).filter(models.Contract.customer_id == customer_id).all()]
+        if contract_ids:
+            cargo_ids = [c.id for c in db.query(models.Cargo.id).filter(models.Cargo.contract_id.in_(contract_ids)).all()]
+            if cargo_ids:
+                db.query(models.CargoAuditLog).filter(models.CargoAuditLog.cargo_id.in_(cargo_ids)).update(
+                    {models.CargoAuditLog.cargo_id: None},
+                    synchronize_session=False
+                )
+
+            quarterly_ids = [q.id for q in db.query(models.QuarterlyPlan.id).filter(models.QuarterlyPlan.contract_id.in_(contract_ids)).all()]
+            if quarterly_ids:
+                monthly_ids = [m.id for m in db.query(models.MonthlyPlan.id).filter(models.MonthlyPlan.quarterly_plan_id.in_(quarterly_ids)).all()]
+                if monthly_ids:
+                    db.query(models.MonthlyPlanAuditLog).filter(models.MonthlyPlanAuditLog.monthly_plan_id.in_(monthly_ids)).update(
+                        {models.MonthlyPlanAuditLog.monthly_plan_id: None},
+                        synchronize_session=False
+                    )
+                db.query(models.QuarterlyPlanAuditLog).filter(models.QuarterlyPlanAuditLog.quarterly_plan_id.in_(quarterly_ids)).update(
+                    {models.QuarterlyPlanAuditLog.quarterly_plan_id: None},
+                    synchronize_session=False
+                )
+
         db.delete(db_customer)
         db.commit()
         return {"message": "Customer deleted successfully"}

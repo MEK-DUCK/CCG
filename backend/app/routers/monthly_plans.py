@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Dict
 from app.database import get_db
@@ -95,7 +95,12 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
     return db_plan
 
 @router.get("/", response_model=List[schemas.MonthlyPlan])
-def read_monthly_plans(quarterly_plan_id: int = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_monthly_plans(
+    quarterly_plan_id: int = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
     try:
         query = db.query(models.MonthlyPlan)
         if quarterly_plan_id:
@@ -264,16 +269,34 @@ def delete_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
             detail=f"Cannot delete monthly plan. It has {cargo_info['total_cargos']} cargo(s): {cargo_ids}. Please delete or move the cargos first."
         )
     
-    # Log the deletion before deleting
-    log_monthly_plan_action(
-        db=db,
-        action='DELETE',
-        monthly_plan=db_plan
-    )
-    
-    db.delete(db_plan)
-    db.commit()
-    return {"message": "Monthly plan deleted successfully"}
+    try:
+        # Log the deletion before deleting
+        log_monthly_plan_action(
+            db=db,
+            action='DELETE',
+            monthly_plan=db_plan
+        )
+        db.flush()
+
+        # IMPORTANT: audit log FK must not block plan deletion.
+        # Keep history via snapshot + month/year/contract fields, but null the FK reference.
+        db.query(models.MonthlyPlanAuditLog).filter(
+            models.MonthlyPlanAuditLog.monthly_plan_id == db_plan.id
+        ).update(
+            {models.MonthlyPlanAuditLog.monthly_plan_id: None},
+            synchronize_session=False
+        )
+
+        db.delete(db_plan)
+        db.commit()
+        return {"message": "Monthly plan deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        print(f"[ERROR] Error deleting monthly plan: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error deleting monthly plan: {str(e)}")
 
 @router.get("/{plan_id}/status")
 def get_monthly_plan_status(plan_id: int, db: Session = Depends(get_db)):

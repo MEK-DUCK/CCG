@@ -1,17 +1,17 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List, Union
 from datetime import date, datetime
 from app.models import ContractType, CargoStatus, PaymentMethod, LCStatus
 
 # Customer Schemas
 class CustomerBase(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=255)
 
 class CustomerCreate(CustomerBase):
     pass
 
 class CustomerUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
 
 class Customer(CustomerBase):
     id: int
@@ -24,42 +24,55 @@ class Customer(CustomerBase):
 
 # Contract Product Schema (for products array in contract)
 class ContractProduct(BaseModel):
-    name: str  # JET A-1, GASOIL, GASOIL 10PPM, HFO, LSFO
-    total_quantity: float  # Total quantity in KT
-    optional_quantity: Optional[float] = 0  # Optional quantity in KT
+    name: str = Field(..., min_length=1, max_length=64)  # JET A-1, GASOIL, GASOIL 10PPM, HFO, LSFO
+    total_quantity: float = Field(..., ge=0)  # Total quantity in KT
+    optional_quantity: Optional[float] = Field(0, ge=0)  # Optional quantity in KT
 
 # Contract Schemas
 class ContractBase(BaseModel):
-    contract_number: str
+    contract_number: str = Field(..., min_length=1, max_length=255)
     contract_type: ContractType
     payment_method: Optional[PaymentMethod] = None  # T/T or LC
     start_period: date
     end_period: date
     products: List[ContractProduct]  # List of products with quantities
-    discharge_ranges: Optional[str] = None
+    discharge_ranges: Optional[str] = Field(None, max_length=10000)
     fax_received: Optional[bool] = None
     fax_received_date: Optional[date] = None
     concluded_memo_received: Optional[bool] = None
     concluded_memo_received_date: Optional[date] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(None, max_length=10000)
+
+    @model_validator(mode="after")
+    def _validate_contract_period(self):
+        if self.start_period and self.end_period and self.start_period > self.end_period:
+            raise ValueError("start_period must be on or before end_period")
+        return self
 
 class ContractCreate(ContractBase):
     customer_id: int
 
 class ContractUpdate(BaseModel):
-    contract_number: Optional[str] = None
+    contract_number: Optional[str] = Field(None, min_length=1, max_length=255)
     contract_type: Optional[ContractType] = None
     payment_method: Optional[PaymentMethod] = None
     start_period: Optional[date] = None
     end_period: Optional[date] = None
     products: Optional[List[ContractProduct]] = None
-    discharge_ranges: Optional[str] = None
+    discharge_ranges: Optional[str] = Field(None, max_length=10000)
     fax_received: Optional[bool] = None
     fax_received_date: Optional[date] = None
     concluded_memo_received: Optional[bool] = None
     concluded_memo_received_date: Optional[date] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(None, max_length=10000)
     customer_id: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _validate_contract_period(self):
+        # Partial updates: only validate if both are provided in payload
+        if self.start_period is not None and self.end_period is not None and self.start_period > self.end_period:
+            raise ValueError("start_period must be on or before end_period")
+        return self
 
 class Contract(ContractBase):
     id: int
@@ -73,19 +86,19 @@ class Contract(ContractBase):
 
 # Quarterly Plan Schemas
 class QuarterlyPlanBase(BaseModel):
-    q1_quantity: float = 0
-    q2_quantity: float = 0
-    q3_quantity: float = 0
-    q4_quantity: float = 0
+    q1_quantity: float = Field(0, ge=0)
+    q2_quantity: float = Field(0, ge=0)
+    q3_quantity: float = Field(0, ge=0)
+    q4_quantity: float = Field(0, ge=0)
 
 class QuarterlyPlanCreate(QuarterlyPlanBase):
     contract_id: int
 
 class QuarterlyPlanUpdate(BaseModel):
-    q1_quantity: Optional[float] = None
-    q2_quantity: Optional[float] = None
-    q3_quantity: Optional[float] = None
-    q4_quantity: Optional[float] = None
+    q1_quantity: Optional[float] = Field(None, ge=0)
+    q2_quantity: Optional[float] = Field(None, ge=0)
+    q3_quantity: Optional[float] = Field(None, ge=0)
+    q4_quantity: Optional[float] = Field(None, ge=0)
 
 class QuarterlyPlan(QuarterlyPlanBase):
     id: int
@@ -100,8 +113,8 @@ class QuarterlyPlan(QuarterlyPlanBase):
 class MonthlyPlanBase(BaseModel):
     month: int = Field(..., ge=1, le=12)
     year: int
-    month_quantity: float
-    number_of_liftings: int = 1
+    month_quantity: float = Field(..., ge=0)
+    number_of_liftings: int = Field(1, ge=0)
     planned_lifting_sizes: Optional[str] = None
     laycan_5_days: Optional[str] = None  # For FOB contracts only
     laycan_2_days: Optional[str] = None  # For FOB contracts only
@@ -116,8 +129,8 @@ class MonthlyPlanCreate(MonthlyPlanBase):
 class MonthlyPlanUpdate(BaseModel):
     month: Optional[int] = Field(None, ge=1, le=12)
     year: Optional[int] = None
-    month_quantity: Optional[float] = None
-    number_of_liftings: Optional[int] = None
+    month_quantity: Optional[float] = Field(None, ge=0)
+    number_of_liftings: Optional[int] = Field(None, ge=0)
     planned_lifting_sizes: Optional[str] = None
     laycan_5_days: Optional[str] = None
     laycan_2_days: Optional[str] = None
@@ -140,7 +153,7 @@ class CargoBase(BaseModel):
     vessel_name: str
     load_ports: str
     inspector_name: Optional[str] = None
-    cargo_quantity: float
+    cargo_quantity: float = Field(..., gt=0)
     laycan_window: Optional[str] = None
     # Manual vessel operation fields
     eta: Optional[str] = None  # ETA (manual entry)
@@ -178,7 +191,7 @@ class CargoUpdate(BaseModel):
     vessel_name: Optional[str] = None
     load_ports: Optional[str] = None
     inspector_name: Optional[str] = None
-    cargo_quantity: Optional[float] = None
+    cargo_quantity: Optional[float] = Field(None, gt=0)
     laycan_window: Optional[str] = None
     # Manual vessel operation fields
     eta: Optional[str] = None  # ETA (manual entry)

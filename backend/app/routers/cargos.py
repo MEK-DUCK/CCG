@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -152,8 +152,8 @@ def read_cargos(
     contract_id: Optional[int] = None,
     month: Optional[int] = None,
     year: Optional[int] = None,
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db)
 ):
     try:
@@ -536,15 +536,33 @@ def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
     if db_cargo is None:
         raise HTTPException(status_code=404, detail="Cargo not found")
     
-    # Log the deletion before deleting
-    log_cargo_action(
-        db=db,
-        action='DELETE',
-        cargo=db_cargo,
-        old_monthly_plan_id=db_cargo.monthly_plan_id
-    )
-    
-    db.delete(db_cargo)
-    db.commit()
-    return {"message": "Cargo deleted successfully"}
+    try:
+        # Log the deletion before deleting
+        log_cargo_action(
+            db=db,
+            action='DELETE',
+            cargo=db_cargo,
+            old_monthly_plan_id=db_cargo.monthly_plan_id
+        )
+        db.flush()  # ensure audit log row exists in this transaction
+
+        # IMPORTANT: audit log foreign key must NOT block deletions.
+        # Preserve history via cargo_cargo_id and snapshot, but null the FK reference.
+        db.query(models.CargoAuditLog).filter(
+            models.CargoAuditLog.cargo_id == db_cargo.id
+        ).update(
+            {models.CargoAuditLog.cargo_id: None},
+            synchronize_session=False
+        )
+
+        db.delete(db_cargo)
+        db.commit()
+        return {"message": "Cargo deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        print(f"[ERROR] Error deleting cargo: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error deleting cargo: {str(e)}")
 

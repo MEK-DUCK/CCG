@@ -1,14 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   Box,
   Button,
   TextField,
   Typography,
   Paper,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material'
 import { Add } from '@mui/icons-material'
-import { cargoAPI, customerAPI, productAPI } from '../api/client'
-import type { Contract, Customer, Product } from '../types'
+import { cargoAPI } from '../api/client'
+import type { Contract } from '../types'
 
 interface CargoFormProps {
   contract: Contract
@@ -17,9 +21,8 @@ interface CargoFormProps {
 }
 
 export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: CargoFormProps) {
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [products, setProducts] = useState<Product[]>([])
   const [formData, setFormData] = useState({
+    product_name: contract.products?.[0]?.name || '',
     vessel_name: '',
     load_ports: '',
     inspector_name: '',
@@ -35,27 +38,11 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
     notes: '',
   })
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    try {
-      const [customersRes, productsRes] = await Promise.all([
-        customerAPI.getAll(),
-        productAPI.getAll(),
-      ])
-      setCustomers(customersRes.data)
-      setProducts(productsRes.data)
-    } catch (error) {
-      console.error('Error loading data:', error)
-    }
-  }
-
-  const getCustomerId = () => {
-    const product = products.find((p) => p.id === contract.product_id)
-    if (!product) return null
-    return product.customer_id
+  const toISOString = (dateTimeLocal: string) => {
+    if (!dateTimeLocal) return undefined
+    const d = new Date(dateTimeLocal)
+    if (Number.isNaN(d.getTime())) return undefined
+    return d.toISOString()
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,15 +51,14 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
       alert('Please create a monthly plan first')
       return
     }
-    const customerId = getCustomerId()
-    if (!customerId) {
-      alert('Could not find customer for this contract')
+    if (!formData.product_name) {
+      alert('Please select a product first')
       return
     }
     try {
       await cargoAPI.create({
-        customer_id: customerId,
-        product_id: contract.product_id,
+        customer_id: contract.customer_id,
+        product_name: formData.product_name,
         contract_id: contract.id,
         monthly_plan_id: monthlyPlanId,
         vessel_name: formData.vessel_name,
@@ -80,16 +66,17 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
         inspector_name: formData.inspector_name || undefined,
         cargo_quantity: parseFloat(formData.cargo_quantity),
         laycan_window: formData.laycan_window || undefined,
-        eta_load_port: formData.eta_load_port || undefined,
-        loading_start_time: formData.loading_start_time || undefined,
-        loading_completion_time: formData.loading_completion_time || undefined,
-        etd_load_port: formData.etd_load_port || undefined,
-        eta_discharge_port: contract.contract_type === 'CIF' ? (formData.eta_discharge_port || undefined) : undefined,
+        eta_load_port: toISOString(formData.eta_load_port),
+        loading_start_time: toISOString(formData.loading_start_time),
+        loading_completion_time: toISOString(formData.loading_completion_time),
+        etd_load_port: toISOString(formData.etd_load_port),
+        eta_discharge_port: contract.contract_type === 'CIF' ? toISOString(formData.eta_discharge_port) : undefined,
         discharge_port_location: contract.contract_type === 'CIF' ? (formData.discharge_port_location || undefined) : undefined,
-        discharge_completion_time: contract.contract_type === 'CIF' ? (formData.discharge_completion_time || undefined) : undefined,
+        discharge_completion_time: contract.contract_type === 'CIF' ? toISOString(formData.discharge_completion_time) : undefined,
         notes: formData.notes || undefined,
       })
       setFormData({
+        product_name: contract.products?.[0]?.name || '',
         vessel_name: '',
         load_ports: '',
         inspector_name: '',
@@ -124,6 +111,21 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
         </Typography>
       )}
       <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <FormControl fullWidth size="small">
+          <InputLabel>Product</InputLabel>
+          <Select
+            label="Product"
+            value={formData.product_name}
+            onChange={(e) => setFormData({ ...formData, product_name: String(e.target.value) })}
+            required
+          >
+            {(contract.products || []).map((p, idx) => (
+              <MenuItem key={`${p.name}-${idx}`} value={p.name}>
+                {p.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
         <TextField
           label="Vessel Name"
           value={formData.vessel_name}

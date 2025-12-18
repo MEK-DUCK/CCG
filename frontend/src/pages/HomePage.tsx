@@ -95,7 +95,6 @@ export default function HomePage() {
   const [cargoContractId, setCargoContractId] = useState<number | null>(null)
   const [cargoContract, setCargoContract] = useState<Contract | null>(null)
   const [cargoProductName, setCargoProductName] = useState<string | null>(null)
-  const [cargoMonthlyPlan, setCargoMonthlyPlan] = useState<MonthlyPlan | null>(null)
   const [newCargoMonthlyPlanId, setNewCargoMonthlyPlanId] = useState<number | null>(null) // For moving cargo
   const [cargoFormData, setCargoFormData] = useState({
     vessel_name: '',
@@ -260,7 +259,6 @@ export default function HomePage() {
     try {
       const monthlyPlanRes = await monthlyPlanAPI.getById(cargo.monthly_plan_id)
       const monthlyPlan = monthlyPlanRes.data
-      setCargoMonthlyPlan(monthlyPlan)
       
       // Get laycan window from monthly plan:
       // - CIF: use loading_window
@@ -430,9 +428,6 @@ export default function HomePage() {
     } else if (monthlyPlan.laycan_5_days) {
       laycanWindow = monthlyPlan.laycan_5_days
     }
-    
-    // Store monthly plan for reference
-    setCargoMonthlyPlan(monthlyPlan)
     
     setCargoFormData({
       vessel_name: 'TBA',

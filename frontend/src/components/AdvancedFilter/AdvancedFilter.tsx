@@ -16,7 +16,7 @@ import {
   Divider,
   IconButton,
 } from '@mui/material'
-import { FilterList, ExpandMore, ExpandLess, Close } from '@mui/icons-material'
+import { ExpandMore, ExpandLess, Close } from '@mui/icons-material'
 import type { FilterConfig } from './types'
 import type { CargoStatus, ContractType, PaymentMethod } from '../../types'
 
@@ -91,7 +91,6 @@ export default function AdvancedFilter({
     key: 'customers' | 'contracts' | 'products' | 'statuses' | 'contractTypes' | 'paymentMethods' | 'years' | 'months',
     value: any
   ) => {
-    const current = filters[key] || []
     const newValue = typeof value === 'string' ? value.split(',') : value
     updateFilter(key, newValue)
   }

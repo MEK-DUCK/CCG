@@ -26,9 +26,9 @@ import {
   Select,
   Checkbox,
 } from '@mui/material'
-import { Add, Edit, Delete, ArrowForward, Search, Dashboard } from '@mui/icons-material'
-import { contractAPI, customerAPI, quarterlyPlanAPI, monthlyPlanAPI } from '../api/client'
-import type { Contract, Customer, QuarterlyPlan, MonthlyPlan, ContractProduct } from '../types'
+import { Add, Edit, Delete, Search, Dashboard } from '@mui/icons-material'
+import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
+import type { Contract, Customer, QuarterlyPlan, ContractProduct } from '../types'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
 
@@ -61,14 +61,11 @@ export default function ContractManagement() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
-  const [monthlyPlans, setMonthlyPlans] = useState<MonthlyPlan[]>([])
   const [open, setOpen] = useState(false)
   const [tabValue, setTabValue] = useState(0)
   const [editingContract, setEditingContract] = useState<Contract | null>(null)
   const [editingQuarterlyPlan, setEditingQuarterlyPlan] = useState<QuarterlyPlan | null>(null)
-  const [editingMonthlyPlan, setEditingMonthlyPlan] = useState<MonthlyPlan | null>(null)
   const [quarterlyPlanDialogOpen, setQuarterlyPlanDialogOpen] = useState(false)
-  const [monthlyPlanDialogOpen, setMonthlyPlanDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [filterCustomer, setFilterCustomer] = useState<number[]>([])
   const [filterYear, setFilterYear] = useState<number[]>([])
@@ -100,7 +97,6 @@ export default function ContractManagement() {
       }
     } else {
       setQuarterlyPlans([])
-      setMonthlyPlans([])
     }
   }, [selectedContract])
 
@@ -130,25 +126,12 @@ export default function ContractManagement() {
   const loadContractDetails = async (contractId: number) => {
     try {
       setQuarterlyPlans([])
-      setMonthlyPlans([])
       const quarterlyRes = await quarterlyPlanAPI.getAll(contractId)
       const filteredQuarterlyPlans = (quarterlyRes.data || []).filter((p: QuarterlyPlan) => p.contract_id === contractId)
       setQuarterlyPlans(filteredQuarterlyPlans)
-      
-      // Load monthly plans for all quarterly plans of this contract
-      if (filteredQuarterlyPlans.length > 0) {
-        const quarterlyPlanIds = filteredQuarterlyPlans.map((p: QuarterlyPlan) => p.id)
-        const monthlyPromises = quarterlyPlanIds.map((qId: number) => monthlyPlanAPI.getAll(qId))
-        const monthlyResults = await Promise.all(monthlyPromises)
-        const allMonthlyPlans = monthlyResults.flatMap((res: any) => res.data || [])
-        setMonthlyPlans(allMonthlyPlans)
-      } else {
-        setMonthlyPlans([])
-      }
     } catch (error) {
       console.error('Error loading contract details:', error)
       setQuarterlyPlans([])
-      setMonthlyPlans([])
     }
   }
 
@@ -376,19 +359,9 @@ export default function ContractManagement() {
     setQuarterlyPlanDialogOpen(true)
   }
 
-  const handleEditMonthlyPlan = (plan: MonthlyPlan) => {
-    setEditingMonthlyPlan(plan)
-    setMonthlyPlanDialogOpen(true)
-  }
-
   const handleCloseQuarterlyPlanDialog = () => {
     setQuarterlyPlanDialogOpen(false)
     setEditingQuarterlyPlan(null)
-  }
-
-  const handleCloseMonthlyPlanDialog = () => {
-    setMonthlyPlanDialogOpen(false)
-    setEditingMonthlyPlan(null)
   }
 
   // Error boundary for rendering
@@ -840,7 +813,6 @@ export default function ContractManagement() {
                                 const contractTotal = selectedContract && selectedContract.products && Array.isArray(selectedContract.products)
                                   ? selectedContract.products.reduce((sum: number, p: any) => sum + (p?.total_quantity || 0), 0)
                                   : 0
-                                const isValid = quarterlyTotal === contractTotal
                                 
                                 return (
                                   <>

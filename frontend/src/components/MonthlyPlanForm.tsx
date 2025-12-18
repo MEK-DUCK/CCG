@@ -81,7 +81,7 @@ interface MonthlyPlanEntry {
   delivery_window: string
 }
 
-export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editingPlan, onPlanCreated, onCancel }: MonthlyPlanFormProps) {
+export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlanCreated }: MonthlyPlanFormProps) {
   // Changed to support multiple entries per month: key is "month-year", value is array of entries
   const [monthEntries, setMonthEntries] = useState<Record<string, MonthlyPlanEntry[]>>({})
   const [existingMonthlyPlans, setExistingMonthlyPlans] = useState<any[]>([])
@@ -261,7 +261,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
   // position 1 = Q4 (Contract Q2) -> q2_quantity
   // position 2 = Q1 (Contract Q3) -> q3_quantity
   // position 3 = Q2 (Contract Q4) -> q4_quantity
-  const getQuarterlyQuantity = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', position: number): number => {
+  const getQuarterlyQuantity = (position: number): number => {
     if (!quarterlyPlan) {
       return 0
     }
@@ -314,7 +314,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
     // Validate all quarters
     for (let i = 0; i < quarterOrder.length; i++) {
       const quarter = quarterOrder[i]
-      const quarterlyQuantity = getQuarterlyQuantity(quarter, i)
+      const quarterlyQuantity = getQuarterlyQuantity(i)
       const totalMonthlyQuantity = getTotalEntered(quarter)
 
       // Validate that total equals quarterly quantity
@@ -507,7 +507,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
               const quarterLabel = QUARTER_MONTHS[q].labels.join('-')
               return (
                 <span key={q}>
-                  Contract Quarter {idx + 1} ({q} - {quarterLabel}): {(getQuarterlyQuantity(q, idx)).toLocaleString()} KT
+                  Contract Quarter {idx + 1} ({q} - {quarterLabel}): {(getQuarterlyQuantity(idx)).toLocaleString()} KT
                   {idx < quarterOrder.length - 1 ? ' | ' : ''}
                 </span>
               )
@@ -521,7 +521,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
           const quarterMonths = getQuarterMonths(quarter)
           if (quarterMonths.length === 0) return null
           
-          const quarterlyQuantity = getQuarterlyQuantity(quarter, quarterIndex)
+          const quarterlyQuantity = getQuarterlyQuantity(quarterIndex)
           const totalEntered = getTotalEntered(quarter)
           
           return (
