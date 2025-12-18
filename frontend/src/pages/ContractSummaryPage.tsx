@@ -277,9 +277,12 @@ export default function ContractSummaryPage() {
                       <Chip label={c.payment_method || '-'} size="small" variant="outlined" />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Typography variant="body2">
-                        Q1 {qt.q1} / Q2 {qt.q2} / Q3 {qt.q3} / Q4 {qt.q4}
-                      </Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                        <Typography variant="body2">Q1: {qt.q1}</Typography>
+                        <Typography variant="body2">Q2: {qt.q2}</Typography>
+                        <Typography variant="body2">Q3: {qt.q3}</Typography>
+                        <Typography variant="body2">Q4: {qt.q4}</Typography>
+                      </Box>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <Chip label={`${optionalTotalFor(c)}`} size="small" variant="outlined" />
