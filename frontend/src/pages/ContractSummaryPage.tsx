@@ -3,16 +3,23 @@ import {
   Box,
   Card,
   CardContent,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Typography,
   Grid,
   Chip,
   TextField,
   Button,
   CircularProgress,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
 } from '@mui/material'
 import { Save } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
@@ -33,10 +40,10 @@ export default function ContractSummaryPage() {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
-  const [selectedContractId, setSelectedContractId] = useState<number | ''>('')
-  const [remarks, setRemarks] = useState<string>('')
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [savingById, setSavingById] = useState<Record<number, boolean>>({})
+  const [remarksDraftById, setRemarksDraftById] = useState<Record<number, string>>({})
+  const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear())
 
   useEffect(() => {
     const load = async () => {
@@ -50,6 +57,14 @@ export default function ContractSummaryPage() {
         setContracts(Array.isArray(contractsRes.data) ? contractsRes.data : [])
         setCustomers(Array.isArray(customersRes.data) ? customersRes.data : [])
         setQuarterlyPlans(Array.isArray(quarterlyRes.data) ? quarterlyRes.data : [])
+        const loadedContracts = Array.isArray(contractsRes.data) ? (contractsRes.data as Contract[]) : []
+        setContracts(loadedContracts)
+        setRemarksDraftById(
+          loadedContracts.reduce((acc, c) => {
+            acc[c.id] = c.remarks || ''
+            return acc
+          }, {} as Record<number, string>)
+        )
       } finally {
         setLoading(false)
       }
@@ -57,52 +72,59 @@ export default function ContractSummaryPage() {
     load()
   }, [])
 
-  const selectedContract = useMemo(() => {
-    if (!selectedContractId) return null
-    return contracts.find((c) => c.id === selectedContractId) || null
-  }, [contracts, selectedContractId])
+  const customerNameById = useMemo(() => {
+    return customers.reduce((acc, c) => {
+      acc[c.id] = c.name
+      return acc
+    }, {} as Record<number, string>)
+  }, [customers])
 
-  const selectedCustomerName = useMemo(() => {
-    if (!selectedContract) return '-'
-    return customers.find((c) => c.id === selectedContract.customer_id)?.name || '-'
-  }, [customers, selectedContract])
-
-  const quantityDistribution = useMemo(() => {
-    if (!selectedContract) return null
-    const plans = quarterlyPlans.filter((p) => p.contract_id === selectedContract.id)
-    const sum = (key: keyof QuarterlyPlan) => plans.reduce((acc, p) => acc + (Number(p[key]) || 0), 0)
-    return {
-      q1: sum('q1_quantity'),
-      q2: sum('q2_quantity'),
-      q3: sum('q3_quantity'),
-      q4: sum('q4_quantity'),
+  const quarterTotalsByContractId = useMemo(() => {
+    const acc: Record<number, { q1: number; q2: number; q3: number; q4: number }> = {}
+    for (const p of quarterlyPlans) {
+      if (!acc[p.contract_id]) acc[p.contract_id] = { q1: 0, q2: 0, q3: 0, q4: 0 }
+      acc[p.contract_id].q1 += Number(p.q1_quantity) || 0
+      acc[p.contract_id].q2 += Number(p.q2_quantity) || 0
+      acc[p.contract_id].q3 += Number(p.q3_quantity) || 0
+      acc[p.contract_id].q4 += Number(p.q4_quantity) || 0
     }
-  }, [quarterlyPlans, selectedContract])
+    return acc
+  }, [quarterlyPlans])
 
-  const firmTotal = useMemo(() => {
-    if (!selectedContract) return 0
-    return selectedContract.products.reduce((acc, p) => acc + (Number(p.total_quantity) || 0), 0)
-  }, [selectedContract])
+  const availableYears = useMemo(() => {
+    const years = new Set<number>()
+    for (const c of contracts) {
+      const sy = Number(String(c.start_period).slice(0, 4))
+      const ey = Number(String(c.end_period).slice(0, 4))
+      if (!Number.isNaN(sy)) years.add(sy)
+      if (!Number.isNaN(ey)) years.add(ey)
+    }
+    const arr = Array.from(years).sort((a, b) => b - a)
+    return arr.length ? arr : [new Date().getFullYear()]
+  }, [contracts])
 
-  const optionalTotal = useMemo(() => {
-    if (!selectedContract) return 0
-    return selectedContract.products.reduce((acc, p) => acc + (Number(p.optional_quantity) || 0), 0)
-  }, [selectedContract])
+  const filteredContracts = useMemo(() => {
+    const yearStart = `${selectedYear}-01-01`
+    const yearEnd = `${selectedYear}-12-31`
+    // Show contracts that overlap the selected year.
+    return contracts.filter((c) => {
+      return c.start_period <= yearEnd && c.end_period >= yearStart
+    })
+  }, [contracts, selectedYear])
 
-  useEffect(() => {
-    setRemarks(selectedContract?.remarks || '')
-  }, [selectedContract?.id]) // intentionally reset when contract changes
+  const firmTotalFor = (c: Contract) => c.products.reduce((acc, p) => acc + (Number(p.total_quantity) || 0), 0)
+  const optionalTotalFor = (c: Contract) => c.products.reduce((acc, p) => acc + (Number(p.optional_quantity) || 0), 0)
 
-  const handleSaveRemarks = async () => {
-    if (!selectedContract) return
-    setSaving(true)
+  const handleSaveRemarks = async (contractId: number) => {
+    const value = remarksDraftById[contractId] ?? ''
+    setSavingById((prev) => ({ ...prev, [contractId]: true }))
     try {
-      const res = await contractAPI.update(selectedContract.id, { remarks: remarks || null })
+      const res = await contractAPI.update(contractId, { remarks: value || null })
       const updated = res.data as Contract
       setContracts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-      setRemarks(updated.remarks || '')
+      setRemarksDraftById((prev) => ({ ...prev, [updated.id]: updated.remarks || '' }))
     } finally {
-      setSaving(false)
+      setSavingById((prev) => ({ ...prev, [contractId]: false }))
     }
   }
 
@@ -119,24 +141,29 @@ export default function ContractSummaryPage() {
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <FormControl fullWidth size="small">
-            <InputLabel>Contract</InputLabel>
-            <Select
-              value={selectedContractId}
-              label="Contract"
-              onChange={(e) => setSelectedContractId(e.target.value === '' ? '' : Number(e.target.value))}
-            >
-              <MenuItem value="">Select a contract</MenuItem>
-              {contracts.map((c) => {
-                const name = customers.find((x) => x.id === c.customer_id)?.name || 'Unknown Customer'
-                return (
-                  <MenuItem key={c.id} value={c.id}>
-                    {name} — {c.contract_number}
-                  </MenuItem>
-                )
-              })}
-            </Select>
-          </FormControl>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Year</InputLabel>
+                <Select
+                  value={availableYears.includes(selectedYear) ? selectedYear : availableYears[0]}
+                  label="Year"
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                >
+                  {availableYears.map((y) => (
+                    <MenuItem key={y} value={y}>
+                      {y}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={8}>
+              <Typography variant="body2" color="text.secondary">
+                {filteredContracts.length} contract{filteredContracts.length !== 1 ? 's' : ''} shown
+              </Typography>
+            </Grid>
+          </Grid>
         </CardContent>
       </Card>
 
@@ -144,174 +171,121 @@ export default function ContractSummaryPage() {
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
           <CircularProgress />
         </Box>
-      ) : !selectedContract ? (
+      ) : filteredContracts.length === 0 ? (
         <Card>
           <CardContent>
             <Typography variant="body1" color="text.secondary">
-              Select a contract to view its summary.
+              No contracts found for {selectedYear}.
             </Typography>
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Customer Name
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {selectedCustomerName}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Contract Number
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {selectedContract.contract_number}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Contract Period
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {formatDateRange(selectedContract.start_period, selectedContract.end_period)}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Product(s)
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
-                  {selectedContract.products.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">
-                      -
-                    </Typography>
-                  ) : (
-                    selectedContract.products.map((p, idx) => (
-                      <Chip
-                        key={`${p.name}-${idx}`}
-                        label={`${p.name} (Firm: ${Number(p.total_quantity) || 0}${p.optional_quantity ? `, Opt: ${Number(p.optional_quantity) || 0}` : ''})`}
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Customer</TableCell>
+                <TableCell>Contract #</TableCell>
+                <TableCell>Contract Period</TableCell>
+                <TableCell>Product(s)</TableCell>
+                <TableCell>Firm Total</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Payment</TableCell>
+                <TableCell>Qty Distribution</TableCell>
+                <TableCell>Optional Qty</TableCell>
+                <TableCell>Discharge Ranges</TableCell>
+                <TableCell>Fax Date</TableCell>
+                <TableCell>Concluded Memo Date</TableCell>
+                <TableCell>Remarks</TableCell>
+                <TableCell align="right">Save</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredContracts.map((c) => {
+                const customerName = customerNameById[c.customer_id] || '-'
+                const qt = quarterTotalsByContractId[c.id] || { q1: 0, q2: 0, q3: 0, q4: 0 }
+                const productsLabel =
+                  c.products.length === 0 ? '-' : c.products.map((p) => p.name).filter(Boolean).join(', ')
+                const saving = Boolean(savingById[c.id])
+                return (
+                  <TableRow key={c.id} hover>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {customerName}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {c.contract_number}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2">{formatDateRange(c.start_period, c.end_period)}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{productsLabel}</Typography>
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Chip label={`${firmTotalFor(c)}`} size="small" variant="outlined" />
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Chip label={c.contract_type} size="small" />
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Chip label={c.payment_method || '-'} size="small" variant="outlined" />
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2">
+                        Q1 {qt.q1} / Q2 {qt.q2} / Q3 {qt.q3} / Q4 {qt.q4}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Chip label={`${optionalTotalFor(c)}`} size="small" variant="outlined" />
+                    </TableCell>
+                    <TableCell sx={{ minWidth: 220 }}>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                        {c.discharge_ranges || '-'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2">{formatDateOnly(c.fax_received_date)}</Typography>
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2">{formatDateOnly(c.concluded_memo_received_date)}</Typography>
+                    </TableCell>
+                    <TableCell sx={{ minWidth: 260 }}>
+                      <TextField
+                        value={remarksDraftById[c.id] ?? ''}
+                        onChange={(e) =>
+                          setRemarksDraftById((prev) => ({
+                            ...prev,
+                            [c.id]: e.target.value,
+                          }))
+                        }
+                        fullWidth
                         size="small"
-                        variant="outlined"
+                        multiline
+                        minRows={2}
+                        placeholder="Add remarks if needed"
                       />
-                    ))
-                  )}
-                </Box>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Product(s) Total Firm Quantity (no optional)
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {firmTotal}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Type (FOB / CIF)
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {selectedContract.contract_type}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Payment Type (LC / T/T)
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {selectedContract.payment_method || '-'}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Optional Quantity
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {optionalTotal}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Quantity Distribution (per quarter)
-                </Typography>
-                {quantityDistribution ? (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
-                    <Chip label={`Q1: ${quantityDistribution.q1}`} size="small" />
-                    <Chip label={`Q2: ${quantityDistribution.q2}`} size="small" />
-                    <Chip label={`Q3: ${quantityDistribution.q3}`} size="small" />
-                    <Chip label={`Q4: ${quantityDistribution.q4}`} size="small" />
-                  </Box>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    -
-                  </Typography>
-                )}
-              </Grid>
-
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Discharge Ranges
-                </Typography>
-                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', fontWeight: 600 }}>
-                  {selectedContract.discharge_ranges || '-'}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Fax Date
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {formatDateOnly(selectedContract.fax_received_date)}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Concluded Memo Date
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {formatDateOnly(selectedContract.concluded_memo_received_date)}
-                </Typography>
-              </Grid>
-
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Remarks (editable)
-                </Typography>
-                <TextField
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  fullWidth
-                  multiline
-                  minRows={4}
-                  placeholder="Add remarks if needed"
-                />
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1.5 }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<Save />}
-                    onClick={handleSaveRemarks}
-                    disabled={saving}
-                  >
-                    {saving ? 'Saving...' : 'Save Remarks'}
-                  </Button>
-                </Box>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
+                    </TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                      <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={<Save />}
+                        onClick={() => handleSaveRemarks(c.id)}
+                        disabled={saving}
+                      >
+                        {saving ? 'Saving...' : 'Save'}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
     </Box>
   )
