@@ -235,8 +235,7 @@ export default function ContractSummaryPage() {
                 <TableCell>Qty Distribution</TableCell>
                 <TableCell>Optional Qty</TableCell>
                 <TableCell>Discharge Ranges</TableCell>
-                <TableCell>Fax Date</TableCell>
-                <TableCell>Concluded Memo Date</TableCell>
+                <TableCell>Fax / Concluded Memo</TableCell>
                 <TableCell>Remarks</TableCell>
               </TableRow>
             </TableHead>
@@ -293,10 +292,10 @@ export default function ContractSummaryPage() {
                       </Typography>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Typography variant="body2">{formatDateOnly(c.fax_received_date)}</Typography>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Typography variant="body2">{formatDateOnly(c.concluded_memo_received_date)}</Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                        <Typography variant="body2">Fax: {formatDateOnly(c.fax_received_date)}</Typography>
+                        <Typography variant="body2">Memo: {formatDateOnly(c.concluded_memo_received_date)}</Typography>
+                      </Box>
                     </TableCell>
                     <TableCell sx={{ minWidth: 260 }}>
                       <Box>
