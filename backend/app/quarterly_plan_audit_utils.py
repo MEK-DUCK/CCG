@@ -98,6 +98,7 @@ def log_quarterly_plan_action(
     try:
         audit_log = QuarterlyPlanAuditLog(
             quarterly_plan_id=quarterly_plan_id,
+            quarterly_plan_db_id=quarterly_plan_id,
             action=action,
             field_name=field_name,
             old_value=serialize_value(old_value),

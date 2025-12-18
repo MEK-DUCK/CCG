@@ -123,6 +123,7 @@ def log_monthly_plan_action(
     try:
         audit_log = MonthlyPlanAuditLog(
             monthly_plan_id=monthly_plan_id,
+            monthly_plan_db_id=monthly_plan_id,
             action=action,
             field_name=field_name,
             old_value=serialize_value(old_value),

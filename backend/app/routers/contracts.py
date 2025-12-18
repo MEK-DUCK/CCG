@@ -281,7 +281,7 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db)):
         cargo_ids = [c.id for c in db.query(models.Cargo.id).filter(models.Cargo.contract_id == contract_id).all()]
         if cargo_ids:
             db.query(models.CargoAuditLog).filter(models.CargoAuditLog.cargo_id.in_(cargo_ids)).update(
-                {models.CargoAuditLog.cargo_id: None},
+                {models.CargoAuditLog.cargo_id: None, models.CargoAuditLog.cargo_db_id: models.CargoAuditLog.cargo_id},
                 synchronize_session=False
             )
 
@@ -290,11 +290,11 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db)):
             monthly_ids = [m.id for m in db.query(models.MonthlyPlan.id).filter(models.MonthlyPlan.quarterly_plan_id.in_(quarterly_ids)).all()]
             if monthly_ids:
                 db.query(models.MonthlyPlanAuditLog).filter(models.MonthlyPlanAuditLog.monthly_plan_id.in_(monthly_ids)).update(
-                    {models.MonthlyPlanAuditLog.monthly_plan_id: None},
+                    {models.MonthlyPlanAuditLog.monthly_plan_id: None, models.MonthlyPlanAuditLog.monthly_plan_db_id: models.MonthlyPlanAuditLog.monthly_plan_id},
                     synchronize_session=False
                 )
             db.query(models.QuarterlyPlanAuditLog).filter(models.QuarterlyPlanAuditLog.quarterly_plan_id.in_(quarterly_ids)).update(
-                {models.QuarterlyPlanAuditLog.quarterly_plan_id: None},
+                {models.QuarterlyPlanAuditLog.quarterly_plan_id: None, models.QuarterlyPlanAuditLog.quarterly_plan_db_id: models.QuarterlyPlanAuditLog.quarterly_plan_id},
                 synchronize_session=False
             )
 

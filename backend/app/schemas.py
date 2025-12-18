@@ -241,6 +241,7 @@ class Cargo(CargoBase):
 class CargoAuditLog(BaseModel):
     id: int
     cargo_id: Optional[int] = None
+    cargo_db_id: Optional[int] = None
     cargo_cargo_id: str
     action: str  # 'CREATE', 'UPDATE', 'DELETE', 'MOVE'
     field_name: Optional[str] = None
@@ -263,6 +264,7 @@ class CargoAuditLog(BaseModel):
 class MonthlyPlanAuditLog(BaseModel):
     id: int
     monthly_plan_id: Optional[int] = None
+    monthly_plan_db_id: Optional[int] = None
     action: str  # 'CREATE', 'UPDATE', 'DELETE'
     field_name: Optional[str] = None
     old_value: Optional[str] = None
@@ -284,6 +286,7 @@ class MonthlyPlanAuditLog(BaseModel):
 class QuarterlyPlanAuditLog(BaseModel):
     id: int
     quarterly_plan_id: Optional[int] = None
+    quarterly_plan_db_id: Optional[int] = None
     action: str  # 'CREATE', 'UPDATE', 'DELETE'
     field_name: Optional[str] = None
     old_value: Optional[str] = None

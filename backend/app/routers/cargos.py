@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from datetime import datetime
 from app.database import get_db
@@ -137,6 +138,23 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
             raise Exception("Cargo was not assigned an ID after commit")
         
         return db_cargo
+    except IntegrityError as e:
+        db.rollback()
+        # Race condition: another request created a cargo for this monthly_plan_id after our pre-check.
+        try:
+            # psycopg2 unique violation text includes 'UniqueViolation'
+            if "UniqueViolation" in str(getattr(e, "orig", "")) or "duplicate key value" in str(e):
+                existing = db.query(models.Cargo).filter(models.Cargo.monthly_plan_id == cargo.monthly_plan_id).first()
+                if existing:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"This monthly plan already has a cargo assigned (Cargo ID: {existing.cargo_id}, Vessel: {existing.vessel_name}). Please edit the existing cargo instead of creating a new one."
+                    )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to create cargo: {str(e)}")
     except Exception as e:
         db.rollback()
         print(f"[ERROR] Failed to create cargo: {str(e)}")
@@ -547,11 +565,11 @@ def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
         db.flush()  # ensure audit log row exists in this transaction
 
         # IMPORTANT: audit log foreign key must NOT block deletions.
-        # Preserve history via cargo_cargo_id and snapshot, but null the FK reference.
+        # Preserve history via cargo_cargo_id + snapshot + stable numeric cargo_db_id, but null the FK reference.
         db.query(models.CargoAuditLog).filter(
             models.CargoAuditLog.cargo_id == db_cargo.id
         ).update(
-            {models.CargoAuditLog.cargo_id: None},
+            {models.CargoAuditLog.cargo_id: None, models.CargoAuditLog.cargo_db_id: db_cargo.id},
             synchronize_session=False
         )
 

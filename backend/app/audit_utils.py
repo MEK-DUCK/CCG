@@ -96,6 +96,7 @@ def log_cargo_action(
     try:
         audit_log = CargoAuditLog(
             cargo_id=cargo_id,
+            cargo_db_id=cargo_id,
             cargo_cargo_id=cargo_cargo_id or (cargo.cargo_id if cargo else 'UNKNOWN'),
             action=action,
             field_name=field_name,

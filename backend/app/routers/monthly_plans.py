@@ -279,11 +279,11 @@ def delete_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
         db.flush()
 
         # IMPORTANT: audit log FK must not block plan deletion.
-        # Keep history via snapshot + month/year/contract fields, but null the FK reference.
+        # Keep history via snapshot + month/year/contract fields + stable numeric monthly_plan_db_id, but null the FK reference.
         db.query(models.MonthlyPlanAuditLog).filter(
             models.MonthlyPlanAuditLog.monthly_plan_id == db_plan.id
         ).update(
-            {models.MonthlyPlanAuditLog.monthly_plan_id: None},
+            {models.MonthlyPlanAuditLog.monthly_plan_id: None, models.MonthlyPlanAuditLog.monthly_plan_db_id: db_plan.id},
             synchronize_session=False
         )
 

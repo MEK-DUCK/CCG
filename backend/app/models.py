@@ -166,6 +166,7 @@ class CargoAuditLog(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     cargo_id = Column(Integer, ForeignKey("cargos.id"), nullable=True)  # Nullable for deleted cargos
+    cargo_db_id = Column(Integer, nullable=True, index=True)  # Stable numeric cargo id (not FK) for filtering after delete
     cargo_cargo_id = Column(String, index=True)  # Store cargo_id string for reference even after deletion
     action = Column(String, nullable=False)  # 'CREATE', 'UPDATE', 'DELETE', 'MOVE'
     field_name = Column(String, nullable=True)  # Field that changed (for UPDATE)
@@ -188,6 +189,7 @@ class MonthlyPlanAuditLog(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     monthly_plan_id = Column(Integer, ForeignKey("monthly_plans.id"), nullable=True)  # Nullable for deleted plans
+    monthly_plan_db_id = Column(Integer, nullable=True, index=True)  # Stable numeric monthly_plan id (not FK) for filtering after delete
     action = Column(String, nullable=False)  # 'CREATE', 'UPDATE', 'DELETE'
     field_name = Column(String, nullable=True)  # Field that changed (for UPDATE)
     old_value = Column(Text, nullable=True)  # Previous value
@@ -209,6 +211,7 @@ class QuarterlyPlanAuditLog(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=True)  # Nullable for deleted plans
+    quarterly_plan_db_id = Column(Integer, nullable=True, index=True)  # Stable numeric quarterly_plan id (not FK) for filtering after delete
     action = Column(String, nullable=False)  # 'CREATE', 'UPDATE', 'DELETE'
     field_name = Column(String, nullable=True)  # Field that changed (for UPDATE)
     old_value = Column(Text, nullable=True)  # Previous value

@@ -23,7 +23,10 @@ def get_cargo_audit_logs(
     query = db.query(models.CargoAuditLog)
     
     if cargo_id:
-        query = query.filter(models.CargoAuditLog.cargo_id == cargo_id)
+        query = query.filter(
+            (models.CargoAuditLog.cargo_id == cargo_id) |
+            (models.CargoAuditLog.cargo_db_id == cargo_id)
+        )
     
     if cargo_cargo_id:
         query = query.filter(models.CargoAuditLog.cargo_cargo_id == cargo_cargo_id)
@@ -59,7 +62,10 @@ def get_monthly_plan_audit_logs(
     query = db.query(models.MonthlyPlanAuditLog)
     
     if monthly_plan_id:
-        query = query.filter(models.MonthlyPlanAuditLog.monthly_plan_id == monthly_plan_id)
+        query = query.filter(
+            (models.MonthlyPlanAuditLog.monthly_plan_id == monthly_plan_id) |
+            (models.MonthlyPlanAuditLog.monthly_plan_db_id == monthly_plan_id)
+        )
     
     if month:
         query = query.filter(models.MonthlyPlanAuditLog.month == month)
@@ -87,7 +93,10 @@ def get_quarterly_plan_audit_logs(
     query = db.query(models.QuarterlyPlanAuditLog)
     
     if quarterly_plan_id:
-        query = query.filter(models.QuarterlyPlanAuditLog.quarterly_plan_id == quarterly_plan_id)
+        query = query.filter(
+            (models.QuarterlyPlanAuditLog.quarterly_plan_id == quarterly_plan_id) |
+            (models.QuarterlyPlanAuditLog.quarterly_plan_db_id == quarterly_plan_id)
+        )
     
     if contract_id:
         query = query.filter(models.QuarterlyPlanAuditLog.contract_id == contract_id)
