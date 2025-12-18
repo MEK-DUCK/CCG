@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Box,
   Card,
@@ -7,7 +7,6 @@ import {
   Grid,
   Chip,
   TextField,
-  Button,
   CircularProgress,
   FormControl,
   InputLabel,
@@ -21,7 +20,6 @@ import {
   TableRow,
   Paper,
 } from '@mui/material'
-import { Save } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan } from '../types'
 
@@ -42,8 +40,12 @@ export default function ContractSummaryPage() {
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
   const [loading, setLoading] = useState(true)
   const [savingById, setSavingById] = useState<Record<number, boolean>>({})
+  const [savedById, setSavedById] = useState<Record<number, boolean>>({})
+  const [saveErrorById, setSaveErrorById] = useState<Record<number, string>>({})
   const [remarksDraftById, setRemarksDraftById] = useState<Record<number, string>>({})
   const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear())
+  const autosaveTimersRef = useRef<Record<number, any>>({})
+  const lastSavedRemarksRef = useRef<Record<number, string>>({})
 
   useEffect(() => {
     const load = async () => {
@@ -65,11 +67,27 @@ export default function ContractSummaryPage() {
             return acc
           }, {} as Record<number, string>)
         )
+        lastSavedRemarksRef.current = loadedContracts.reduce((acc, c) => {
+          acc[c.id] = c.remarks || ''
+          return acc
+        }, {} as Record<number, string>)
       } finally {
         setLoading(false)
       }
     }
     load()
+  }, [])
+
+  // Cleanup autosave timers
+  useEffect(() => {
+    return () => {
+      for (const key of Object.keys(autosaveTimersRef.current)) {
+        const id = Number(key)
+        const t = autosaveTimersRef.current[id]
+        if (t) clearTimeout(t)
+      }
+      autosaveTimersRef.current = {}
+    }
   }, [])
 
   const customerNameById = useMemo(() => {
@@ -115,17 +133,40 @@ export default function ContractSummaryPage() {
   const firmTotalFor = (c: Contract) => c.products.reduce((acc, p) => acc + (Number(p.total_quantity) || 0), 0)
   const optionalTotalFor = (c: Contract) => c.products.reduce((acc, p) => acc + (Number(p.optional_quantity) || 0), 0)
 
-  const handleSaveRemarks = async (contractId: number) => {
-    const value = remarksDraftById[contractId] ?? ''
+  const saveRemarks = async (contractId: number) => {
+    const value = (remarksDraftById[contractId] ?? '').trimEnd()
+    const lastSaved = lastSavedRemarksRef.current[contractId] ?? ''
+    if (value === lastSaved) {
+      setSavedById((prev) => ({ ...prev, [contractId]: true }))
+      return
+    }
     setSavingById((prev) => ({ ...prev, [contractId]: true }))
+    setSavedById((prev) => ({ ...prev, [contractId]: false }))
+    setSaveErrorById((prev) => ({ ...prev, [contractId]: '' }))
     try {
       const res = await contractAPI.update(contractId, { remarks: value || null })
       const updated = res.data as Contract
       setContracts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       setRemarksDraftById((prev) => ({ ...prev, [updated.id]: updated.remarks || '' }))
+      lastSavedRemarksRef.current[updated.id] = updated.remarks || ''
+      setSavedById((prev) => ({ ...prev, [updated.id]: true }))
+    } catch (e: any) {
+      const msg =
+        e?.response?.data?.detail ||
+        e?.message ||
+        'Failed to save remarks'
+      setSaveErrorById((prev) => ({ ...prev, [contractId]: String(msg) }))
     } finally {
       setSavingById((prev) => ({ ...prev, [contractId]: false }))
     }
+  }
+
+  const scheduleAutosave = (contractId: number) => {
+    const existing = autosaveTimersRef.current[contractId]
+    if (existing) clearTimeout(existing)
+    autosaveTimersRef.current[contractId] = setTimeout(() => {
+      saveRemarks(contractId)
+    }, 900)
   }
 
   return (
@@ -197,7 +238,6 @@ export default function ContractSummaryPage() {
                 <TableCell>Fax Date</TableCell>
                 <TableCell>Concluded Memo Date</TableCell>
                 <TableCell>Remarks</TableCell>
-                <TableCell align="right">Save</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -207,6 +247,8 @@ export default function ContractSummaryPage() {
                 const productsLabel =
                   c.products.length === 0 ? '-' : c.products.map((p) => p.name).filter(Boolean).join(', ')
                 const saving = Boolean(savingById[c.id])
+                const saved = Boolean(savedById[c.id])
+                const err = saveErrorById[c.id] || ''
                 return (
                   <TableRow key={c.id} hover>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
@@ -254,31 +296,34 @@ export default function ContractSummaryPage() {
                       <Typography variant="body2">{formatDateOnly(c.concluded_memo_received_date)}</Typography>
                     </TableCell>
                     <TableCell sx={{ minWidth: 260 }}>
-                      <TextField
-                        value={remarksDraftById[c.id] ?? ''}
-                        onChange={(e) =>
-                          setRemarksDraftById((prev) => ({
-                            ...prev,
-                            [c.id]: e.target.value,
-                          }))
-                        }
-                        fullWidth
-                        size="small"
-                        multiline
-                        minRows={2}
-                        placeholder="Add remarks if needed"
-                      />
-                    </TableCell>
-                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<Save />}
-                        onClick={() => handleSaveRemarks(c.id)}
-                        disabled={saving}
-                      >
-                        {saving ? 'Saving...' : 'Save'}
-                      </Button>
+                      <Box>
+                        <TextField
+                          value={remarksDraftById[c.id] ?? ''}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setRemarksDraftById((prev) => ({
+                              ...prev,
+                              [c.id]: v,
+                            }))
+                            setSavedById((prev) => ({ ...prev, [c.id]: false }))
+                            setSaveErrorById((prev) => ({ ...prev, [c.id]: '' }))
+                            scheduleAutosave(c.id)
+                          }}
+                          onBlur={() => saveRemarks(c.id)}
+                          fullWidth
+                          size="small"
+                          multiline
+                          minRows={2}
+                          placeholder="Add remarks if needed"
+                        />
+                        <Typography
+                          variant="caption"
+                          color={err ? 'error' : 'text.secondary'}
+                          sx={{ display: 'block', mt: 0.5 }}
+                        >
+                          {err ? err : saving ? 'Saving…' : saved ? 'Saved' : ' '}
+                        </Typography>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 )
