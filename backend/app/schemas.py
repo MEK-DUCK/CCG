@@ -37,6 +37,10 @@ class ContractBase(BaseModel):
     end_period: date
     products: List[ContractProduct]  # List of products with quantities
     discharge_ranges: Optional[str] = None
+    fax_received: Optional[bool] = None
+    fax_received_date: Optional[date] = None
+    concluded_memo_received: Optional[bool] = None
+    concluded_memo_received_date: Optional[date] = None
 
 class ContractCreate(ContractBase):
     customer_id: int
@@ -49,6 +53,10 @@ class ContractUpdate(BaseModel):
     end_period: Optional[date] = None
     products: Optional[List[ContractProduct]] = None
     discharge_ranges: Optional[str] = None
+    fax_received: Optional[bool] = None
+    fax_received_date: Optional[date] = None
+    concluded_memo_received: Optional[bool] = None
+    concluded_memo_received_date: Optional[date] = None
     customer_id: Optional[int] = None
 
 class Contract(ContractBase):
@@ -95,7 +103,9 @@ class MonthlyPlanBase(BaseModel):
     planned_lifting_sizes: Optional[str] = None
     laycan_5_days: Optional[str] = None  # For FOB contracts only
     laycan_2_days: Optional[str] = None  # For FOB contracts only
+    loading_month: Optional[str] = None  # For CIF contracts only (planning)
     loading_window: Optional[str] = None  # For CIF contracts only
+    delivery_month: Optional[str] = None  # For CIF contracts only (planning)
     delivery_window: Optional[str] = None  # For CIF contracts only
 
 class MonthlyPlanCreate(MonthlyPlanBase):
@@ -109,7 +119,9 @@ class MonthlyPlanUpdate(BaseModel):
     planned_lifting_sizes: Optional[str] = None
     laycan_5_days: Optional[str] = None
     laycan_2_days: Optional[str] = None
+    loading_month: Optional[str] = None
     loading_window: Optional[str] = None
+    delivery_month: Optional[str] = None
     delivery_window: Optional[str] = None
 
 class MonthlyPlan(MonthlyPlanBase):

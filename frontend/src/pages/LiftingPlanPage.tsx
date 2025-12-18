@@ -30,6 +30,8 @@ interface MonthlyPlanEntry {
   quantity: number
   laycan5Days?: string
   laycan2Days?: string
+  loadingWindow?: string
+  deliveryWindow?: string
 }
 
 interface ContractQuarterlyData {
@@ -56,7 +58,6 @@ export default function LiftingPlanPage() {
   const [monthlyPlans, setMonthlyPlans] = useState<MonthlyPlan[]>([])
   const [contractData, setContractData] = useState<Map<number, ContractQuarterlyData>>(new Map())
   const [notes, setNotes] = useState<Map<number, string>>(new Map()) // contractId -> notes
-  const [cifLaycans, setCifLaycans] = useState<Map<string, string>>(new Map()) // "contractId-monthIndex-type" -> laycan value (CIF: "loading" or "delivery")
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -67,7 +68,7 @@ export default function LiftingPlanPage() {
     if (customers.length > 0 && contracts.length > 0 && quarterlyPlans.length > 0 && monthlyPlans.length > 0) {
       calculateQuarterlyData()
     }
-  }, [selectedQuarter, selectedYear, customers, contracts, quarterlyPlans, monthlyPlans, notes, cifLaycans])
+  }, [selectedQuarter, selectedYear, customers, contracts, quarterlyPlans, monthlyPlans, notes])
 
   const loadData = async () => {
     try {
@@ -148,6 +149,8 @@ export default function LiftingPlanPage() {
                 quantity: mp.month_quantity,
                 laycan5Days: contract.contract_type === 'FOB' ? (mp.laycan_5_days || undefined) : undefined,
                 laycan2Days: contract.contract_type === 'FOB' ? (mp.laycan_2_days || undefined) : undefined,
+                loadingWindow: contract.contract_type === 'CIF' ? (mp.loading_window || undefined) : undefined,
+                deliveryWindow: contract.contract_type === 'CIF' ? (mp.delivery_window || undefined) : undefined,
               }
 
               if (monthIndex === 0) {
@@ -188,18 +191,6 @@ export default function LiftingPlanPage() {
   }
 
 
-  const handleCifLaycanChange = (contractId: number, monthIndex: number, type: 'loading' | 'delivery', value: string) => {
-    const key = `${contractId}-${monthIndex}-${type}`
-    const newCifLaycans = new Map(cifLaycans)
-    newCifLaycans.set(key, value)
-    setCifLaycans(newCifLaycans)
-  }
-
-  const getCifLaycanValue = (contractId: number, monthIndex: number, type: 'loading' | 'delivery'): string => {
-    const key = `${contractId}-${monthIndex}-${type}`
-    return cifLaycans.get(key) || ''
-  }
-
   const getMonthName = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', index: number): string => {
     const monthNames: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', string[]> = {
       Q1: ['January', 'February', 'March'],
@@ -221,7 +212,7 @@ export default function LiftingPlanPage() {
 
       const exportData: any[] = dataArray.map((data) => {
         // Format month 1 entries
-        const month1Parts = data.month1Entries.map((entry, idx) => {
+        const month1Parts = data.month1Entries.map((entry) => {
           let laycanText = ''
           if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
             const parts: string[] = []
@@ -234,7 +225,7 @@ export default function LiftingPlanPage() {
         const month1Text = month1Parts.length > 0 ? month1Parts.join('\n') : '-'
         
         // Format month 2 entries
-        const month2Parts = data.month2Entries.map((entry, idx) => {
+        const month2Parts = data.month2Entries.map((entry) => {
           let laycanText = ''
           if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
             const parts: string[] = []
@@ -247,7 +238,7 @@ export default function LiftingPlanPage() {
         const month2Text = month2Parts.length > 0 ? month2Parts.join('\n') : '-'
         
         // Format month 3 entries
-        const month3Parts = data.month3Entries.map((entry, idx) => {
+        const month3Parts = data.month3Entries.map((entry) => {
           let laycanText = ''
           if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
             const parts: string[] = []
@@ -497,38 +488,18 @@ export default function LiftingPlanPage() {
                               )}
                             </Box>
                           )}
-                          {data.contractType === 'CIF' && (
-                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                              <TextField
-                                size="small"
-                                value={getCifLaycanValue(data.contractId, 0, 'loading')}
-                                onChange={(e) => handleCifLaycanChange(data.contractId, 0, 'loading', e.target.value)}
-                                placeholder="Loading Laycan"
-                                sx={{
-                                  '& .MuiInputBase-root': {
-                                    height: '28px',
-                                    fontSize: '0.75rem',
-                                  },
-                                  '& .MuiInputBase-input': {
-                                    padding: '4px 8px',
-                                  },
-                                }}
-                              />
-                              <TextField
-                                size="small"
-                                value={getCifLaycanValue(data.contractId, 0, 'delivery')}
-                                onChange={(e) => handleCifLaycanChange(data.contractId, 0, 'delivery', e.target.value)}
-                                placeholder="Delivery Window"
-                                sx={{
-                                  '& .MuiInputBase-root': {
-                                    height: '28px',
-                                    fontSize: '0.75rem',
-                                  },
-                                  '& .MuiInputBase-input': {
-                                    padding: '4px 8px',
-                                  },
-                                }}
-                              />
+                          {data.contractType === 'CIF' && (entry.loadingWindow || entry.deliveryWindow) && (
+                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                              {entry.loadingWindow && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Loading: {entry.loadingWindow}
+                                </Typography>
+                              )}
+                              {entry.deliveryWindow && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Delivery: {entry.deliveryWindow}
+                                </Typography>
+                              )}
                             </Box>
                           )}
                         </Box>
@@ -560,38 +531,18 @@ export default function LiftingPlanPage() {
                               )}
                             </Box>
                           )}
-                          {data.contractType === 'CIF' && (
-                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                              <TextField
-                                size="small"
-                                value={getCifLaycanValue(data.contractId, 1, 'loading')}
-                                onChange={(e) => handleCifLaycanChange(data.contractId, 1, 'loading', e.target.value)}
-                                placeholder="Loading Laycan"
-                                sx={{
-                                  '& .MuiInputBase-root': {
-                                    height: '28px',
-                                    fontSize: '0.75rem',
-                                  },
-                                  '& .MuiInputBase-input': {
-                                    padding: '4px 8px',
-                                  },
-                                }}
-                              />
-                              <TextField
-                                size="small"
-                                value={getCifLaycanValue(data.contractId, 1, 'delivery')}
-                                onChange={(e) => handleCifLaycanChange(data.contractId, 1, 'delivery', e.target.value)}
-                                placeholder="Delivery Window"
-                                sx={{
-                                  '& .MuiInputBase-root': {
-                                    height: '28px',
-                                    fontSize: '0.75rem',
-                                  },
-                                  '& .MuiInputBase-input': {
-                                    padding: '4px 8px',
-                                  },
-                                }}
-                              />
+                          {data.contractType === 'CIF' && (entry.loadingWindow || entry.deliveryWindow) && (
+                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                              {entry.loadingWindow && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Loading: {entry.loadingWindow}
+                                </Typography>
+                              )}
+                              {entry.deliveryWindow && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Delivery: {entry.deliveryWindow}
+                                </Typography>
+                              )}
                             </Box>
                           )}
                         </Box>
@@ -623,38 +574,18 @@ export default function LiftingPlanPage() {
                               )}
                             </Box>
                           )}
-                          {data.contractType === 'CIF' && (
-                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                              <TextField
-                                size="small"
-                                value={getCifLaycanValue(data.contractId, 2, 'loading')}
-                                onChange={(e) => handleCifLaycanChange(data.contractId, 2, 'loading', e.target.value)}
-                                placeholder="Loading Laycan"
-                                sx={{
-                                  '& .MuiInputBase-root': {
-                                    height: '28px',
-                                    fontSize: '0.75rem',
-                                  },
-                                  '& .MuiInputBase-input': {
-                                    padding: '4px 8px',
-                                  },
-                                }}
-                              />
-                              <TextField
-                                size="small"
-                                value={getCifLaycanValue(data.contractId, 2, 'delivery')}
-                                onChange={(e) => handleCifLaycanChange(data.contractId, 2, 'delivery', e.target.value)}
-                                placeholder="Delivery Window"
-                                sx={{
-                                  '& .MuiInputBase-root': {
-                                    height: '28px',
-                                    fontSize: '0.75rem',
-                                  },
-                                  '& .MuiInputBase-input': {
-                                    padding: '4px 8px',
-                                  },
-                                }}
-                              />
+                          {data.contractType === 'CIF' && (entry.loadingWindow || entry.deliveryWindow) && (
+                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                              {entry.loadingWindow && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Loading: {entry.loadingWindow}
+                                </Typography>
+                              )}
+                              {entry.deliveryWindow && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Delivery: {entry.deliveryWindow}
+                                </Typography>
+                              )}
                             </Box>
                           )}
                         </Box>

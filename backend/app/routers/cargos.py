@@ -192,11 +192,11 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
             if year is None:
                 year = now.year
         
-        from sqlalchemy import or_, and_, not_
+        from sqlalchemy import or_, not_
         # Exclude cargos that should be in other tabs:
         # - Completed Loading (all types) -> goes to Completed Cargos tab
         # - In-Road (Pending Discharge) -> goes to In-Road CIF tab
-        # - Pending Nomination (CIF only) -> goes to Completed Cargos tab
+        # (CIF Pending Nomination remains in Port Movement)
         query = db.query(models.Cargo).join(models.MonthlyPlan).filter(
             models.MonthlyPlan.month == month,
             models.MonthlyPlan.year == year
@@ -205,10 +205,6 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
                 or_(
                     models.Cargo.status == CargoStatus.COMPLETED_LOADING,  # All completed loading cargos
                     models.Cargo.status == CargoStatus.IN_ROAD,  # In-Road cargos
-                    and_(
-                        models.Cargo.status == CargoStatus.PENDING_NOMINATION,
-                        models.Cargo.contract_type == ContractType.CIF
-                    )
                 )
             )
         )
@@ -252,15 +248,17 @@ def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = Non
 def read_in_road_cif(db: Session = Depends(get_db)):
     """Get CIF cargos that completed loading but not discharge"""
     try:
-        from sqlalchemy import or_
-        
-        # Query for CIF cargos with IN_ROAD status
-        # PostgreSQL handles enums natively, direct comparison works
-        query = db.query(models.Cargo).filter(
-            models.Cargo.contract_type == ContractType.CIF
-        ).filter(
-            models.Cargo.status == CargoStatus.IN_ROAD
-        )
+        from sqlalchemy import and_
+
+        # CIF In-Road tab should show cargos after loading completion until discharge completion.
+        # We include both:
+        # - COMPLETED_LOADING (CIF cargo after loading completion)
+        # - IN_ROAD (explicit in-road status, if used)
+        query = db.query(models.Cargo).filter(and_(
+            models.Cargo.contract_type == ContractType.CIF,
+            models.Cargo.discharge_completion_time.is_(None),  # Pending discharge only
+            models.Cargo.status.in_([CargoStatus.COMPLETED_LOADING, CargoStatus.IN_ROAD]),
+        ))
         cargos = query.all()
         
         # Debug: print to console (will show in backend logs)
@@ -279,6 +277,25 @@ def read_in_road_cif(db: Session = Depends(get_db)):
     except Exception as e:
         import traceback
         error_msg = f"Error in read_in_road_cif: {str(e)}\n{traceback.format_exc()}"
+        print(f"[ERROR] {error_msg}")
+        raise HTTPException(status_code=500, detail=error_msg)
+
+@router.get("/completed-in-road-cif", response_model=List[schemas.Cargo])
+def read_completed_in_road_cif(db: Session = Depends(get_db)):
+    """Get CIF cargos that are IN_ROAD and have completed discharge"""
+    try:
+        from sqlalchemy import and_
+        # Completed In-Road CIF tab shows cargos that have completed discharge.
+        # Include both COMPLETED_LOADING and IN_ROAD statuses to support either workflow.
+        query = db.query(models.Cargo).filter(and_(
+            models.Cargo.contract_type == ContractType.CIF,
+            models.Cargo.discharge_completion_time.is_not(None),  # Completed discharge
+            models.Cargo.status.in_([CargoStatus.COMPLETED_LOADING, CargoStatus.IN_ROAD]),
+        ))
+        return query.all()
+    except Exception as e:
+        import traceback
+        error_msg = f"Error in read_completed_in_road_cif: {str(e)}\n{traceback.format_exc()}"
         print(f"[ERROR] {error_msg}")
         raise HTTPException(status_code=500, detail=error_msg)
 

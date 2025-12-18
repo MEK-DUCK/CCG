@@ -117,6 +117,7 @@ export const cargoAPI = {
     return client.get('/api/cargos/completed-cargos', { params })
   },
   getInRoadCIF: () => client.get('/api/cargos/in-road-cif'),
+  getCompletedInRoadCIF: () => client.get('/api/cargos/completed-in-road-cif'),
   getById: (id: number) => client.get(`/api/cargos/${id}`),
   create: (data: any) => client.post('/api/cargos/', data),
   update: (id: number, data: any) => client.put(`/api/cargos/${id}`, data),

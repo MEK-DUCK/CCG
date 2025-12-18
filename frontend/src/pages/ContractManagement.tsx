@@ -81,6 +81,10 @@ export default function ContractManagement() {
     end_period: '',
     products: [] as ContractProduct[],  // Array of products with quantities
     discharge_ranges: '',
+    fax_received: '' as '' | 'yes' | 'no',
+    fax_received_date: '',
+    concluded_memo_received: '' as '' | 'yes' | 'no',
+    concluded_memo_received_date: '',
   })
 
   useEffect(() => {
@@ -160,6 +164,10 @@ export default function ContractManagement() {
         end_period: contract.end_period,
         products: contract.products || [],
         discharge_ranges: contract.discharge_ranges || '',
+        fax_received: contract.fax_received === true ? 'yes' : contract.fax_received === false ? 'no' : '',
+        fax_received_date: contract.fax_received_date || '',
+        concluded_memo_received: contract.concluded_memo_received === true ? 'yes' : contract.concluded_memo_received === false ? 'no' : '',
+        concluded_memo_received_date: contract.concluded_memo_received_date || '',
       })
     } else {
       setEditingContract(null)
@@ -172,6 +180,10 @@ export default function ContractManagement() {
         end_period: '',
         products: [],
         discharge_ranges: '',
+        fax_received: '',
+        fax_received_date: '',
+        concluded_memo_received: '',
+        concluded_memo_received_date: '',
       })
     }
     setOpen(true)
@@ -210,6 +222,10 @@ export default function ContractManagement() {
       end_period: '',
       products: [],
       discharge_ranges: '',
+      fax_received: '',
+      fax_received_date: '',
+      concluded_memo_received: '',
+      concluded_memo_received_date: '',
     })
   }
 
@@ -251,6 +267,10 @@ export default function ContractManagement() {
           optional_quantity: p.optional_quantity || 0
         })),
         discharge_ranges: formData.discharge_ranges || undefined,
+        fax_received: formData.fax_received === '' ? undefined : formData.fax_received === 'yes',
+        fax_received_date: formData.fax_received === 'yes' && formData.fax_received_date ? formData.fax_received_date : undefined,
+        concluded_memo_received: formData.concluded_memo_received === '' ? undefined : formData.concluded_memo_received === 'yes',
+        concluded_memo_received_date: formData.concluded_memo_received === 'yes' && formData.concluded_memo_received_date ? formData.concluded_memo_received_date : undefined,
       }
 
       console.log('Submitting contract:', payload)
@@ -494,30 +514,31 @@ export default function ContractManagement() {
       )}
 
       <Grid container spacing={3}>
-        <Grid item xs={12} md={selectedContract && selectedContract.id ? 4 : 12}>
-          <Box
-            sx={{
-              bgcolor: '#FFFFFF',
-              borderRadius: 3,
-              boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.05)',
-              overflow: 'hidden',
-            }}
-          >
-            <TableContainer>
-              <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Contract Number</TableCell>
-                  <TableCell>Customer</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Payment Method</TableCell>
-                  <TableCell>Products</TableCell>
-                  <TableCell>Period</TableCell>
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {contracts.filter((contract) => {
+        {!selectedContract?.id && (
+          <Grid item xs={12}>
+            <Box
+              sx={{
+                bgcolor: '#FFFFFF',
+                borderRadius: 3,
+                boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.05)',
+                overflow: 'hidden',
+              }}
+            >
+              <TableContainer>
+                <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Contract Number</TableCell>
+                    <TableCell>Customer</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Payment Method</TableCell>
+                    <TableCell>Products</TableCell>
+                    <TableCell>Period</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {contracts.filter((contract) => {
                   // Search filter
                   if (searchTerm.trim()) {
                     const searchLower = searchTerm.toLowerCase().trim()
@@ -646,10 +667,11 @@ export default function ContractManagement() {
               </Table>
             </TableContainer>
           </Box>
-        </Grid>
+          </Grid>
+        )}
 
         {selectedContract && selectedContract.id ? (
-          <Grid item xs={12} md={8}>
+          <Grid item xs={12}>
             <Box 
               sx={{ 
                 minHeight: '400px',
@@ -659,34 +681,16 @@ export default function ContractManagement() {
                 overflow: 'hidden',
               }}
             >
-              <Box sx={{ p: 3, borderBottom: '1px solid rgba(0, 0, 0, 0.05)', bgcolor: '#F2F2F7' }}>
-                  <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                    Contract: {selectedContract?.contract_number || 'N/A'}
-                  {selectedContract?.contract_type && (
-                    <Chip
-                      label={selectedContract.contract_type}
-                      color={selectedContract.contract_type === 'FOB' ? 'primary' : 'secondary'}
-                      size="small"
-                    />
-                  )}
-                  {selectedContract?.payment_method && (
-                    <Chip
-                      label={selectedContract.payment_method}
-                      color={selectedContract.payment_method === 'T/T' ? 'success' : undefined}
-                      sx={selectedContract.payment_method === 'LC' ? {
-                        backgroundColor: '#9c27b0',
-                        color: 'white',
-                        '&:hover': {
-                          backgroundColor: '#7b1fa2',
-                        }
-                      } : {}}
-                      size="small"
-                    />
-                  )}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Customer: {selectedContract?.customer_id ? getCustomerName(selectedContract.customer_id) : 'N/A'} | Products: {selectedContract?.products && Array.isArray(selectedContract.products) ? selectedContract.products.map((p: any) => (p && typeof p === 'object' ? (p.name || 'N/A') : p)).join(', ') : '-'}
-                </Typography>
+              <Box sx={{ p: 2, borderBottom: '1px solid rgba(0, 0, 0, 0.05)', bgcolor: '#F2F2F7' }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setSelectedContract(null)
+                    setTabValue(0)
+                  }}
+                >
+                  Back to all contracts
+                </Button>
               </Box>
               <Tabs value={tabValue} onChange={(_, v) => {
                 try {
@@ -969,6 +973,63 @@ export default function ContractManagement() {
               minRows={5}
               placeholder="Enter discharge ranges (for reference)..."
             />
+
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Fax Received"
+                  value={formData.fax_received}
+                  onChange={(e) => setFormData({ ...formData, fax_received: e.target.value as any, fax_received_date: e.target.value === 'yes' ? formData.fax_received_date : '' })}
+                  select
+                  fullWidth
+                >
+                  <MenuItem value="">
+                    <em>—</em>
+                  </MenuItem>
+                  <MenuItem value="yes">Yes</MenuItem>
+                  <MenuItem value="no">No</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                {formData.fax_received === 'yes' && (
+                  <TextField
+                    label="Fax Received Date"
+                    type="date"
+                    value={formData.fax_received_date}
+                    onChange={(e) => setFormData({ ...formData, fax_received_date: e.target.value })}
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                  />
+                )}
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Concluded Memo Received"
+                  value={formData.concluded_memo_received}
+                  onChange={(e) => setFormData({ ...formData, concluded_memo_received: e.target.value as any, concluded_memo_received_date: e.target.value === 'yes' ? formData.concluded_memo_received_date : '' })}
+                  select
+                  fullWidth
+                >
+                  <MenuItem value="">
+                    <em>—</em>
+                  </MenuItem>
+                  <MenuItem value="yes">Yes</MenuItem>
+                  <MenuItem value="no">No</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                {formData.concluded_memo_received === 'yes' && (
+                  <TextField
+                    label="Concluded Memo Received Date"
+                    type="date"
+                    value={formData.concluded_memo_received_date}
+                    onChange={(e) => setFormData({ ...formData, concluded_memo_received_date: e.target.value })}
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                  />
+                )}
+              </Grid>
+            </Grid>
             
             <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>

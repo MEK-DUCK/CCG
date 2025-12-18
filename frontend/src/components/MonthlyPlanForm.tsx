@@ -75,7 +75,9 @@ interface MonthlyPlanEntry {
   quantity: string
   laycan_5_days: string
   laycan_2_days: string
+  loading_month: string
   loading_window: string
+  delivery_month: string
   delivery_window: string
 }
 
@@ -167,7 +169,9 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
             quantity: plan.month_quantity.toString(),
             laycan_5_days: plan.laycan_5_days || '',
             laycan_2_days: plan.laycan_2_days || '',
+            loading_month: plan.loading_month || '',
             loading_window: plan.loading_window || '',
+            delivery_month: plan.delivery_month || '',
             delivery_window: plan.delivery_window || '',
           })
         })
@@ -183,7 +187,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
     }
   }, [quarterlyPlanId])
 
-  const handleLaycanChange = (month: number, year: number, entryIndex: number, field: 'laycan_5_days' | 'laycan_2_days' | 'loading_window' | 'delivery_window', value: string) => {
+  const handleLaycanChange = (month: number, year: number, entryIndex: number, field: 'laycan_5_days' | 'laycan_2_days' | 'loading_month' | 'loading_window' | 'delivery_month' | 'delivery_window', value: string) => {
     const key = `${month}-${year}`
     const entries = monthEntries[key] || []
     const updatedEntries = [...entries]
@@ -224,7 +228,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
     const entries = monthEntries[key] || []
     setMonthEntries({
       ...monthEntries,
-      [key]: [...entries, { quantity: '', laycan_5_days: '', laycan_2_days: '', loading_window: '', delivery_window: '' }],
+      [key]: [...entries, { quantity: '', laycan_5_days: '', laycan_2_days: '', loading_month: '', loading_window: '', delivery_month: '', delivery_window: '' }],
     })
   }
 
@@ -382,7 +386,9 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
               planned_lifting_sizes: undefined,
               laycan_5_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
               laycan_2_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
+              loading_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_month || undefined) : undefined,
               loading_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_window || undefined) : undefined,
+              delivery_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_month || undefined) : undefined,
               delivery_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window || undefined) : undefined,
             }
             
@@ -421,7 +427,9 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
           planned_lifting_sizes: undefined,
           laycan_5_days: contractType === 'FOB' && quantity > 0 ? (entry.laycan_5_days || undefined) : undefined,
           laycan_2_days: contractType === 'FOB' && quantity > 0 ? (entry.laycan_2_days || undefined) : undefined,
+          loading_month: contractType === 'CIF' && quantity > 0 ? (entry.loading_month || undefined) : undefined,
           loading_window: contractType === 'CIF' && quantity > 0 ? (entry.loading_window || undefined) : undefined,
+          delivery_month: contractType === 'CIF' && quantity > 0 ? (entry.delivery_month || undefined) : undefined,
           delivery_window: contractType === 'CIF' && quantity > 0 ? (entry.delivery_window || undefined) : undefined,
         })
       })
@@ -445,7 +453,9 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
           quantity: plan.month_quantity.toString(),
           laycan_5_days: plan.laycan_5_days || '',
           laycan_2_days: plan.laycan_2_days || '',
+          loading_month: plan.loading_month || '',
           loading_window: plan.loading_window || '',
+          delivery_month: plan.delivery_month || '',
           delivery_window: plan.delivery_window || '',
         })
       })
@@ -647,43 +657,63 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, editin
                                 </Box>
                               )}
                               {showCifWindows && (
-                                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                                  <TextField
-                                    label="Loading Window:"
-                                    size="small"
-                                    value={entry.loading_window}
-                                    onChange={(e) => handleLaycanChange(month, year, entryIndex, 'loading_window', e.target.value)}
-                                    placeholder="User Entry"
-                                    fullWidth
-                                    disabled={isLocked}
-                                    sx={{
-                                      '& .MuiInputBase-root': {
-                                        height: '32px',
-                                        fontSize: '0.875rem',
-                                      },
-                                      '& .MuiInputBase-input': {
-                                        padding: '6px 8px',
-                                      },
-                                    }}
-                                  />
-                                  <TextField
-                                    label="Delivery Window:"
-                                    size="small"
-                                    value={entry.delivery_window}
-                                    onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
-                                    placeholder="User Entry"
-                                    fullWidth
-                                    disabled={isLocked}
-                                    sx={{
-                                      '& .MuiInputBase-root': {
-                                        height: '32px',
-                                        fontSize: '0.875rem',
-                                      },
-                                      '& .MuiInputBase-input': {
-                                        padding: '6px 8px',
-                                      },
-                                    }}
-                                  />
+                                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                                  <Box sx={{ display: 'flex', gap: 1 }}>
+                                    <TextField
+                                      label="Loading Month"
+                                      size="small"
+                                      value={entry.loading_month}
+                                      onChange={(e) => handleLaycanChange(month, year, entryIndex, 'loading_month', e.target.value)}
+                                      placeholder="e.g., Aug"
+                                      disabled={isLocked}
+                                      sx={{
+                                        width: 140,
+                                        '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
+                                        '& .MuiInputBase-input': { padding: '6px 8px' },
+                                      }}
+                                    />
+                                    <TextField
+                                      label="Loading Window"
+                                      size="small"
+                                      value={entry.loading_window}
+                                      onChange={(e) => handleLaycanChange(month, year, entryIndex, 'loading_window', e.target.value)}
+                                      placeholder="User Entry"
+                                      fullWidth
+                                      disabled={isLocked}
+                                      sx={{
+                                        '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
+                                        '& .MuiInputBase-input': { padding: '6px 8px' },
+                                      }}
+                                    />
+                                  </Box>
+                                  <Box sx={{ display: 'flex', gap: 1 }}>
+                                    <TextField
+                                      label="Delivery Month"
+                                      size="small"
+                                      value={entry.delivery_month}
+                                      onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_month', e.target.value)}
+                                      placeholder="e.g., Sep"
+                                      disabled={isLocked}
+                                      sx={{
+                                        width: 140,
+                                        '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
+                                        '& .MuiInputBase-input': { padding: '6px 8px' },
+                                      }}
+                                    />
+                                    <TextField
+                                      label="Delivery Window"
+                                      size="small"
+                                      value={entry.delivery_window}
+                                      onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
+                                      placeholder="User Entry"
+                                      fullWidth
+                                      disabled={isLocked}
+                                      sx={{
+                                        '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
+                                        '& .MuiInputBase-input': { padding: '6px 8px' },
+                                      }}
+                                    />
+                                  </Box>
                                 </Box>
                               )}
                             </Box>

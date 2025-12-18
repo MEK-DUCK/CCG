@@ -71,6 +71,7 @@ export default function HomePage() {
   const [portMovement, setPortMovement] = useState<Cargo[]>([])
   const [completedCargos, setCompletedCargos] = useState<Cargo[]>([])
   const [inRoadCIF, setInRoadCIF] = useState<Cargo[]>([])
+  const [completedInRoadCIF, setCompletedInRoadCIF] = useState<Cargo[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
   const [monthlyPlans, setMonthlyPlans] = useState<MonthlyPlan[]>([])
@@ -163,17 +164,19 @@ export default function HomePage() {
     try {
       setLoading(true)
       // Load customers and contracts in parallel - they're independent
-      const [customersRes, contractsRes, completedRes, inRoadRes] = await Promise.all([
+      const [customersRes, contractsRes, completedRes, inRoadRes, completedInRoadRes] = await Promise.all([
         customerAPI.getAll().catch(() => ({ data: [] })),
         contractAPI.getAll().catch(() => ({ data: [] })),
         cargoAPI.getCompletedCargos(completedMonth || undefined, completedYear || undefined).catch(() => ({ data: [] })),
-        cargoAPI.getInRoadCIF().catch(() => ({ data: [] }))
+        cargoAPI.getInRoadCIF().catch(() => ({ data: [] })),
+        cargoAPI.getCompletedInRoadCIF().catch(() => ({ data: [] })),
       ])
       
       setCustomers(customersRes.data || [])
       setContracts(contractsRes.data || [])
       setCompletedCargos(completedRes.data || [])
       setInRoadCIF(inRoadRes.data || [])
+      setCompletedInRoadCIF(completedInRoadRes.data || [])
     } catch (error: any) {
       console.error('Error loading data:', error)
     } finally {
@@ -465,6 +468,14 @@ export default function HomePage() {
         const isCIF = editingCargo.contract_type === 'CIF'
         
         // Prepare update payload
+        // Helper function to convert datetime-local to ISO string (same behavior as create)
+        const toISOString = (dateTimeLocal: string) => {
+          if (!dateTimeLocal) return undefined
+          const d = new Date(dateTimeLocal)
+          if (Number.isNaN(d.getTime())) return undefined
+          return d.toISOString()
+        }
+
         const updatePayload: any = {
           vessel_name: cargoFormData.vessel_name,
           load_ports: cargoFormData.load_ports,
@@ -475,12 +486,16 @@ export default function HomePage() {
           berthed: cargoFormData.berthed || undefined,
           commenced: cargoFormData.commenced || undefined,
           etc: cargoFormData.etc || undefined,
-          eta_discharge_port: cargoFormData.eta_discharge_port || undefined,
-          discharge_port_location: cargoFormData.discharge_port_location || undefined,
-          discharge_completion_time: cargoFormData.discharge_completion_time || undefined,
           notes: cargoFormData.notes || undefined,
           status: cargoFormData.status,
           lc_status: cargoFormData.lc_status || undefined,
+        }
+
+        // CIF specific fields (only send for CIF, and always ISO format)
+        if (isCIF) {
+          if (cargoFormData.eta_discharge_port) updatePayload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
+          if (cargoFormData.discharge_port_location) updatePayload.discharge_port_location = cargoFormData.discharge_port_location
+          if (cargoFormData.discharge_completion_time) updatePayload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
         }
         
         // Include monthly_plan_id if it's being changed (for moving cargo between months)
@@ -523,15 +538,17 @@ export default function HomePage() {
         // Close dialog immediately
         setCargoDialogOpen(false)
         
-        // Send API call in background
+        // Send API call in background.
+        // IMPORTANT: Only revert the optimistic update if the UPDATE request itself fails.
+        // Follow-up refresh failures should not revert a successful save.
         cargoAPI.update(editingCargo.id, updatePayload)
-          .then(async () => {
-            // Success - refresh data in background to ensure sync
-            await loadData()
-            await loadPortMovement()
+          .then(() => {
+            // Refresh in background (best-effort)
+            loadData().catch((e) => console.error('Error refreshing data after cargo update:', e))
+            loadPortMovement().catch((e) => console.error('Error refreshing port movement after cargo update:', e))
           })
           .catch((error) => {
-            // Error - revert optimistic update
+            // UPDATE request failed - revert optimistic update
             console.error('Error updating cargo:', error)
             
             // Revert Port Movement
@@ -555,8 +572,8 @@ export default function HomePage() {
               )
             )
             
-            // Reopen dialog with original data
-            setCargoDialogOpen(true)
+            // Reopen dialog with original data (prevents missing sections/state after failures)
+            handleEditCargo(originalCargo)
             alert('Error updating cargo. Changes have been reverted. Please try again.')
           })
         
@@ -2262,7 +2279,7 @@ export default function HomePage() {
           <Typography variant="h6" gutterBottom>
             Completed In-Road CIF Cargos
           </Typography>
-          {/* Content to be added later */}
+          {renderCargoTable(completedInRoadCIF)}
         </TabPanel>
       </Paper>
 
@@ -2395,11 +2412,10 @@ export default function HomePage() {
                   <Grid item xs={12} md={6}>
                     <TextField
                       label="ETA Discharge Port"
-                      type="datetime-local"
+                      type="text"
                       value={cargoFormData.eta_discharge_port}
                       onChange={(e) => setCargoFormData({ ...cargoFormData, eta_discharge_port: e.target.value })}
                       fullWidth
-                      InputLabelProps={{ shrink: true }}
                       disabled={isCompletedCargo}
                       sx={isCompletedCargo ? disabledStyle : {}}
                     />
@@ -2417,11 +2433,10 @@ export default function HomePage() {
                   <Grid item xs={12} md={6}>
                     <TextField
                       label="Discharge Completion Time"
-                      type="datetime-local"
+                      type="text"
                       value={cargoFormData.discharge_completion_time}
                       onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_completion_time: e.target.value })}
                       fullWidth
-                      InputLabelProps={{ shrink: true }}
                       disabled={isCompletedCargo}
                       sx={isCompletedCargo ? disabledStyle : {}}
                     />

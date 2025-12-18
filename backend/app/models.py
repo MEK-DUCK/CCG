@@ -54,6 +54,10 @@ class Contract(Base):
     end_period = Column(Date, nullable=False)
     products = Column(Text, nullable=False)  # JSON: [{"name": "JET A-1", "total_quantity": 1000, "optional_quantity": 200}]
     discharge_ranges = Column(Text, nullable=True)  # Free-form notes for user reference
+    fax_received = Column(Boolean, nullable=True)  # Yes/No
+    fax_received_date = Column(Date, nullable=True)  # Optional date if fax_received == True
+    concluded_memo_received = Column(Boolean, nullable=True)  # Yes/No
+    concluded_memo_received_date = Column(Date, nullable=True)  # Optional date if concluded_memo_received == True
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     # Legacy fields for backward compatibility (will be removed in future migration)
     total_quantity = Column(Float, nullable=True, default=0)  # Calculated from products
@@ -90,7 +94,9 @@ class MonthlyPlan(Base):
     planned_lifting_sizes = Column(Text)  # JSON string or comma-separated
     laycan_5_days = Column(String, nullable=True)  # For FOB contracts only
     laycan_2_days = Column(String, nullable=True)  # For FOB contracts only
+    loading_month = Column(String, nullable=True)  # For CIF contracts only (planning)
     loading_window = Column(String, nullable=True)  # For CIF contracts only
+    delivery_month = Column(String, nullable=True)  # For CIF contracts only (planning)
     delivery_window = Column(String, nullable=True)  # For CIF contracts only
     quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

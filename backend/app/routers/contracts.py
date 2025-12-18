@@ -40,6 +40,10 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             end_period=contract.end_period,
             products=products_json,
             discharge_ranges=getattr(contract, "discharge_ranges", None),
+            fax_received=getattr(contract, "fax_received", None),
+            fax_received_date=getattr(contract, "fax_received_date", None),
+            concluded_memo_received=getattr(contract, "concluded_memo_received", None),
+            concluded_memo_received_date=getattr(contract, "concluded_memo_received_date", None),
             customer_id=contract.customer_id,
             total_quantity=total_quantity,  # Set for backward compatibility
             product_id=0  # Legacy field, set to 0 for backward compatibility
@@ -59,6 +63,10 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             "end_period": db_contract.end_period,
             "products": json.loads(db_contract.products) if db_contract.products else [],
             "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
+            "fax_received": getattr(db_contract, "fax_received", None),
+            "fax_received_date": getattr(db_contract, "fax_received_date", None),
+            "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
+            "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
             "customer_id": db_contract.customer_id,
             "created_at": db_contract.created_at,
             "updated_at": db_contract.updated_at
@@ -105,6 +113,10 @@ def read_contracts(customer_id: int = None, skip: int = 0, limit: int = 100, db:
                 "end_period": contract.end_period,
                 "products": products,
                 "discharge_ranges": getattr(contract, "discharge_ranges", None),
+                "fax_received": getattr(contract, "fax_received", None),
+                "fax_received_date": getattr(contract, "fax_received_date", None),
+                "concluded_memo_received": getattr(contract, "concluded_memo_received", None),
+                "concluded_memo_received_date": getattr(contract, "concluded_memo_received_date", None),
                 "customer_id": contract.customer_id,
                 "created_at": contract.created_at,
                 "updated_at": contract.updated_at
@@ -146,6 +158,10 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
             "end_period": contract.end_period,
             "products": products_list,
             "discharge_ranges": getattr(contract, "discharge_ranges", None),
+            "fax_received": getattr(contract, "fax_received", None),
+            "fax_received_date": getattr(contract, "fax_received_date", None),
+            "concluded_memo_received": getattr(contract, "concluded_memo_received", None),
+            "concluded_memo_received_date": getattr(contract, "concluded_memo_received_date", None),
             "customer_id": contract.customer_id,
             "created_at": contract.created_at,
             "updated_at": contract.updated_at
@@ -199,6 +215,10 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         "end_period": db_contract.end_period,
         "products": json.loads(db_contract.products) if db_contract.products else [],
         "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
+        "fax_received": getattr(db_contract, "fax_received", None),
+        "fax_received_date": getattr(db_contract, "fax_received_date", None),
+        "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
+        "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
         "customer_id": db_contract.customer_id,
         "created_at": db_contract.created_at,
         "updated_at": db_contract.updated_at

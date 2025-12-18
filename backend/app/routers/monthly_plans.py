@@ -58,7 +58,9 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         planned_lifting_sizes=plan.planned_lifting_sizes,
         laycan_5_days=plan.laycan_5_days,
         laycan_2_days=plan.laycan_2_days,
+        loading_month=getattr(plan, "loading_month", None),
         loading_window=getattr(plan, "loading_window", None),
+        delivery_month=getattr(plan, "delivery_month", None),
         delivery_window=getattr(plan, "delivery_window", None),
         quarterly_plan_id=plan.quarterly_plan_id
     )
@@ -74,6 +76,19 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         old_value=0.0,  # Starting from 0
         new_value=db_plan.month_quantity  # New quantity
     )
+
+    # Also log CIF window/month fields on creation if provided so Reconciliation shows them
+    for field_name in ['loading_month', 'loading_window', 'delivery_month', 'delivery_window']:
+        val = getattr(db_plan, field_name, None)
+        if val is not None and val != '':
+            log_monthly_plan_action(
+                db=db,
+                action='CREATE',
+                monthly_plan=db_plan,
+                field_name=field_name,
+                old_value=None,
+                new_value=val
+            )
     
     db.commit()
     db.refresh(db_plan)
@@ -160,7 +175,9 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
         'planned_lifting_sizes',
         'laycan_5_days',
         'laycan_2_days',
+        'loading_month',
         'loading_window',
+        'delivery_month',
         'delivery_window',
         'month',
         'year',
