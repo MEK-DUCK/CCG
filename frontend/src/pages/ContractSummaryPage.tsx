@@ -34,21 +34,24 @@ const formatDateOnly = (value?: string) => {
   return value
 }
 
-const getContractTypeChipProps = (contractType: Contract['contract_type']) => {
+type ChipColor = 'warning' | 'info' | 'error' | 'default' | 'primary' | 'secondary' | 'success'
+type ChipVariant = 'filled' | 'outlined'
+
+const getContractTypeChipProps = (contractType: Contract['contract_type']): { color: ChipColor; variant: ChipVariant } => {
   return {
     color: contractType === 'FOB' ? 'primary' : 'secondary',
-    variant: 'filled' as const,
+    variant: 'filled',
   }
 }
 
-const getPaymentMethodChipProps = (paymentMethod?: Contract['payment_method']) => {
+const getPaymentMethodChipProps = (paymentMethod?: Contract['payment_method']): { color: ChipColor; variant: ChipVariant } => {
   if (paymentMethod === 'T/T') {
-    return { color: 'success', variant: 'filled' as const }
+    return { color: 'success', variant: 'filled' }
   }
   if (paymentMethod === 'LC') {
-    return { color: 'warning', variant: 'filled' as const }
+    return { color: 'warning', variant: 'filled' }
   }
-  return { color: 'default', variant: 'outlined' as const }
+  return { color: 'default', variant: 'outlined' }
 }
 
 export default function ContractSummaryPage() {
@@ -264,6 +267,7 @@ export default function ContractSummaryPage() {
                 <TableCell>Discharge Ranges</TableCell>
                 <TableCell>Fax / Concluded Memo</TableCell>
                 <TableCell>Remarks</TableCell>
+                <TableCell>Additives Required</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -272,6 +276,7 @@ export default function ContractSummaryPage() {
                 const qt = quarterTotalsByContractId[c.id] || { q1: 0, q2: 0, q3: 0, q4: 0 }
                 const productsLabel =
                   c.products.length === 0 ? '-' : c.products.map((p) => p.name).filter(Boolean).join(', ')
+                const jetA1Selected = c.products.some((p) => p.name === 'JET A-1')
                 const saving = Boolean(savingById[c.id])
                 const saved = Boolean(savedById[c.id])
                 const err = saveErrorById[c.id] || ''
@@ -362,6 +367,11 @@ export default function ContractSummaryPage() {
                                   : ' '}
                         </Typography>
                       </Box>
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2">
+                        {!jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-'}
+                      </Typography>
                     </TableCell>
                   </TableRow>
                 )

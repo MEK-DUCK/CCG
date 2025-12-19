@@ -54,6 +54,7 @@ class Contract(Base):
     end_period = Column(Date, nullable=False)
     products = Column(Text, nullable=False)  # JSON: [{"name": "JET A-1", "total_quantity": 1000, "optional_quantity": 200}]
     discharge_ranges = Column(Text, nullable=True)  # Free-form notes for user reference
+    additives_required = Column(Boolean, nullable=True)  # For JET A-1 contracts (Yes/No)
     fax_received = Column(Boolean, nullable=True)  # Yes/No
     fax_received_date = Column(Date, nullable=True)  # Optional date if fax_received == True
     concluded_memo_received = Column(Boolean, nullable=True)  # Yes/No

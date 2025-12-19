@@ -35,6 +35,7 @@ export interface Contract {
   end_period: string
   products: ContractProduct[]  // List of products with quantities
   discharge_ranges?: string
+  additives_required?: boolean
   fax_received?: boolean
   fax_received_date?: string
   concluded_memo_received?: boolean

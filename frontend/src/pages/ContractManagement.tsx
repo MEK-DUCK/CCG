@@ -78,11 +78,14 @@ export default function ContractManagement() {
     end_period: '',
     products: [] as ContractProduct[],  // Array of products with quantities
     discharge_ranges: '',
+    additives_required: '' as '' | 'yes' | 'no',
     fax_received: '' as '' | 'yes' | 'no',
     fax_received_date: '',
     concluded_memo_received: '' as '' | 'yes' | 'no',
     concluded_memo_received_date: '',
   })
+
+  const jetA1Selected = formData.products.some((p) => p.name === 'JET A-1')
 
   useEffect(() => {
     loadData()
@@ -147,6 +150,7 @@ export default function ContractManagement() {
         end_period: contract.end_period,
         products: contract.products || [],
         discharge_ranges: contract.discharge_ranges || '',
+        additives_required: contract.additives_required === true ? 'yes' : contract.additives_required === false ? 'no' : '',
         fax_received: contract.fax_received === true ? 'yes' : contract.fax_received === false ? 'no' : '',
         fax_received_date: contract.fax_received_date || '',
         concluded_memo_received: contract.concluded_memo_received === true ? 'yes' : contract.concluded_memo_received === false ? 'no' : '',
@@ -163,6 +167,7 @@ export default function ContractManagement() {
         end_period: '',
         products: [],
         discharge_ranges: '',
+        additives_required: '',
         fax_received: '',
         fax_received_date: '',
         concluded_memo_received: '',
@@ -205,6 +210,7 @@ export default function ContractManagement() {
       end_period: '',
       products: [],
       discharge_ranges: '',
+      additives_required: '',
       fax_received: '',
       fax_received_date: '',
       concluded_memo_received: '',
@@ -214,6 +220,8 @@ export default function ContractManagement() {
 
   const handleSubmit = async () => {
     try {
+      const jetA1Selected = formData.products.some((p) => p.name === 'JET A-1')
+
       // Validate form
       if (!formData.customer_id || !formData.contract_number || !formData.start_period || !formData.end_period) {
         alert('Please fill in all required fields')
@@ -250,6 +258,7 @@ export default function ContractManagement() {
           optional_quantity: p.optional_quantity || 0
         })),
         discharge_ranges: formData.discharge_ranges || undefined,
+        additives_required: jetA1Selected ? (formData.additives_required === '' ? undefined : formData.additives_required === 'yes') : undefined,
         fax_received: formData.fax_received === '' ? undefined : formData.fax_received === 'yes',
         fax_received_date: formData.fax_received === 'yes' && formData.fax_received_date ? formData.fax_received_date : undefined,
         concluded_memo_received: formData.concluded_memo_received === '' ? undefined : formData.concluded_memo_received === 'yes',
@@ -1083,6 +1092,24 @@ export default function ContractManagement() {
                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
                   No products added. Click "Add Product" to add products to this contract.
                 </Typography>
+              )}
+
+              {jetA1Selected && (
+                <Box sx={{ mt: 1 }}>
+                  <TextField
+                    label="Additives Required"
+                    value={formData.additives_required}
+                    onChange={(e) => setFormData({ ...formData, additives_required: e.target.value as any })}
+                    select
+                    fullWidth
+                  >
+                    <MenuItem value="">
+                      <em>—</em>
+                    </MenuItem>
+                    <MenuItem value="yes">Yes</MenuItem>
+                    <MenuItem value="no">No</MenuItem>
+                  </TextField>
+                </Box>
               )}
             </Box>
           </Box>

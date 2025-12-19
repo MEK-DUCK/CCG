@@ -41,6 +41,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         total_quantity = sum(p.total_quantity for p in contract.products)
         
         has_remarks = _contracts_has_column(db, "remarks")
+        has_additives_required = _contracts_has_column(db, "additives_required")
 
         db_contract = models.Contract(
             contract_id=contract_id,
@@ -51,6 +52,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             end_period=contract.end_period,
             products=products_json,
             discharge_ranges=getattr(contract, "discharge_ranges", None),
+            **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
             fax_received=getattr(contract, "fax_received", None),
             fax_received_date=getattr(contract, "fax_received_date", None),
             concluded_memo_received=getattr(contract, "concluded_memo_received", None),
@@ -75,6 +77,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             "end_period": db_contract.end_period,
             "products": json.loads(db_contract.products) if db_contract.products else [],
             "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
+            **({"additives_required": getattr(db_contract, "additives_required", None)} if has_additives_required else {}),
             "fax_received": getattr(db_contract, "fax_received", None),
             "fax_received_date": getattr(db_contract, "fax_received_date", None),
             "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
@@ -104,9 +107,12 @@ def read_contracts(
         import json
         from sqlalchemy import desc
         has_remarks = _contracts_has_column(db, "remarks")
+        has_additives_required = _contracts_has_column(db, "additives_required")
         query = db.query(models.Contract)
         if not has_remarks:
             query = query.options(defer(models.Contract.remarks))
+        if not has_additives_required:
+            query = query.options(defer(models.Contract.additives_required))
         if customer_id:
             query = query.filter(models.Contract.customer_id == customer_id)
         # Order by created_at descending to get newest contracts first
@@ -134,6 +140,7 @@ def read_contracts(
                 "end_period": contract.end_period,
                 "products": products,
                 "discharge_ranges": getattr(contract, "discharge_ranges", None),
+                **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
                 "fax_received": getattr(contract, "fax_received", None),
                 "fax_received_date": getattr(contract, "fax_received_date", None),
                 "concluded_memo_received": getattr(contract, "concluded_memo_received", None),
@@ -156,9 +163,12 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
     import json
     try:
         has_remarks = _contracts_has_column(db, "remarks")
+        has_additives_required = _contracts_has_column(db, "additives_required")
         query = db.query(models.Contract)
         if not has_remarks:
             query = query.options(defer(models.Contract.remarks))
+        if not has_additives_required:
+            query = query.options(defer(models.Contract.additives_required))
         contract = query.filter(models.Contract.id == contract_id).first()
         if contract is None:
             raise HTTPException(status_code=404, detail="Contract not found")
@@ -184,6 +194,7 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
             "end_period": contract.end_period,
             "products": products_list,
             "discharge_ranges": getattr(contract, "discharge_ranges", None),
+            **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
             "fax_received": getattr(contract, "fax_received", None),
             "fax_received_date": getattr(contract, "fax_received_date", None),
             "concluded_memo_received": getattr(contract, "concluded_memo_received", None),
@@ -206,9 +217,12 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
 def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Session = Depends(get_db)):
     import json
     has_remarks = _contracts_has_column(db, "remarks")
+    has_additives_required = _contracts_has_column(db, "additives_required")
     query = db.query(models.Contract)
     if not has_remarks:
         query = query.options(defer(models.Contract.remarks))
+    if not has_additives_required:
+        query = query.options(defer(models.Contract.additives_required))
     db_contract = query.filter(models.Contract.id == contract_id).first()
     if db_contract is None:
         raise HTTPException(status_code=404, detail="Contract not found")
@@ -219,6 +233,12 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         raise HTTPException(
             status_code=400,
             detail="Contract remarks field is not available in the database yet. Please apply the remarks migration and try again."
+        )
+
+    if "additives_required" in update_data and not has_additives_required:
+        raise HTTPException(
+            status_code=400,
+            detail="Contract additives_required field is not available in the database yet. Please apply the additives_required migration and try again."
         )
 
     # Validate date range even for partial updates (one side changed)
@@ -258,6 +278,7 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         "end_period": db_contract.end_period,
         "products": json.loads(db_contract.products) if db_contract.products else [],
         "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
+        **({"additives_required": getattr(db_contract, "additives_required", None)} if has_additives_required else {}),
         "fax_received": getattr(db_contract, "fax_received", None),
         "fax_received_date": getattr(db_contract, "fax_received_date", None),
         "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),

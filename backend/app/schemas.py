@@ -37,6 +37,7 @@ class ContractBase(BaseModel):
     end_period: date
     products: List[ContractProduct]  # List of products with quantities
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
+    additives_required: Optional[bool] = None
     fax_received: Optional[bool] = None
     fax_received_date: Optional[date] = None
     concluded_memo_received: Optional[bool] = None
@@ -60,6 +61,7 @@ class ContractUpdate(BaseModel):
     end_period: Optional[date] = None
     products: Optional[List[ContractProduct]] = None
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
+    additives_required: Optional[bool] = None
     fax_received: Optional[bool] = None
     fax_received_date: Optional[date] = None
     concluded_memo_received: Optional[bool] = None
