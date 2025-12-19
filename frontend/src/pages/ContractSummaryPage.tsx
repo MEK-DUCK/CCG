@@ -266,8 +266,8 @@ export default function ContractSummaryPage() {
                 <TableCell>Optional Qty</TableCell>
                 <TableCell>Discharge Ranges</TableCell>
                 <TableCell>Fax / Concluded Memo</TableCell>
-                <TableCell>Remarks</TableCell>
                 <TableCell>Additives Required</TableCell>
+                <TableCell>Remarks</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -329,6 +329,11 @@ export default function ContractSummaryPage() {
                         <Typography variant="body2">Memo: {formatDateOnly(c.concluded_memo_received_date)}</Typography>
                       </Box>
                     </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2">
+                        {!jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-'}
+                      </Typography>
+                    </TableCell>
                     <TableCell sx={{ minWidth: 260 }}>
                       <Box>
                         <TextField
@@ -367,11 +372,6 @@ export default function ContractSummaryPage() {
                                   : ' '}
                         </Typography>
                       </Box>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Typography variant="body2">
-                        {!jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-'}
-                      </Typography>
                     </TableCell>
                   </TableRow>
                 )
