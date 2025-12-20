@@ -88,7 +88,7 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
                 field_name=field_name,
                 old_value=None,
                 new_value=val
-            )
+    )
     
     db.commit()
     db.refresh(db_plan)
@@ -102,11 +102,11 @@ def read_monthly_plans(
     db: Session = Depends(get_db),
 ):
     try:
-        query = db.query(models.MonthlyPlan)
-        if quarterly_plan_id:
-            query = query.filter(models.MonthlyPlan.quarterly_plan_id == quarterly_plan_id)
-        plans = query.offset(skip).limit(limit).all()
-        return plans
+    query = db.query(models.MonthlyPlan)
+    if quarterly_plan_id:
+        query = query.filter(models.MonthlyPlan.quarterly_plan_id == quarterly_plan_id)
+    plans = query.offset(skip).limit(limit).all()
+    return plans
     except Exception as e:
         import traceback
         print(f"[ERROR] Error reading monthly plans: {str(e)}\n{traceback.format_exc()}")
@@ -270,12 +270,12 @@ def delete_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
         )
     
     try:
-        # Log the deletion before deleting
-        log_monthly_plan_action(
-            db=db,
-            action='DELETE',
-            monthly_plan=db_plan
-        )
+    # Log the deletion before deleting
+    log_monthly_plan_action(
+        db=db,
+        action='DELETE',
+        monthly_plan=db_plan
+    )
         db.flush()
 
         # IMPORTANT: audit log FK must not block plan deletion.
@@ -286,10 +286,10 @@ def delete_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
             {models.MonthlyPlanAuditLog.monthly_plan_id: None, models.MonthlyPlanAuditLog.monthly_plan_db_id: db_plan.id},
             synchronize_session=False
         )
-
-        db.delete(db_plan)
-        db.commit()
-        return {"message": "Monthly plan deleted successfully"}
+    
+    db.delete(db_plan)
+    db.commit()
+    return {"message": "Monthly plan deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:
