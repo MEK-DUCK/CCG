@@ -134,6 +134,7 @@ export const auditLogAPI = {
   getMonthlyPlanLogs: (params?: any) => client.get('/api/audit-logs/monthly-plan', { params }),
   getQuarterlyPlanLogs: (params?: any) => client.get('/api/audit-logs/quarterly-plan', { params }),
   getReconciliationLogs: (params?: any) => client.get('/api/audit-logs/reconciliation', { params }),
+  getWeeklyQuantityComparison: (params?: any) => client.get('/api/audit-logs/weekly-quantity-comparison', { params }),
 }
 
 // Documents API

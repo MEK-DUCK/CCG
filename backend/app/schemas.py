@@ -345,3 +345,30 @@ class QuarterlyPlanAuditLog(BaseModel):
     class Config:
         from_attributes = True
 
+
+# Weekly Quantity Comparison Schemas (Reconciliation helper)
+class WeeklyQuantityMonth(BaseModel):
+    month: int
+    previous_quantity: float
+    current_quantity: float
+    delta: float
+    remark: Optional[str] = None
+
+
+class WeeklyQuantityContract(BaseModel):
+    contract_id: int
+    contract_number: Optional[str] = None
+    contract_name: Optional[str] = None
+    months: List[WeeklyQuantityMonth]
+    previous_total: float
+    current_total: float
+    delta_total: float
+
+
+class WeeklyQuantityComparisonResponse(BaseModel):
+    year: int
+    previous_week_start: datetime
+    previous_week_end: datetime
+    generated_at: datetime
+    contracts: List[WeeklyQuantityContract]
+

@@ -204,3 +204,29 @@ export interface QuarterlyPlanAuditLog {
 
 export type PlanAuditLog = MonthlyPlanAuditLog | QuarterlyPlanAuditLog
 
+export interface WeeklyQuantityMonth {
+  month: number
+  previous_quantity: number
+  current_quantity: number
+  delta: number
+  remark?: string | null
+}
+
+export interface WeeklyQuantityContract {
+  contract_id: number
+  contract_number?: string | null
+  contract_name?: string | null
+  months: WeeklyQuantityMonth[]
+  previous_total: number
+  current_total: number
+  delta_total: number
+}
+
+export interface WeeklyQuantityComparisonResponse {
+  year: number
+  previous_week_start: string
+  previous_week_end: string
+  generated_at: string
+  contracts: WeeklyQuantityContract[]
+}
+

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   Box,
   Paper,
@@ -24,7 +24,12 @@ import {
 import { format } from 'date-fns'
 import { Refresh } from '@mui/icons-material'
 import { auditLogAPI } from '../api/client'
-import type { PlanAuditLog, MonthlyPlanAuditLog, QuarterlyPlanAuditLog } from '../types'
+import type {
+  PlanAuditLog,
+  MonthlyPlanAuditLog,
+  QuarterlyPlanAuditLog,
+  WeeklyQuantityComparisonResponse,
+} from '../types'
 
 const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -35,16 +40,27 @@ export default function ReconciliationPage() {
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
   const [selectedAction, setSelectedAction] = useState<string>('')
 
+  // Weekly quantity comparison (Sun–Thu)
+  const [weeklyLoading, setWeeklyLoading] = useState(false)
+  const [weeklyData, setWeeklyData] = useState<WeeklyQuantityComparisonResponse | null>(null)
+  const [weeklyError, setWeeklyError] = useState<string | null>(null)
+
   useEffect(() => {
     loadLogs()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth, selectedYear, selectedAction])
+
+  useEffect(() => {
+    loadWeeklyComparison()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear])
 
   // Auto-refresh when window gains focus (user switches back to tab)
   useEffect(() => {
     const handleFocus = () => {
       console.log('Window focused, refreshing logs...')
       loadLogs()
+      loadWeeklyComparison()
     }
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
@@ -78,6 +94,67 @@ export default function ReconciliationPage() {
       setLoading(false)
     }
   }
+
+  const loadWeeklyComparison = async () => {
+    setWeeklyLoading(true)
+    setWeeklyError(null)
+    try {
+      const params: any = {}
+      if (selectedYear) params.year = selectedYear
+      const res = await auditLogAPI.getWeeklyQuantityComparison(params)
+      setWeeklyData(res.data as WeeklyQuantityComparisonResponse)
+    } catch (e) {
+      console.error('Error loading weekly quantity comparison:', e)
+      setWeeklyData(null)
+      const anyErr: any = e
+      const detail = anyErr?.response?.data?.detail
+      setWeeklyError(typeof detail === 'string' ? detail : (anyErr?.message ? String(anyErr.message) : 'Failed to load comparison data'))
+    } finally {
+      setWeeklyLoading(false)
+    }
+  }
+
+  const fmtQty = (qty: number) => {
+    const kt = qty / 1000
+    if (Math.abs(kt - Math.round(kt)) < 1e-9) return `${Math.round(kt)}kt`
+    return `${kt.toFixed(1)}kt`
+  }
+
+  const weeklyTotals = useMemo(() => {
+    if (!weeklyData || !Array.isArray(weeklyData.contracts)) return null
+
+    const prevByMonth = Array(13).fill(0) as number[]
+    const curByMonth = Array(13).fill(0) as number[]
+    const remarkByMonth = Array(13).fill('') as string[]
+
+    for (let m = 1; m <= 12; m++) {
+      const changes: Array<{ label: string; delta: number }> = []
+      weeklyData.contracts.forEach((c) => {
+        const mm = c.months?.find((x) => x.month === m)
+        if (!mm) return
+        prevByMonth[m] += mm.previous_quantity || 0
+        curByMonth[m] += mm.current_quantity || 0
+        const d = mm.delta || 0
+        if (Math.abs(d) > 1e-6) {
+          const label = c.contract_number || `Contract ${c.contract_id}`
+          changes.push({ label, delta: d })
+        }
+      })
+
+      if (changes.length) {
+        changes.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+        remarkByMonth[m] = changes
+          .slice(0, 6)
+          .map((x) => `${x.label} ${x.delta > 0 ? '+' : ''}${fmtQty(x.delta)}`)
+          .join('; ')
+        if (changes.length > 6) remarkByMonth[m] += `; +${changes.length - 6} more`
+      }
+    }
+
+    const previousTotal = prevByMonth.slice(1).reduce((a, b) => a + b, 0)
+    const currentTotal = curByMonth.slice(1).reduce((a, b) => a + b, 0)
+    return { prevByMonth, curByMonth, remarkByMonth, previousTotal, currentTotal }
+  }, [weeklyData])
 
   const getActionColor = (action: string) => {
     switch (action) {
@@ -184,6 +261,93 @@ export default function ReconciliationPage() {
               </Typography>
             </Grid>
           </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Weekly quantity comparison (new) */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Weekly Quantity Comparison (Sun–Thu)
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Total quantities across all contracts. Remarks show which contracts changed for each month.
+              </Typography>
+              {weeklyData && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Snapshot: {format(new Date(weeklyData.previous_week_start), 'MMM dd')} →{' '}
+                  {format(new Date(weeklyData.previous_week_end), 'MMM dd, yyyy')}
+                </Typography>
+              )}
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button variant="outlined" onClick={loadWeeklyComparison} disabled={weeklyLoading} sx={{ minWidth: 120 }}>
+                Refresh
+              </Button>
+            </Box>
+          </Box>
+
+          {weeklyLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : weeklyError ? (
+            <Paper sx={{ mt: 2, p: 2 }}>
+              <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
+                Couldn’t load weekly comparison
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {weeklyError}
+              </Typography>
+            </Paper>
+          ) : !weeklyTotals ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              No comparison data found.
+            </Typography>
+          ) : (
+            <TableContainer component={Paper} sx={{ mt: 2, overflowX: 'auto' }}>
+              <Table size="small" sx={{ minWidth: 1100 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Row</TableCell>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <TableCell key={m} align="right" sx={{ fontWeight: 700 }}>
+                        {monthNames[m]}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Previous week total</TableCell>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <TableCell key={m} align="right">
+                        {fmtQty(weeklyTotals.prevByMonth[m] || 0)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Current live total</TableCell>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <TableCell key={m} align="right" sx={{ fontWeight: 700 }}>
+                        {fmtQty(weeklyTotals.curByMonth[m] || 0)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Remarks</TableCell>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <TableCell key={m} sx={{ minWidth: 200 }}>
+                        {weeklyTotals.remarkByMonth[m] || ''}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </CardContent>
       </Card>
 
