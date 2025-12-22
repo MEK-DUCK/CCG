@@ -8,8 +8,6 @@ interface UseLaycanAlertsProps {
   monthlyPlans: MonthlyPlan[]
   contracts: Contract[]
   customers: Customer[]
-  selectedMonth: number
-  selectedYear: number
   maxDays?: number // Only show alerts within X days (default: 14)
 }
 
@@ -21,8 +19,6 @@ export function useLaycanAlerts({
   monthlyPlans,
   contracts,
   customers,
-  selectedMonth,
-  selectedYear,
   maxDays = 14,
 }: UseLaycanAlertsProps) {
   const alerts = useMemo(() => {
@@ -87,7 +83,7 @@ export function useLaycanAlerts({
 
     // Sort by days until (most urgent first)
     return alertList.sort((a, b) => a.daysUntil - b.daysUntil)
-  }, [cargos, monthlyPlans, contracts, customers, selectedMonth, selectedYear, maxDays])
+  }, [cargos, monthlyPlans, contracts, customers, maxDays])
 
   const criticalAlerts = alerts.filter((a) => a.severity === 'critical')
   const warningAlerts = alerts.filter((a) => a.severity === 'warning')

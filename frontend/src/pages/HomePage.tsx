@@ -25,6 +25,7 @@ import {
   TextField,
   Grid,
   Checkbox,
+  ListItemText,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
@@ -77,7 +78,7 @@ export default function HomePage() {
   const [monthlyPlans, setMonthlyPlans] = useState<MonthlyPlan[]>([])
   const [quarterlyPlansMap, setQuarterlyPlansMap] = useState<Map<number, any>>(new Map())
   const [loading, setLoading] = useState(true)
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
+  const [selectedMonths, setSelectedMonths] = useState<number[]>([new Date().getMonth() + 1])
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [completedMonth, setCompletedMonth] = useState<number | null>(null)
   const [completedYear, setCompletedYear] = useState<number | null>(null)
@@ -116,6 +117,17 @@ export default function HomePage() {
 
   const [isInitialLoad, setIsInitialLoad] = useState(true)
 
+  const formatSelectedMonthsLabel = (months: number[], year: number) => {
+    const sorted = [...(months || [])].sort((a, b) => a - b)
+    const monthLabel = (m: number) => new Date(2000, m - 1).toLocaleString('default', { month: 'long' })
+    if (sorted.length === 0) {
+      return new Date(year, new Date().getMonth()).toLocaleString('default', { month: 'long', year: 'numeric' })
+    }
+    if (sorted.length === 12) return `All Months ${year}`
+    if (sorted.length === 1) return `${monthLabel(sorted[0])} ${year}`
+    return `${sorted.map(monthLabel).join(', ')} ${year}`
+  }
+
   useEffect(() => {
     if (isInitialLoad) {
       setIsInitialLoad(false)
@@ -141,16 +153,30 @@ export default function HomePage() {
       loadMonthlyPlansForPortMovement()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMonth, selectedYear, value])
+  }, [selectedMonths, selectedYear, value])
 
   const loadPortMovement = async () => {
     try {
       setLoading(true)
-      console.log(`Loading port movement for month ${selectedMonth}, year ${selectedYear}`)
-      const portRes = await cargoAPI.getPortMovement(selectedMonth, selectedYear)
-      console.log(`Port movement API response:`, portRes)
-      console.log(`Port movement cargos loaded:`, portRes.data?.length || 0, portRes.data)
-      setPortMovement(portRes.data || [])
+      const monthsToLoad = (selectedMonths && selectedMonths.length > 0)
+        ? [...selectedMonths].sort((a, b) => a - b)
+        : [new Date().getMonth() + 1]
+
+      console.log(`Loading port movement for months ${monthsToLoad.join(', ')}, year ${selectedYear}`)
+
+      const responses = await Promise.all(
+        monthsToLoad.map((month) =>
+          cargoAPI.getPortMovement(month, selectedYear).catch(() => ({ data: [] as any[] }))
+        )
+      )
+
+      const merged = responses.flatMap((r: any) => r?.data || [])
+      // De-duplicate (defensive) in case of overlaps
+      const unique = new Map<number, any>()
+      merged.forEach((c: any) => {
+        if (typeof c?.id === 'number') unique.set(c.id, c)
+      })
+      setPortMovement(Array.from(unique.values()))
     } catch (error) {
       console.error('Error loading port movement:', error)
       setPortMovement([])
@@ -223,9 +249,9 @@ export default function HomePage() {
         r.monthlyPlans.map((mp: MonthlyPlan) => ({ ...mp, quarterlyPlanId: r.quarterlyPlanId }))
       )
       
-      // Filter by selected month and year
+      // Filter by selected month(s) and year
       const filtered = allMonthlyPlans.filter((mp: MonthlyPlan & { quarterlyPlanId: number }) => 
-        mp.month === selectedMonth && mp.year === selectedYear
+        mp.year === selectedYear && selectedMonths.includes(mp.month)
       )
       setMonthlyPlans(filtered)
     } catch (error) {
@@ -241,8 +267,6 @@ export default function HomePage() {
     monthlyPlans,
     contracts,
     customers,
-    selectedMonth,
-    selectedYear,
     maxDays: 14,
   })
 
@@ -1433,8 +1457,8 @@ export default function HomePage() {
         }
       }
       
-      // If only day is found (e.g., "02-03" or "2-3"), use selected month and year
-      const month = selectedMonth || new Date().getMonth() + 1
+      // If only day is found (e.g., "02-03" or "2-3"), use the first selected month and year
+      const month = selectedMonths?.[0] || new Date().getMonth() + 1
       const year = selectedYear || new Date().getFullYear()
       return year * 10000 + month * 100 + day
     }
@@ -1569,7 +1593,7 @@ export default function HomePage() {
     if (filteredCargos.length === 0 && portMovement.length === 0 && monthlyPlans.length === 0) {
       return (
         <Typography variant="body1" color="text.secondary" sx={{ p: 2 }}>
-          No cargos or monthly plans found for {new Date(selectedYear, selectedMonth - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}
+          No cargos or monthly plans found for {formatSelectedMonthsLabel(selectedMonths, selectedYear)}
         </Typography>
       )
     }
@@ -2173,13 +2197,43 @@ export default function HomePage() {
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <InputLabel>Month</InputLabel>
                 <Select
-                  value={selectedMonth}
+                  multiple
+                  value={selectedMonths}
                   label="Month"
-                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  onChange={(e) => {
+                    const raw = e.target.value as unknown as number[]
+                    const next = Array.isArray(raw) ? raw.map((v) => Number(v)) : []
+                    if (next.includes(-1)) {
+                      setSelectedMonths([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+                    } else {
+                      setSelectedMonths(next.filter((m) => m >= 1 && m <= 12))
+                    }
+                  }}
+                  renderValue={(selected) => {
+                    const months = (selected as number[]).slice().sort((a, b) => a - b)
+                    if (months.length === 0) return 'Select month(s)'
+                    if (months.length === 12) return 'All Months'
+                    return (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {months.map((month) => (
+                          <Chip
+                            key={month}
+                            label={new Date(2000, month - 1).toLocaleString('default', { month: 'short' })}
+                            size="small"
+                          />
+                        ))}
+                      </Box>
+                    )
+                  }}
                 >
+                  <MenuItem value={-1}>
+                    <Checkbox checked={selectedMonths.length === 12} />
+                    <ListItemText primary="All Months" />
+                  </MenuItem>
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((month) => (
                     <MenuItem key={month} value={month}>
-                      {new Date(2000, month - 1).toLocaleString('default', { month: 'long' })}
+                      <Checkbox checked={selectedMonths.indexOf(month) > -1} />
+                      <ListItemText primary={new Date(2000, month - 1).toLocaleString('default', { month: 'long' })} />
                     </MenuItem>
                   ))}
                 </Select>

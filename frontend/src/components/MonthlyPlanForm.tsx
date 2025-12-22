@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Box,
   TextField,
@@ -75,10 +75,12 @@ interface MonthlyPlanEntry {
   quantity: string
   laycan_5_days: string
   laycan_2_days: string
+  laycan_2_days_remark: string
   loading_month: string
   loading_window: string
   delivery_month: string
   delivery_window: string
+  delivery_window_remark: string
 }
 
 export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlanCreated }: MonthlyPlanFormProps) {
@@ -91,6 +93,22 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
   const [quarterOrder, setQuarterOrder] = useState<('Q1' | 'Q2' | 'Q3' | 'Q4')[]>([])
   const [contractMonths, setContractMonths] = useState<Array<{ month: number, year: number }>>([])
   const [planStatuses, setPlanStatuses] = useState<Record<number, MonthlyPlanStatus>>({}) // plan_id -> status
+  const autosaveTimersRef = useRef<Record<string, number>>({})
+
+  const scheduleAutosave = (planId: number, data: any, keySuffix: string) => {
+    const key = `${planId}:${keySuffix}`
+    const existing = autosaveTimersRef.current[key]
+    if (existing) {
+      window.clearTimeout(existing)
+    }
+    autosaveTimersRef.current[key] = window.setTimeout(async () => {
+      try {
+        await monthlyPlanAPI.update(planId, data)
+      } catch (error) {
+        console.error('Error autosaving monthly plan field:', error)
+      }
+    }, 600)
+  }
 
   // Load contract and determine quarter order
   useEffect(() => {
@@ -169,10 +187,12 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
             quantity: plan.month_quantity.toString(),
             laycan_5_days: plan.laycan_5_days || '',
             laycan_2_days: plan.laycan_2_days || '',
+            laycan_2_days_remark: plan.laycan_2_days_remark || '',
             loading_month: plan.loading_month || '',
             loading_window: plan.loading_window || '',
             delivery_month: plan.delivery_month || '',
             delivery_window: plan.delivery_window || '',
+            delivery_window_remark: plan.delivery_window_remark || '',
           })
         })
         
@@ -187,7 +207,13 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
     }
   }, [quarterlyPlanId])
 
-  const handleLaycanChange = (month: number, year: number, entryIndex: number, field: 'laycan_5_days' | 'laycan_2_days' | 'loading_month' | 'loading_window' | 'delivery_month' | 'delivery_window', value: string) => {
+  const handleLaycanChange = (
+    month: number,
+    year: number,
+    entryIndex: number,
+    field: 'laycan_5_days' | 'laycan_2_days' | 'laycan_2_days_remark' | 'loading_month' | 'loading_window' | 'delivery_month' | 'delivery_window' | 'delivery_window_remark',
+    value: string
+  ) => {
     const key = `${month}-${year}`
     const entries = monthEntries[key] || []
     const updatedEntries = [...entries]
@@ -199,6 +225,12 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
       ...monthEntries,
       [key]: updatedEntries,
     })
+
+    // Autosave remark fields for existing plans
+    const planId = updatedEntries[entryIndex]?.id
+    if (planId && (field === 'laycan_2_days_remark' || field === 'delivery_window_remark')) {
+      scheduleAutosave(planId, { [field]: value }, field)
+    }
   }
 
   const handleQuantityChange = (month: number, year: number, entryIndex: number, value: string) => {
@@ -215,6 +247,8 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
         ...updatedEntries[entryIndex],
         laycan_5_days: '',
         laycan_2_days: '',
+        laycan_2_days_remark: '',
+        delivery_window_remark: '',
       }
     }
     setMonthEntries({
@@ -228,7 +262,7 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
     const entries = monthEntries[key] || []
     setMonthEntries({
       ...monthEntries,
-      [key]: [...entries, { quantity: '', laycan_5_days: '', laycan_2_days: '', loading_month: '', loading_window: '', delivery_month: '', delivery_window: '' }],
+      [key]: [...entries, { quantity: '', laycan_5_days: '', laycan_2_days: '', laycan_2_days_remark: '', loading_month: '', loading_window: '', delivery_month: '', delivery_window: '', delivery_window_remark: '' }],
     })
   }
 
@@ -386,10 +420,12 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
               planned_lifting_sizes: undefined,
               laycan_5_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
               laycan_2_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
+              laycan_2_days_remark: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
               loading_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_month || undefined) : undefined,
               loading_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_window || undefined) : undefined,
               delivery_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_month || undefined) : undefined,
               delivery_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window || undefined) : undefined,
+              delivery_window_remark: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window_remark || undefined) : undefined,
             }
             
             // Only allow month/year changes if plan is not locked
@@ -427,10 +463,12 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
           planned_lifting_sizes: undefined,
           laycan_5_days: contractType === 'FOB' && quantity > 0 ? (entry.laycan_5_days || undefined) : undefined,
           laycan_2_days: contractType === 'FOB' && quantity > 0 ? (entry.laycan_2_days || undefined) : undefined,
+          laycan_2_days_remark: contractType === 'FOB' && quantity > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
           loading_month: contractType === 'CIF' && quantity > 0 ? (entry.loading_month || undefined) : undefined,
           loading_window: contractType === 'CIF' && quantity > 0 ? (entry.loading_window || undefined) : undefined,
           delivery_month: contractType === 'CIF' && quantity > 0 ? (entry.delivery_month || undefined) : undefined,
           delivery_window: contractType === 'CIF' && quantity > 0 ? (entry.delivery_window || undefined) : undefined,
+          delivery_window_remark: contractType === 'CIF' && quantity > 0 ? (entry.delivery_window_remark || undefined) : undefined,
         })
       })
 
@@ -453,10 +491,12 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
           quantity: plan.month_quantity.toString(),
           laycan_5_days: plan.laycan_5_days || '',
           laycan_2_days: plan.laycan_2_days || '',
+          laycan_2_days_remark: plan.laycan_2_days_remark || '',
           loading_month: plan.loading_month || '',
           loading_window: plan.loading_window || '',
           delivery_month: plan.delivery_month || '',
           delivery_window: plan.delivery_window || '',
+          delivery_window_remark: plan.delivery_window_remark || '',
         })
       })
       setMonthEntries(entries)
@@ -654,6 +694,17 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
                                       },
                                     }}
                                   />
+                                  <TextField
+                                    label="Remark"
+                                    size="small"
+                                    value={entry.laycan_2_days_remark}
+                                    onChange={(e) => handleLaycanChange(month, year, entryIndex, 'laycan_2_days_remark', e.target.value)}
+                                    placeholder="Add remark..."
+                                    fullWidth
+                                    disabled={isLocked}
+                                    multiline
+                                    minRows={2}
+                                  />
                                 </Box>
                               )}
                               {showCifWindows && (
@@ -714,6 +765,17 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
                                       }}
                                     />
                                   </Box>
+                                  <TextField
+                                    label="Remark"
+                                    size="small"
+                                    value={entry.delivery_window_remark}
+                                    onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window_remark', e.target.value)}
+                                    placeholder="Add remark..."
+                                    fullWidth
+                                    disabled={isLocked}
+                                    multiline
+                                    minRows={2}
+                                  />
                                 </Box>
                               )}
                             </Box>

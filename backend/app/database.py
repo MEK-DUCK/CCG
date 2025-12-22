@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
@@ -68,6 +68,37 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+def ensure_schema():
+    """
+    Best-effort additive migrations so existing SQLite/PostgreSQL DBs keep working
+    as new nullable columns are introduced.
+    """
+    try:
+        insp = inspect(engine)
+        if not insp.has_table("monthly_plans"):
+            return
+
+        cols = [c.get("name") for c in insp.get_columns("monthly_plans")]
+        missing = []
+        for name in ["laycan_2_days_remark", "delivery_window_remark"]:
+            if name not in cols:
+                missing.append(name)
+
+        if not missing:
+            return
+
+        dialect = engine.dialect.name
+        with engine.begin() as conn:
+            for col in missing:
+                if dialect == "postgresql":
+                    conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS {col} TEXT'))
+                else:
+                    # SQLite (and others): we've already checked column absence, so safe to add.
+                    conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col} TEXT'))
+    except Exception:
+        # Never block app startup on best-effort migrations
+        return
 
 def get_db():
     """Dependency for getting database session"""

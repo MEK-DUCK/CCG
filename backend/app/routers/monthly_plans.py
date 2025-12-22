@@ -58,10 +58,12 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         planned_lifting_sizes=plan.planned_lifting_sizes,
         laycan_5_days=plan.laycan_5_days,
         laycan_2_days=plan.laycan_2_days,
+        laycan_2_days_remark=getattr(plan, "laycan_2_days_remark", None),
         loading_month=getattr(plan, "loading_month", None),
         loading_window=getattr(plan, "loading_window", None),
         delivery_month=getattr(plan, "delivery_month", None),
         delivery_window=getattr(plan, "delivery_window", None),
+        delivery_window_remark=getattr(plan, "delivery_window_remark", None),
         quarterly_plan_id=plan.quarterly_plan_id
     )
     db.add(db_plan)
@@ -77,8 +79,8 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         new_value=db_plan.month_quantity  # New quantity
     )
 
-    # Also log CIF window/month fields on creation if provided so Reconciliation shows them
-    for field_name in ['loading_month', 'loading_window', 'delivery_month', 'delivery_window']:
+    # Also log CIF window/month fields + remark fields on creation if provided so Reconciliation shows them
+    for field_name in ['loading_month', 'loading_window', 'delivery_month', 'delivery_window', 'laycan_2_days_remark', 'delivery_window_remark']:
         val = getattr(db_plan, field_name, None)
         if val is not None and val != '':
             log_monthly_plan_action(
@@ -180,10 +182,12 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
         'planned_lifting_sizes',
         'laycan_5_days',
         'laycan_2_days',
+        'laycan_2_days_remark',
         'loading_month',
         'loading_window',
         'delivery_month',
         'delivery_window',
+        'delivery_window_remark',
         'month',
         'year',
     ]:

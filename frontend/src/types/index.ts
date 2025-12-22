@@ -66,10 +66,12 @@ export interface MonthlyPlan {
   planned_lifting_sizes?: string
   laycan_5_days?: string  // For FOB contracts only
   laycan_2_days?: string  // For FOB contracts only
+  laycan_2_days_remark?: string
   loading_month?: string  // For CIF contracts only (planning)
   loading_window?: string  // For CIF contracts only
   delivery_month?: string  // For CIF contracts only (planning)
   delivery_window?: string  // For CIF contracts only
+  delivery_window_remark?: string
   quarterly_plan_id: number
   created_at: string
   updated_at?: string

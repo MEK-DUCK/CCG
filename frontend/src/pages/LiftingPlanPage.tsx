@@ -39,6 +39,7 @@ interface ContractQuarterlyData {
   customerName: string
   contractId: number
   contractNumber: string
+  productsText: string
   contractType: 'FOB' | 'CIF'
   month1Entries: MonthlyPlanEntry[]  // All entries for month 1
   month2Entries: MonthlyPlanEntry[]  // All entries for month 2
@@ -111,11 +112,16 @@ export default function LiftingPlanPage() {
       const customer = customers.find(c => c.id === contract.customer_id)
       if (!customer) return
 
+      const productsText = Array.isArray(contract.products) && contract.products.length > 0
+        ? contract.products.map((p) => p?.name).filter(Boolean).join(', ')
+        : '-'
+
       dataMap.set(contract.id, {
         customerId: contract.customer_id,
         customerName: customer.name,
         contractId: contract.id,
         contractNumber: contract.contract_number,
+        productsText,
         contractType: contract.contract_type,
         month1Entries: [],
         month2Entries: [],
@@ -253,6 +259,7 @@ export default function LiftingPlanPage() {
         return {
           'Customer': data.customerName,
           'Contract Number': data.contractNumber,
+          'Product(s)': data.productsText || '-',
           'Type': data.contractType,
           [getMonthName(selectedQuarter, 0)]: month1Text,
           [getMonthName(selectedQuarter, 1)]: month2Text,
@@ -269,6 +276,7 @@ export default function LiftingPlanPage() {
       const colWidths = [
         { wch: 20 }, // Customer
         { wch: 18 }, // Contract Number
+        { wch: 20 }, // Products
         { wch: 10 }, // Type
         { wch: 18 }, // Month 1
         { wch: 18 }, // Month 2
@@ -356,6 +364,7 @@ export default function LiftingPlanPage() {
         return [
           data.customerName,
           data.contractNumber,
+          data.productsText || '-',
           data.contractType,
           month1Text,
           month2Text,
@@ -367,7 +376,7 @@ export default function LiftingPlanPage() {
 
       // Add table using autoTable
       autoTable(doc, {
-        head: [['Customer', 'Contract Number', 'Type', getMonthName(selectedQuarter, 0), getMonthName(selectedQuarter, 1), getMonthName(selectedQuarter, 2), `Total (${selectedQuarter})`, 'Remark']],
+        head: [['Customer', 'Contract Number', 'Product(s)', 'Type', getMonthName(selectedQuarter, 0), getMonthName(selectedQuarter, 1), getMonthName(selectedQuarter, 2), `Total (${selectedQuarter})`, 'Remark']],
         body: tableData,
         startY: 25,
         styles: { fontSize: 8 },
@@ -375,12 +384,13 @@ export default function LiftingPlanPage() {
         columnStyles: {
           0: { cellWidth: 35 },
           1: { cellWidth: 30 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 30 },
+          2: { cellWidth: 35 },
+          3: { cellWidth: 20 },
           4: { cellWidth: 30 },
           5: { cellWidth: 30 },
-          6: { cellWidth: 25 },
-          7: { cellWidth: 40 },
+          6: { cellWidth: 30 },
+          7: { cellWidth: 25 },
+          8: { cellWidth: 40 },
         },
       })
 
@@ -436,6 +446,7 @@ export default function LiftingPlanPage() {
             <TableRow>
               <TableCell sx={{ minWidth: isMobile ? 150 : 200, fontWeight: 'bold' }}>Customer</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 150 : 200, fontWeight: 'bold' }}>Contract Number</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 160 : 220, fontWeight: 'bold' }}>Product(s)</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold' }}>Type</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 150, fontWeight: 'bold' }}>{getMonthName(selectedQuarter, 0)}</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 150, fontWeight: 'bold' }}>{getMonthName(selectedQuarter, 1)}</TableCell>
@@ -457,6 +468,7 @@ export default function LiftingPlanPage() {
               >
                 <TableCell sx={{ fontWeight: 'medium' }}>{data.customerName}</TableCell>
                 <TableCell>{data.contractNumber}</TableCell>
+                <TableCell>{data.productsText || '-'}</TableCell>
                 <TableCell>
                   <Chip 
                     label={data.contractType} 

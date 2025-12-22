@@ -120,10 +120,12 @@ class MonthlyPlanBase(BaseModel):
     planned_lifting_sizes: Optional[str] = None
     laycan_5_days: Optional[str] = None  # For FOB contracts only
     laycan_2_days: Optional[str] = None  # For FOB contracts only
+    laycan_2_days_remark: Optional[str] = Field(None, max_length=10000)
     loading_month: Optional[str] = None  # For CIF contracts only (planning)
     loading_window: Optional[str] = None  # For CIF contracts only
     delivery_month: Optional[str] = None  # For CIF contracts only (planning)
     delivery_window: Optional[str] = None  # For CIF contracts only
+    delivery_window_remark: Optional[str] = Field(None, max_length=10000)
 
 class MonthlyPlanCreate(MonthlyPlanBase):
     quarterly_plan_id: int
@@ -136,10 +138,12 @@ class MonthlyPlanUpdate(BaseModel):
     planned_lifting_sizes: Optional[str] = None
     laycan_5_days: Optional[str] = None
     laycan_2_days: Optional[str] = None
+    laycan_2_days_remark: Optional[str] = Field(None, max_length=10000)
     loading_month: Optional[str] = None
     loading_window: Optional[str] = None
     delivery_month: Optional[str] = None
     delivery_window: Optional[str] = None
+    delivery_window_remark: Optional[str] = Field(None, max_length=10000)
 
 class MonthlyPlan(MonthlyPlanBase):
     id: int

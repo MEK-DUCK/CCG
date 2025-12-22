@@ -96,10 +96,12 @@ class MonthlyPlan(Base):
     planned_lifting_sizes = Column(Text)  # JSON string or comma-separated
     laycan_5_days = Column(String, nullable=True)  # For FOB contracts only
     laycan_2_days = Column(String, nullable=True)  # For FOB contracts only
+    laycan_2_days_remark = Column(Text, nullable=True)  # Free-form remark under "2 Days"
     loading_month = Column(String, nullable=True)  # For CIF contracts only (planning)
     loading_window = Column(String, nullable=True)  # For CIF contracts only
     delivery_month = Column(String, nullable=True)  # For CIF contracts only (planning)
     delivery_window = Column(String, nullable=True)  # For CIF contracts only
+    delivery_window_remark = Column(Text, nullable=True)  # Free-form remark under "Delivery Window"
     quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
