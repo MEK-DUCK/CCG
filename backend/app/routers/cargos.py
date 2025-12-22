@@ -267,7 +267,7 @@ def read_in_road_cif(db: Session = Depends(get_db)):
     """Get CIF cargos that completed loading but not discharge"""
     try:
         from sqlalchemy import and_
-
+        
         # CIF In-Road tab should show cargos after loading completion until discharge completion.
         # We include both:
         # - COMPLETED_LOADING (CIF cargo after loading completion)
@@ -572,7 +572,7 @@ def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
             {models.CargoAuditLog.cargo_id: None, models.CargoAuditLog.cargo_db_id: db_cargo.id},
             synchronize_session=False
         )
-
+    
         db.delete(db_cargo)
         db.commit()
         return {"message": "Cargo deleted successfully"}

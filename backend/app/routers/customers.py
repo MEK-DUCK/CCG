@@ -75,7 +75,7 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
         db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
         if db_customer is None:
             raise HTTPException(status_code=404, detail="Customer not found")
-
+        
         # IMPORTANT: audit logs must not block cascading deletes from customer -> contracts -> plans -> cargos.
         contract_ids = [c.id for c in db.query(models.Contract.id).filter(models.Contract.customer_id == customer_id).all()]
         if contract_ids:

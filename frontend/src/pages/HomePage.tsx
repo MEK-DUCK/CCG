@@ -812,7 +812,7 @@ export default function HomePage() {
     if (contract.contract_type !== 'FOB') {
       return 'TBA'
     }
-
+    
     // Priority: 2 days > 5 days > TBA
     if (monthlyPlan.laycan_2_days) {
       return monthlyPlan.laycan_2_days
@@ -2132,7 +2132,7 @@ export default function HomePage() {
 
   return (
     <Box>
-      {laycanAlerts.totalCount > 0 && (
+        {laycanAlerts.totalCount > 0 && (
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
           <NotificationBadge
             alerts={laycanAlerts.alerts}
@@ -2140,7 +2140,7 @@ export default function HomePage() {
             warningCount={laycanAlerts.warningCount}
             infoCount={laycanAlerts.infoCount}
           />
-        </Box>
+      </Box>
       )}
       <Paper sx={{ mt: 3 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>

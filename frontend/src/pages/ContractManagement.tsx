@@ -498,29 +498,29 @@ export default function ContractManagement() {
       <Grid container spacing={3}>
         {!selectedContract?.id && (
           <Grid item xs={12}>
-            <Box
-              sx={{
-                bgcolor: '#FFFFFF',
-                borderRadius: 3,
-                boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.05)',
-                overflow: 'hidden',
-              }}
-            >
-              <TableContainer>
-                <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Contract Number</TableCell>
-                    <TableCell>Customer</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Payment Method</TableCell>
-                    <TableCell>Products</TableCell>
-                    <TableCell>Period</TableCell>
-                    <TableCell>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {contracts.filter((contract) => {
+          <Box
+            sx={{
+              bgcolor: '#FFFFFF',
+              borderRadius: 3,
+              boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.05)',
+              overflow: 'hidden',
+            }}
+          >
+            <TableContainer>
+              <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Contract Number</TableCell>
+                  <TableCell>Customer</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Payment Method</TableCell>
+                  <TableCell>Products</TableCell>
+                  <TableCell>Period</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {contracts.filter((contract) => {
                   // Search filter
                   if (searchTerm.trim()) {
                     const searchLower = searchTerm.toLowerCase().trim()
@@ -649,7 +649,7 @@ export default function ContractManagement() {
               </Table>
             </TableContainer>
           </Box>
-          </Grid>
+        </Grid>
         )}
 
         {selectedContract && selectedContract.id ? (
