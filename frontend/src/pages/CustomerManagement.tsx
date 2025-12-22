@@ -180,9 +180,6 @@ export default function CustomerManagement() {
                   <Typography variant="body2" color="text.secondary">
                     No customers found. Click "Add Customer" to create one.
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    Debug: isLoading={isLoading ? 'true' : 'false'}, customers.length={customers.length}
-                  </Typography>
                 </TableCell>
               </TableRow>
             ) : (
