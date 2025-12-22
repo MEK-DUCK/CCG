@@ -51,8 +51,10 @@ interface ContractQuarterlyData {
 export default function LiftingPlanPage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const PRODUCT_FILTERS = ['GASOIL', 'JET A-1', 'FUEL OIL'] as const
   const [selectedQuarter, setSelectedQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>('Q1')
   const [selectedYear, setSelectedYear] = useState(2024) // Default to 2024 to match test data
+  const [selectedProduct, setSelectedProduct] = useState<string>('') // Product filter
   const [customers, setCustomers] = useState<Customer[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
@@ -112,9 +114,25 @@ export default function LiftingPlanPage() {
       const customer = customers.find(c => c.id === contract.customer_id)
       if (!customer) return
 
-      const productsText = Array.isArray(contract.products) && contract.products.length > 0
-        ? contract.products.map((p) => p?.name).filter(Boolean).join(', ')
-        : '-'
+      const normalizeProductCategory = (raw: unknown): string | null => {
+        if (typeof raw !== 'string') return null
+        const v = raw.trim()
+        if (!v) return null
+        const u = v.toUpperCase()
+        if (u === 'GASOIL' || u === 'GASOIL 10PPM') return 'GASOIL'
+        if (u === 'HFO' || u === 'LSFO') return 'FUEL OIL'
+        if (u === 'JET A-1' || u === 'JET A1') return 'JET A-1'
+        return v
+      }
+
+      const productCategories = new Set<string>()
+      if (Array.isArray(contract.products)) {
+        contract.products.forEach((p) => {
+          const cat = normalizeProductCategory((p as any)?.name)
+          if (cat) productCategories.add(cat)
+        })
+      }
+      const productsText = productCategories.size > 0 ? Array.from(productCategories).join(', ') : '-'
 
       dataMap.set(contract.id, {
         customerId: contract.customer_id,
@@ -207,14 +225,34 @@ export default function LiftingPlanPage() {
     return monthNames[quarter][index]
   }
 
-  const handleExportToExcel = () => {
-    // Dynamic import of xlsx to avoid issues if not installed
-    import('xlsx').then((XLSX) => {
-      const dataArray = Array.from(contractData.values()).sort((a, b) => {
+  const getProductOptions = (): string[] => {
+    // Explicit 3 filters as requested
+    return Array.from(PRODUCT_FILTERS)
+  }
+
+  const matchesSelectedProduct = (productsText: string, product: string): boolean => {
+    if (!product) return true
+    const parts = (productsText || '')
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+    return parts.includes(product)
+  }
+
+  const getFilteredDataArray = (): ContractQuarterlyData[] => {
+    return Array.from(contractData.values())
+      .filter((d) => matchesSelectedProduct(d.productsText || '', selectedProduct))
+      .sort((a, b) => {
         const customerCompare = a.customerName.localeCompare(b.customerName)
         if (customerCompare !== 0) return customerCompare
         return a.contractNumber.localeCompare(b.contractNumber)
       })
+  }
+
+  const handleExportToExcel = () => {
+    // Dynamic import of xlsx to avoid issues if not installed
+    import('xlsx').then((XLSX) => {
+      const dataArray = getFilteredDataArray()
 
       const exportData: any[] = dataArray.map((data) => {
         // Format month 1 entries
@@ -308,11 +346,7 @@ export default function LiftingPlanPage() {
       const { jsPDF } = await import('jspdf')
       const autoTable = (await import('jspdf-autotable')).default
       
-      const dataArray = Array.from(contractData.values()).sort((a, b) => {
-        const customerCompare = a.customerName.localeCompare(b.customerName)
-        if (customerCompare !== 0) return customerCompare
-        return a.contractNumber.localeCompare(b.contractNumber)
-      })
+      const dataArray = getFilteredDataArray()
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
       
@@ -415,17 +449,12 @@ export default function LiftingPlanPage() {
       )
     }
 
-    const dataArray = Array.from(contractData.values()).sort((a, b) => {
-      // Sort by customer name first, then by contract number
-      const customerCompare = a.customerName.localeCompare(b.customerName)
-      if (customerCompare !== 0) return customerCompare
-      return a.contractNumber.localeCompare(b.contractNumber)
-    })
+    const dataArray = getFilteredDataArray()
 
     if (dataArray.length === 0) {
       return (
         <Typography variant="body1" color="text.secondary" sx={{ p: 2 }}>
-          No contracts found
+          {selectedProduct ? `No contracts found for product: ${selectedProduct}` : 'No contracts found'}
         </Typography>
       )
     }
@@ -690,6 +719,22 @@ export default function LiftingPlanPage() {
                   </MenuItem>
                 )
               })}
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel>Product</InputLabel>
+            <Select
+              value={selectedProduct}
+              label="Product"
+              onChange={(e) => setSelectedProduct(String(e.target.value))}
+            >
+              <MenuItem value="">All Products</MenuItem>
+              {getProductOptions().map((p) => (
+                <MenuItem key={p} value={p}>
+                  {p}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Box>
