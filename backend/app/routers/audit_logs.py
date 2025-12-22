@@ -23,12 +23,11 @@ def _parse_float(val: Optional[str]) -> float:
         return 0.0
 
 
-def _format_kt(qty_mt: float) -> str:
-    # Quantities are stored as MT; display in kt (1 kt = 1000 MT).
-    kt = qty_mt / 1000.0
-    if abs(kt - round(kt)) < 1e-9:
-        return f"{int(round(kt))}kt"
-    return f"{kt:.1f}kt"
+def _format_kt(qty_kt: float) -> str:
+    # In this app, quantities are treated as KT throughout the UI.
+    if abs(qty_kt - round(qty_kt)) < 1e-9:
+        return f"{int(round(qty_kt))} KT"
+    return f"{qty_kt:.1f} KT"
 
 
 def _most_recent_thursday_end(now: datetime) -> datetime:

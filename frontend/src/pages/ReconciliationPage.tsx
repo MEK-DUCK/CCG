@@ -23,17 +23,20 @@ import {
 } from '@mui/material'
 import { format } from 'date-fns'
 import { Refresh } from '@mui/icons-material'
-import { auditLogAPI } from '../api/client'
+import { auditLogAPI, contractAPI } from '../api/client'
 import type {
   PlanAuditLog,
   MonthlyPlanAuditLog,
   QuarterlyPlanAuditLog,
   WeeklyQuantityComparisonResponse,
+  Contract,
+  ContractProduct,
 } from '../types'
 
 const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 export default function ReconciliationPage() {
+  const PRODUCT_FILTERS = ['GASOIL', 'JET A-1', 'FUEL OIL'] as const
   const [logs, setLogs] = useState<PlanAuditLog[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
@@ -44,11 +47,24 @@ export default function ReconciliationPage() {
   const [weeklyLoading, setWeeklyLoading] = useState(false)
   const [weeklyData, setWeeklyData] = useState<WeeklyQuantityComparisonResponse | null>(null)
   const [weeklyError, setWeeklyError] = useState<string | null>(null)
+  const [weeklyProduct, setWeeklyProduct] = useState<string>('') // '' = all
+  const [contracts, setContracts] = useState<Contract[]>([])
 
   useEffect(() => {
     loadLogs()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth, selectedYear, selectedAction])
+
+  useEffect(() => {
+    // Load contracts once so weekly recon can filter by product category
+    contractAPI
+      .getAll()
+      .then((res) => setContracts(Array.isArray(res.data) ? (res.data as Contract[]) : []))
+      .catch((e) => {
+        console.error('Error loading contracts (weekly product filter):', e)
+        setContracts([])
+      })
+  }, [])
 
   useEffect(() => {
     loadWeeklyComparison()
@@ -115,9 +131,42 @@ export default function ReconciliationPage() {
   }
 
   const fmtQty = (qty: number) => {
-    const kt = qty / 1000
-    if (Math.abs(kt - Math.round(kt)) < 1e-9) return `${Math.round(kt)}kt`
-    return `${kt.toFixed(1)}kt`
+    // Quantities are treated as KT across the app (match Lifting Plan display).
+    if (Math.abs(qty - Math.round(qty)) < 1e-9) return `${Math.round(qty).toLocaleString()} KT`
+    return `${qty.toLocaleString(undefined, { maximumFractionDigits: 1 })} KT`
+  }
+
+  const normalizeProductCategory = (raw: unknown): (typeof PRODUCT_FILTERS)[number] | null => {
+    if (typeof raw !== 'string') return null
+    const v = raw.trim()
+    if (!v) return null
+    const u = v.toUpperCase()
+    if (u === 'GASOIL' || u === 'GASOIL 10PPM') return 'GASOIL'
+    if (u === 'HFO' || u === 'LSFO') return 'FUEL OIL'
+    if (u === 'JET A-1' || u === 'JET A1') return 'JET A-1'
+    return null
+  }
+
+  const contractIdToCategories = useMemo(() => {
+    const map = new Map<number, Set<string>>()
+    contracts.forEach((c) => {
+      const cats = new Set<string>()
+      if (Array.isArray(c.products)) {
+        c.products.forEach((p: ContractProduct) => {
+          const cat = normalizeProductCategory(p?.name)
+          if (cat) cats.add(cat)
+        })
+      }
+      map.set(c.id, cats)
+    })
+    return map
+  }, [contracts])
+
+  const isContractIncludedByProduct = (contractId: number): boolean => {
+    if (!weeklyProduct) return true
+    const cats = contractIdToCategories.get(contractId)
+    if (!cats) return false
+    return cats.has(weeklyProduct)
   }
 
   const weeklyTotals = useMemo(() => {
@@ -130,6 +179,7 @@ export default function ReconciliationPage() {
     for (let m = 1; m <= 12; m++) {
       const changes: Array<{ label: string; delta: number }> = []
       weeklyData.contracts.forEach((c) => {
+        if (!isContractIncludedByProduct(c.contract_id)) return
         const mm = c.months?.find((x) => x.month === m)
         if (!mm) return
         prevByMonth[m] += mm.previous_quantity || 0
@@ -154,7 +204,7 @@ export default function ReconciliationPage() {
     const previousTotal = prevByMonth.slice(1).reduce((a, b) => a + b, 0)
     const currentTotal = curByMonth.slice(1).reduce((a, b) => a + b, 0)
     return { prevByMonth, curByMonth, remarkByMonth, previousTotal, currentTotal }
-  }, [weeklyData])
+  }, [weeklyData, weeklyProduct, contractIdToCategories])
 
   const getActionColor = (action: string) => {
     switch (action) {
@@ -273,7 +323,7 @@ export default function ReconciliationPage() {
                 Weekly Quantity Comparison (Sun–Thu)
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                Total quantities across all contracts. Remarks show which contracts changed for each month.
+                Total quantities across {weeklyProduct ? weeklyProduct : 'all products'}. Remarks show which contracts changed for each month.
               </Typography>
               {weeklyData && (
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
@@ -283,6 +333,17 @@ export default function ReconciliationPage() {
               )}
             </Box>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel>Product</InputLabel>
+                <Select value={weeklyProduct} label="Product" onChange={(e) => setWeeklyProduct(String(e.target.value))}>
+                  <MenuItem value="">All Products</MenuItem>
+                  {PRODUCT_FILTERS.map((p) => (
+                    <MenuItem key={p} value={p}>
+                      {p}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <Button variant="outlined" onClick={loadWeeklyComparison} disabled={weeklyLoading} sx={{ minWidth: 120 }}>
                 Refresh
               </Button>
