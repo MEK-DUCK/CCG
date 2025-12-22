@@ -4,6 +4,7 @@ import {
   Tabs,
   Tab,
   Paper,
+  Divider,
   Table,
   TableBody,
   TableCell,
@@ -30,6 +31,7 @@ import {
   useTheme,
 } from '@mui/material'
 import { FileDownload, Search, Description } from '@mui/icons-material'
+import { alpha } from '@mui/material/styles'
 import { format } from 'date-fns'
 import { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, quarterlyPlanAPI, documentsAPI } from '../api/client'
 import type { Cargo, Customer, Contract, MonthlyPlan, CargoStatus, ContractProduct, LCStatus, CargoPortOperation, PortOperationStatus } from '../types'
@@ -2423,27 +2425,67 @@ export default function HomePage() {
           </Box>
           
           {/* Load Port Sections: same "one-line" look as Port Movement table, but per-port ops editable inline */}
-          <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {PORT_SECTIONS.map((port) => {
-              const rows = (
-                activeLoadings
-                  .map((cargo) => ({ cargo, op: getPortOpForCargo(cargo, port) }))
-                  // Show both Loading and Completed Loading so a completed port doesn't disappear
-                  // until ALL ports complete (then it moves to Completed Cargos tab).
-                  .filter((x) => x.op && (x.op.status === 'Loading' || x.op.status === 'Completed Loading'))
-              ) as Array<{ cargo: Cargo; op: CargoPortOperation }>
+          <Paper
+            variant="outlined"
+            sx={{
+              mb: 2,
+              borderRadius: 2,
+              overflow: 'hidden',
+              borderColor: alpha(theme.palette.info.main, 0.35),
+              bgcolor: alpha(theme.palette.info.main, 0.03),
+            }}
+          >
+            <Box
+              sx={{
+                px: { xs: 1.5, sm: 2 },
+                py: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 2,
+                flexWrap: 'wrap',
+                bgcolor: alpha(theme.palette.info.main, 0.12),
+                borderBottom: `1px solid ${alpha(theme.palette.info.main, 0.25)}`,
+              }}
+            >
+              <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+                Active Loadings (by Load Port)
+              </Typography>
+            </Box>
 
-              // Keep Loading first for quick visibility, then Completed Loading
-              rows.sort((a, b) => (a.op.status === b.op.status ? 0 : a.op.status === 'Loading' ? -1 : 1))
+            <Box sx={{ p: { xs: 1.5, sm: 2 }, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {PORT_SECTIONS.map((port) => {
+                const rows = (
+                  activeLoadings
+                    .map((cargo) => ({ cargo, op: getPortOpForCargo(cargo, port) }))
+                    // Show both Loading and Completed Loading so a completed port doesn't disappear
+                    // until ALL ports complete (then it moves to Completed Cargos tab).
+                    .filter((x) => x.op && (x.op.status === 'Loading' || x.op.status === 'Completed Loading'))
+                ) as Array<{ cargo: Cargo; op: CargoPortOperation }>
 
-              return (
-                <Box key={port}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      {port}
-                    </Typography>
-                    <Chip size="small" label={`${rows.length}`} />
-                  </Box>
+                // Keep Loading first for quick visibility, then Completed Loading
+                rows.sort((a, b) => (a.op.status === b.op.status ? 0 : a.op.status === 'Loading' ? -1 : 1))
+
+                return (
+                  <Box key={port}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        mb: 1,
+                        px: 1.5,
+                        py: 1,
+                        borderRadius: 1,
+                        bgcolor: alpha(theme.palette.info.main, 0.10),
+                        border: `1px solid ${alpha(theme.palette.info.main, 0.22)}`,
+                      }}
+                    >
+                      <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+                        {port}
+                      </Typography>
+                      <Chip size="small" label={`${rows.length}`} />
+                    </Box>
 
                   {rows.length === 0 ? (
                     <Paper sx={{ p: 2, borderRadius: 2 }}>
@@ -2613,9 +2655,31 @@ export default function HomePage() {
                       </Table>
                     </TableContainer>
                   )}
-                </Box>
-              )
-            })}
+                  </Box>
+                )
+              })}
+            </Box>
+          </Paper>
+
+          <Box sx={{ mt: 3, mb: 2 }}>
+            <Divider sx={{ borderColor: theme.palette.divider, borderBottomWidth: 2 }} />
+            <Box
+              sx={{
+                mt: 1.5,
+                display: 'flex',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                gap: 2,
+                flexWrap: 'wrap',
+              }}
+            >
+              <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+                Planned / Upcoming Cargos
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Filtered by {formatSelectedMonthsLabel(selectedMonths, selectedYear)}
+              </Typography>
+            </Box>
           </Box>
 
           {renderPortMovementTable()}

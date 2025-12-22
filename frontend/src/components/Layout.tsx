@@ -122,7 +122,15 @@ export default function Layout({ children }: LayoutProps) {
           borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
         }}
       >
-        <Toolbar sx={{ py: 1, justifyContent: 'center', position: 'relative', maxWidth: '1400px', mx: 'auto', width: '100%', px: { xs: 2, sm: 3 } }}>
+        <Toolbar
+          sx={{
+            py: 1,
+            justifyContent: 'center',
+            position: 'relative',
+            width: '100%',
+            px: { xs: 2, sm: 3 },
+          }}
+        >
           {isMobile ? (
             <>
               <IconButton
@@ -235,12 +243,14 @@ export default function Layout({ children }: LayoutProps) {
           {drawer}
         </Drawer>
       </Box>
-      <Container 
-        maxWidth="xl" 
-        sx={{ 
-          mt: { xs: 3, sm: 4, md: 5 }, 
-          mb: { xs: 3, sm: 4, md: 5 }, 
+      <Container
+        maxWidth={false}
+        disableGutters
+        sx={{
+          mt: { xs: 3, sm: 4, md: 5 },
+          mb: { xs: 3, sm: 4, md: 5 },
           flex: 1,
+          width: '100%',
           px: { xs: 2, sm: 3, md: 4 },
         }}
       >
