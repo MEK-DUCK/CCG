@@ -163,6 +163,34 @@ class Cargo(Base):
     
     monthly_plan = relationship("MonthlyPlan", back_populates="cargos")
     contract = relationship("Contract")
+    port_operations = relationship("CargoPortOperation", back_populates="cargo", cascade="all, delete-orphan")
+
+
+class CargoPortOperation(Base):
+    """
+    Per-load-port operational tracking for a cargo.
+    Allows the same cargo to be tracked independently across multiple load ports.
+    """
+    __tablename__ = "cargo_port_operations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cargo_id = Column(Integer, ForeignKey("cargos.id"), nullable=False, index=True)
+    port_code = Column(String, nullable=False, index=True)  # e.g. MAA, MAB, SHU, ZOR
+
+    # Per-port status (kept as String for easy migration across SQLite/Postgres)
+    status = Column(String, nullable=False, default="Planned")  # Planned | Loading | Completed Loading
+
+    # Per-port vessel operation fields (manual entry)
+    eta = Column(String, nullable=True)
+    berthed = Column(String, nullable=True)
+    commenced = Column(String, nullable=True)
+    etc = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    cargo = relationship("Cargo", back_populates="port_operations")
 
 class CargoAuditLog(Base):
     __tablename__ = "cargo_audit_logs"

@@ -238,10 +238,48 @@ class Cargo(CargoBase):
     monthly_plan_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+    port_operations: Optional[List["CargoPortOperation"]] = None
     
     class Config:
         from_attributes = True
         use_enum_values = True
+
+
+class CargoPortOperationBase(BaseModel):
+    port_code: str = Field(..., min_length=1, max_length=8)
+    status: str = Field("Planned")  # Planned | Loading | Completed Loading
+    eta: Optional[str] = None
+    berthed: Optional[str] = None
+    commenced: Optional[str] = None
+    etc: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CargoPortOperationCreate(CargoPortOperationBase):
+    pass
+
+
+class CargoPortOperationUpdate(BaseModel):
+    status: Optional[str] = None
+    eta: Optional[str] = None
+    berthed: Optional[str] = None
+    commenced: Optional[str] = None
+    etc: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CargoPortOperation(CargoPortOperationBase):
+    id: int
+    cargo_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Resolve forward refs (Cargo.port_operations)
+Cargo.model_rebuild()
 
 # Cargo Audit Log Schemas
 class CargoAuditLog(BaseModel):

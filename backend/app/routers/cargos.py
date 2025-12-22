@@ -12,6 +12,78 @@ import json
 
 router = APIRouter()
 
+# Supported load port codes for operational tracking sections in Port Movement UI
+SUPPORTED_LOAD_PORTS = {"MAA", "MAB", "SHU", "ZOR"}
+PORT_OP_ALLOWED_STATUSES = {"Planned", "Loading", "Completed Loading"}
+
+def _parse_load_ports(load_ports: Optional[str]) -> List[str]:
+    """
+    Parse Cargo.load_ports into a list of port codes.
+    Expected format from UI/backend is a comma-separated string, but we accept JSON arrays too.
+    """
+    if not load_ports:
+        return []
+    raw = load_ports.strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            arr = json.loads(raw)
+            if isinstance(arr, list):
+                return [str(x).strip() for x in arr if str(x).strip()]
+        except Exception:
+            pass
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+def _sync_port_operations(db: Session, cargo: models.Cargo, ports: List[str]):
+    """
+    Ensure per-port operation rows exist for the given cargo + selected ports.
+    Also removes operations for ports no longer selected (only for SUPPORTED_LOAD_PORTS).
+    """
+    selected = [p for p in ports if p in SUPPORTED_LOAD_PORTS]
+    existing = {op.port_code: op for op in getattr(cargo, "port_operations", []) or []}
+
+    # Create missing operations
+    for port in selected:
+        if port not in existing:
+            try:
+                # Prefer relationship append so in-memory collections update immediately
+                cargo.port_operations.append(models.CargoPortOperation(port_code=port, status="Planned"))
+            except Exception:
+                db.add(models.CargoPortOperation(cargo_id=cargo.id, port_code=port, status="Planned"))
+
+    # Remove operations for removed ports (supported only)
+    for port_code, op in existing.items():
+        if port_code in SUPPORTED_LOAD_PORTS and port_code not in selected:
+            db.delete(op)
+
+def _recompute_cargo_status_from_port_ops(db: Session, cargo: models.Cargo):
+    """
+    Keep cargo.status aligned with per-port statuses for the three loading lifecycle statuses.
+    Only applies when cargo is in the loading lifecycle (Planned/Loading/Completed Loading).
+    """
+    try:
+        current = cargo.status
+        if current not in {CargoStatus.PLANNED, CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING}:
+            return
+
+        ops = getattr(cargo, "port_operations", None)
+        if not ops:
+            return
+
+        statuses = [op.status for op in ops if op.port_code in SUPPORTED_LOAD_PORTS]
+        if not statuses:
+            return
+
+        if all(s == "Completed Loading" for s in statuses):
+            cargo.status = CargoStatus.COMPLETED_LOADING
+        elif any(s == "Loading" for s in statuses):
+            cargo.status = CargoStatus.LOADING
+        else:
+            cargo.status = CargoStatus.PLANNED
+    except Exception:
+        return
+
 def update_cargo_status(cargo: models.Cargo, db: Session):
     """Update cargo status - now manual, but keep this for backward compatibility"""
     # Status is now set manually by the user, so we don't auto-update based on dates
@@ -111,6 +183,9 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
     try:
         db.add(db_cargo)
         db.flush()  # Flush to get the ID
+
+        # Create per-port operation rows for supported ports (MAA/MAB/SHU/ZOR)
+        _sync_port_operations(db, db_cargo, _parse_load_ports(db_cargo.load_ports))
         
         # Log the creation
         log_cargo_action(
@@ -227,6 +302,11 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
             )
         )
         cargos = query.all()
+        # Backfill port operations for existing cargos that predate this feature
+        for c in cargos:
+            if (getattr(c, "port_operations", None) is not None) and len(getattr(c, "port_operations")) == 0:
+                _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
+        db.commit()
         return cargos
     except Exception as e:
         import traceback
@@ -260,7 +340,45 @@ def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = Non
             query = query.filter(models.MonthlyPlan.year == year)
     
     cargos = query.all()
+    # Backfill port operations for older cargos so completed view can show per-port details.
+    for c in cargos:
+        if (getattr(c, "port_operations", None) is not None) and len(getattr(c, "port_operations")) == 0:
+            _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
+    db.commit()
     return cargos
+
+
+@router.get("/active-loadings", response_model=List[schemas.Cargo])
+def read_active_loadings(db: Session = Depends(get_db)):
+    """
+    Return cargos that have at least one per-port operation in Loading or Completed Loading,
+    regardless of month/year.
+
+    These rows power the top port sections and must not be affected by the Port Movement
+    month/year filter.
+    """
+    from sqlalchemy import and_, or_
+    try:
+        query = db.query(models.Cargo).join(models.CargoPortOperation).filter(
+            models.CargoPortOperation.status.in_(["Loading", "Completed Loading"])
+        ).filter(
+            # Do not show cargos that are already fully completed or in-road
+            models.Cargo.status.notin_([CargoStatus.COMPLETED_LOADING, CargoStatus.IN_ROAD])
+        ).distinct(models.Cargo.id)
+
+        cargos = query.all()
+
+        # Backfill port operations for existing cargos that predate this feature
+        for c in cargos:
+            if (getattr(c, "port_operations", None) is not None) and len(getattr(c, "port_operations")) == 0:
+                _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
+        db.commit()
+        return cargos
+    except Exception as e:
+        import traceback
+        error_msg = f"Error in read_active_loadings: {str(e)}\n{traceback.format_exc()}"
+        print(f"[ERROR] {error_msg}")
+        raise HTTPException(status_code=500, detail=f"Error loading active loadings: {str(e)}")
 
 @router.get("/in-road-cif", response_model=List[schemas.Cargo])
 def read_in_road_cif(db: Session = Depends(get_db)):
@@ -323,6 +441,56 @@ def read_cargo(cargo_id: int, db: Session = Depends(get_db)):
     if cargo is None:
         raise HTTPException(status_code=404, detail="Cargo not found")
     return cargo
+
+
+@router.get("/{cargo_id}/port-operations", response_model=List[schemas.CargoPortOperation])
+def list_port_operations(cargo_id: int, db: Session = Depends(get_db)):
+    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
+    if cargo is None:
+        raise HTTPException(status_code=404, detail="Cargo not found")
+    ops = db.query(models.CargoPortOperation).filter(models.CargoPortOperation.cargo_id == cargo_id).all()
+    return ops
+
+
+@router.put("/{cargo_id}/port-operations/{port_code}", response_model=schemas.CargoPortOperation)
+def upsert_port_operation(
+    cargo_id: int,
+    port_code: str,
+    op: schemas.CargoPortOperationUpdate,
+    db: Session = Depends(get_db)
+):
+    port_code = (port_code or "").strip().upper()
+    if port_code not in SUPPORTED_LOAD_PORTS:
+        raise HTTPException(status_code=400, detail=f"Invalid port_code: {port_code}. Must be one of: {', '.join(sorted(SUPPORTED_LOAD_PORTS))}")
+
+    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
+    if cargo is None:
+        raise HTTPException(status_code=404, detail="Cargo not found")
+
+    update_data = op.model_dump(exclude_unset=True) if hasattr(op, "model_dump") else op.dict(exclude_unset=True)
+    if "status" in update_data and update_data["status"] is not None:
+        if update_data["status"] not in PORT_OP_ALLOWED_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {update_data['status']}. Must be one of: {', '.join(sorted(PORT_OP_ALLOWED_STATUSES))}")
+
+    db_op = db.query(models.CargoPortOperation).filter(
+        models.CargoPortOperation.cargo_id == cargo_id,
+        models.CargoPortOperation.port_code == port_code,
+    ).first()
+
+    if not db_op:
+        db_op = models.CargoPortOperation(cargo_id=cargo_id, port_code=port_code, status="Planned")
+        db.add(db_op)
+        db.flush()
+
+    for field, value in update_data.items():
+        if hasattr(db_op, field):
+            setattr(db_op, field, value)
+
+    # Recompute cargo status based on per-port status
+    _recompute_cargo_status_from_port_ops(db, cargo)
+    db.commit()
+    db.refresh(db_op)
+    return db_op
 
 @router.put("/{cargo_id}", response_model=schemas.Cargo)
 def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depends(get_db)):
@@ -534,9 +702,25 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
     
     # Status is now manual - user sets it via the UI
     # No automatic status updates
+
+    # Keep per-port operations aligned when load_ports changes
+    if 'load_ports' in update_data:
+        _sync_port_operations(db, db_cargo, _parse_load_ports(getattr(db_cargo, "load_ports", None)))
+
+    # If user sets cargo to "Loading", move all selected port operations into "Loading"
+    # so the cargo appears under the port sections immediately.
+    try:
+        if 'status' in update_data and db_cargo.status == CargoStatus.LOADING:
+            for op in getattr(db_cargo, "port_operations", []) or []:
+                if op.port_code in SUPPORTED_LOAD_PORTS and op.status == "Planned":
+                    op.status = "Loading"
+    except Exception:
+        pass
     
     print(f"[DEBUG] Committing cargo {cargo_id} update. Status before commit: {db_cargo.status}, LC Status: {db_cargo.lc_status}")
     try:
+        # Recompute status in case port ops imply completion (e.g., all ports completed)
+        _recompute_cargo_status_from_port_ops(db, db_cargo)
         db.commit()
         db.refresh(db_cargo)
         print(f"[DEBUG] Cargo {cargo_id} updated. Status after refresh: {db_cargo.status}, LC Status: {db_cargo.lc_status}")

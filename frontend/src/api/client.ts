@@ -110,6 +110,10 @@ export const cargoAPI = {
     if (year) params.year = year
     return client.get('/api/cargos/port-movement', { params })
   },
+  getActiveLoadings: () => client.get('/api/cargos/active-loadings'),
+  getPortOperations: (cargoId: number) => client.get(`/api/cargos/${cargoId}/port-operations`),
+  upsertPortOperation: (cargoId: number, portCode: string, data: any) =>
+    client.put(`/api/cargos/${cargoId}/port-operations/${portCode}`, data),
   getCompletedCargos: (month?: number, year?: number) => {
     const params: any = {}
     if (month) params.month = month

@@ -131,6 +131,23 @@ export interface Cargo {
   inspector_invoice_initials?: string
   inspector_invoice_date?: string
   lc_status?: LCStatus  // LC status (only for LC payment method contracts)
+  port_operations?: CargoPortOperation[]
+}
+
+export type PortOperationStatus = 'Planned' | 'Loading' | 'Completed Loading'
+
+export interface CargoPortOperation {
+  id: number
+  cargo_id: number
+  port_code: 'MAA' | 'MAB' | 'SHU' | 'ZOR' | (string & {})
+  status: PortOperationStatus
+  eta?: string
+  berthed?: string
+  commenced?: string
+  etc?: string
+  notes?: string
+  created_at: string
+  updated_at?: string
 }
 
 export interface CargoAuditLog {

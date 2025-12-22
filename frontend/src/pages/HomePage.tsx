@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Box,
   Tabs,
@@ -32,7 +32,7 @@ import {
 import { FileDownload, Search, Description } from '@mui/icons-material'
 import { format } from 'date-fns'
 import { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, quarterlyPlanAPI, documentsAPI } from '../api/client'
-import type { Cargo, Customer, Contract, MonthlyPlan, CargoStatus, ContractProduct, LCStatus } from '../types'
+import type { Cargo, Customer, Contract, MonthlyPlan, CargoStatus, ContractProduct, LCStatus, CargoPortOperation, PortOperationStatus } from '../types'
 import { parseLaycanDate } from '../utils/laycanParser'
 import { getLaycanAlertSeverity, getAlertColor, getAlertMessage } from '../utils/alertUtils'
 import { Tooltip, Badge } from '@mui/material'
@@ -67,9 +67,251 @@ function TabPanel(props: TabPanelProps) {
 export default function HomePage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
+  const LOAD_PORT_OPTIONS = ['MAA', 'MAB', 'SHU', 'ZOR'] as const
+  const PORT_SECTIONS = ['MAA', 'MAB', 'SHU', 'ZOR'] as const
+  const PORT_OP_STATUSES: PortOperationStatus[] = ['Planned', 'Loading', 'Completed Loading']
+
+  const parseLoadPorts = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return Array.from(new Set(value.map((v) => String(v).trim()).filter(Boolean)))
+    }
+    if (typeof value !== 'string') return []
+    const raw = value.trim()
+    if (!raw) return []
+
+    // Handle JSON array string: '["MAA","MAB"]'
+    if (raw.startsWith('[')) {
+      try {
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr)) {
+          return Array.from(new Set(arr.map((v) => String(v).trim()).filter(Boolean)))
+        }
+      } catch {
+        // fall through to CSV parsing
+      }
+    }
+
+    // Default: comma-separated string
+    return Array.from(
+      new Set(
+        raw
+          .split(',')
+          .map((p) => p.trim())
+          .filter(Boolean)
+      )
+    )
+  }
+
+  const formatLoadPorts = (ports: string[] | string): string => {
+    if (Array.isArray(ports)) return ports.join(', ')
+    return ports || ''
+  }
+
+  const portOpTimersRef = useRef<Record<string, number>>({})
+  const portMovementExportRowsRef = useRef<any[]>([])
+
+  const handlePortMovementExportToExcel = () => {
+    const rows = Array.isArray(portMovementExportRowsRef.current) ? portMovementExportRowsRef.current : []
+    // Dynamic import of xlsx to avoid issues if not installed
+    import('xlsx')
+      .then((XLSX) => {
+        const exportData: any[] = []
+
+        rows.forEach(({ cargo, contract, customer, laycan, monthlyPlan }) => {
+          exportData.push({
+            Laycan: laycan,
+            'Vessel Name': cargo ? cargo.vessel_name : 'TBA',
+            'Customer Name': customer ? customer.name : '-',
+            'Contract Number': contract ? contract.contract_number : '-',
+            'FOB/CIF': contract ? contract.contract_type : '-',
+            'Payment Method': contract && contract.payment_method ? contract.payment_method : '-',
+            'LC Status':
+              contract && contract.payment_method === 'LC' && cargo && cargo.lc_status ? cargo.lc_status : '-',
+            Product:
+              contract && contract.products && contract.products.length > 0
+                ? contract.products.map((p: ContractProduct) => p.name).join(', ')
+                : '-',
+            Quantity: cargo ? cargo.cargo_quantity : monthlyPlan ? monthlyPlan.month_quantity : '-',
+            'Load Port': cargo ? cargo.load_ports || '-' : contract ? contract.allowed_load_ports || '-' : '-',
+            Status: cargo ? cargo.status : 'Not Created',
+            Remark: cargo ? cargo.notes || '-' : '-',
+            'Inspector Name': cargo ? cargo.inspector_name || '-' : '-',
+            'Laycan Window': cargo ? cargo.laycan_window || '-' : '-',
+            ETA: cargo ? cargo.eta || '-' : '-',
+            Berthed: cargo ? cargo.berthed || '-' : '-',
+            Commenced: cargo ? cargo.commenced || '-' : '-',
+            ETC: cargo ? cargo.etc || '-' : '-',
+          })
+        })
+
+        const ws = XLSX.utils.json_to_sheet(exportData)
+
+        ws['!cols'] = [
+          { wch: 15 }, // Laycan
+          { wch: 20 }, // Vessel Name
+          { wch: 20 }, // Customer Name
+          { wch: 15 }, // Contract Number
+          { wch: 10 }, // FOB/CIF
+          { wch: 15 }, // Payment Method
+          { wch: 15 }, // LC Status
+          { wch: 20 }, // Product
+          { wch: 12 }, // Quantity
+          { wch: 15 }, // Load Port
+          { wch: 20 }, // Status
+          { wch: 30 }, // Remark
+          { wch: 20 }, // Inspector Name
+          { wch: 15 }, // Laycan Window
+          { wch: 15 }, // ETA
+          { wch: 15 }, // Berthed
+          { wch: 15 }, // Commenced
+          { wch: 15 }, // ETC
+        ]
+
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Port Movement')
+
+        const dateStr = new Date().toISOString().split('T')[0]
+        const filename = `Port_Movement_${dateStr}.xlsx`
+        XLSX.writeFile(wb, filename)
+      })
+      .catch((error) => {
+        console.error('Error exporting to Excel:', error)
+        alert('Error exporting to Excel. Please make sure the xlsx package is installed.')
+      })
+  }
+
+  const applyLocalPortOpPatch = (cargoId: number, portCode: string, patch: Partial<CargoPortOperation>) => {
+    setPortMovement((prev) =>
+      prev.map((c) => {
+        if (c.id !== cargoId) return c
+        const existing = Array.isArray(c.port_operations) ? c.port_operations : []
+        const found = existing.find((op) => op.port_code === portCode)
+        const base: CargoPortOperation = found || {
+          id: -1,
+          cargo_id: cargoId,
+          port_code: portCode as any,
+          status: 'Loading',
+          eta: undefined,
+          berthed: undefined,
+          commenced: undefined,
+          etc: undefined,
+          notes: undefined,
+          created_at: new Date().toISOString(),
+          updated_at: undefined,
+        }
+        const nextOp = { ...base, ...patch, port_code: base.port_code, cargo_id: cargoId }
+        const nextOps = found
+          ? existing.map((op) => (op.port_code === portCode ? (nextOp as CargoPortOperation) : op))
+          : [...existing, nextOp as CargoPortOperation]
+        return { ...c, port_operations: nextOps }
+      })
+    )
+    setEditingCargo((prev) => {
+      if (!prev || prev.id !== cargoId) return prev
+      const existing = Array.isArray(prev.port_operations) ? prev.port_operations : []
+      const found = existing.find((op) => op.port_code === portCode)
+      const base: CargoPortOperation = found || {
+        id: -1,
+        cargo_id: cargoId,
+        port_code: portCode as any,
+        status: 'Loading',
+        eta: undefined,
+        berthed: undefined,
+        commenced: undefined,
+        etc: undefined,
+        notes: undefined,
+        created_at: new Date().toISOString(),
+        updated_at: undefined,
+      }
+      const nextOp = { ...base, ...patch, port_code: base.port_code, cargo_id: cargoId }
+      const nextOps = found
+        ? existing.map((op) => (op.port_code === portCode ? (nextOp as CargoPortOperation) : op))
+        : [...existing, nextOp as CargoPortOperation]
+      return { ...prev, port_operations: nextOps }
+    })
+  }
+
+  const upsertPortOp = async (cargoId: number, portCode: string, patch: Partial<CargoPortOperation>) => {
+    const response = await cargoAPI.upsertPortOperation(cargoId, portCode, patch)
+    const saved = response.data as CargoPortOperation
+    setPortMovement((prev) =>
+      prev.map((c) => {
+        if (c.id !== cargoId) return c
+        const existing = Array.isArray(c.port_operations) ? c.port_operations : []
+        const next = existing.some((op) => op.port_code === saved.port_code)
+          ? existing.map((op) => (op.port_code === saved.port_code ? saved : op))
+          : [...existing, saved]
+        return { ...c, port_operations: next }
+      })
+    )
+    setEditingCargo((prev) => {
+      if (!prev || prev.id !== cargoId) return prev
+      const existing = Array.isArray(prev.port_operations) ? prev.port_operations : []
+      const next = existing.some((op) => op.port_code === saved.port_code)
+        ? existing.map((op) => (op.port_code === saved.port_code ? saved : op))
+        : [...existing, saved]
+      return { ...prev, port_operations: next }
+    })
+    // If completion changes, refresh lists so cargo moves tabs correctly.
+    if (patch.status) {
+      await loadPortMovement()
+      await loadActiveLoadings()
+      await loadData()
+    }
+  }
+
+  const schedulePortOpSave = (cargoId: number, portCode: string, patch: Partial<CargoPortOperation>) => {
+    // Optimistic UI update so typing is instant; server save happens in the background.
+    applyLocalPortOpPatch(cargoId, portCode, patch)
+    const key = `${cargoId}:${portCode}`
+    const existing = portOpTimersRef.current[key]
+    if (existing) window.clearTimeout(existing)
+    portOpTimersRef.current[key] = window.setTimeout(() => {
+      upsertPortOp(cargoId, portCode, patch).catch((e) => console.error('Error saving port operation:', e))
+    }, 500)
+  }
+
+  const getPortOpForCargo = (cargo: Cargo, port: string): CargoPortOperation | null => {
+    const ops = Array.isArray(cargo.port_operations) ? cargo.port_operations : []
+    const found = ops.find((op) => op.port_code === port)
+    if (found) return found
+    // Fallback for older cargos: infer ops from load_ports string
+    const inferredPorts = parseLoadPorts(cargo.load_ports)
+    if (!inferredPorts.includes(port)) return null
+    return {
+      id: -1,
+      cargo_id: cargo.id,
+      port_code: port,
+      status: (cargo.status as any) || 'Planned',
+      eta: undefined,
+      berthed: undefined,
+      commenced: undefined,
+      etc: undefined,
+      notes: undefined,
+      created_at: cargo.created_at,
+      updated_at: cargo.updated_at,
+    }
+  }
+
+  const isCargoInLoadingLanes = (cargo: Cargo): boolean => {
+    const ops = Array.isArray(cargo.port_operations) ? cargo.port_operations : []
+    if (ops.some((op) => op.status === 'Loading')) return true
+    return cargo.status === 'Loading'
+  }
+
+  const getCargoLaycanForRow = (cargo: Cargo): string => {
+    const monthlyPlan = monthlyPlans.find((mp) => mp.id === cargo.monthly_plan_id)
+    if (monthlyPlan) {
+      const contract = getContractForMonthlyPlan(monthlyPlan)
+      return getLaycanDisplay(monthlyPlan, contract)
+    }
+    return cargo.laycan_window || 'TBA'
+  }
   
   const [value, setValue] = useState(0)
   const [portMovement, setPortMovement] = useState<Cargo[]>([])
+  const [activeLoadings, setActiveLoadings] = useState<Cargo[]>([])
   const [completedCargos, setCompletedCargos] = useState<Cargo[]>([])
   const [inRoadCIF, setInRoadCIF] = useState<Cargo[]>([])
   const [completedInRoadCIF, setCompletedInRoadCIF] = useState<Cargo[]>([])
@@ -99,7 +341,7 @@ export default function HomePage() {
   const [newCargoMonthlyPlanId, setNewCargoMonthlyPlanId] = useState<number | null>(null) // For moving cargo
   const [cargoFormData, setCargoFormData] = useState({
     vessel_name: '',
-    load_ports: '',
+    load_ports: [] as string[],
     inspector_name: '',
     cargo_quantity: '',
     laycan_window: '',
@@ -133,10 +375,21 @@ export default function HomePage() {
       setIsInitialLoad(false)
       loadData()
       loadPortMovement()
+      loadActiveLoadings()
       loadMonthlyPlansForPortMovement()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const loadActiveLoadings = async () => {
+    try {
+      const res = await cargoAPI.getActiveLoadings()
+      setActiveLoadings(Array.isArray(res.data) ? res.data : [])
+    } catch (e) {
+      console.error('Error loading active loadings:', e)
+      setActiveLoadings([])
+    }
+  }
 
   useEffect(() => {
     // Reload completed cargos when month/year filter changes
@@ -315,7 +568,7 @@ export default function HomePage() {
     
     setCargoFormData({
       vessel_name: cargo.vessel_name,
-      load_ports: cargo.load_ports,
+      load_ports: parseLoadPorts(cargo.load_ports),
       inspector_name: cargo.inspector_name || '',
       cargo_quantity: cargoQuantity,
       laycan_window: laycanWindow,
@@ -455,7 +708,7 @@ export default function HomePage() {
     
     setCargoFormData({
       vessel_name: 'TBA',
-      load_ports: contract.allowed_load_ports || '',
+      load_ports: parseLoadPorts((contract as any).allowed_load_ports || ''),
       inspector_name: '',
       cargo_quantity: cargoQuantity,
       laycan_window: laycanWindow,
@@ -497,14 +750,10 @@ export default function HomePage() {
 
         const updatePayload: any = {
           vessel_name: cargoFormData.vessel_name,
-          load_ports: cargoFormData.load_ports,
+          load_ports: formatLoadPorts(cargoFormData.load_ports),
           inspector_name: cargoFormData.inspector_name || undefined,
           cargo_quantity: parseFloat(cargoFormData.cargo_quantity),
           laycan_window: cargoFormData.laycan_window || undefined,
-          eta: cargoFormData.eta || undefined,
-          berthed: cargoFormData.berthed || undefined,
-          commenced: cargoFormData.commenced || undefined,
-          etc: cargoFormData.etc || undefined,
           notes: cargoFormData.notes || undefined,
           status: cargoFormData.status,
           lc_status: cargoFormData.lc_status || undefined,
@@ -610,14 +859,10 @@ export default function HomePage() {
                 product_name: editingCargo.product_name,
                 contract_id: editingCargo.contract_id,
                 monthly_plan_id: editingCargo.monthly_plan_id,
-                load_ports: cargoFormData.load_ports,
+                load_ports: formatLoadPorts(cargoFormData.load_ports),
                 inspector_name: cargoFormData.inspector_name || undefined,
                 cargo_quantity: parseFloat(cargoFormData.cargo_quantity),
                 laycan_window: cargoFormData.laycan_window || undefined,
-                eta: cargoFormData.eta || undefined,
-                berthed: cargoFormData.berthed || undefined,
-                commenced: cargoFormData.commenced || undefined,
-                etc: cargoFormData.etc || undefined,
                 notes: cargoFormData.notes || undefined,
                 // CIF specific fields
                 eta_discharge_port: cargoFormData.eta_discharge_port || undefined,
@@ -693,7 +938,7 @@ export default function HomePage() {
           contract_id: cargoContractId,
           monthly_plan_id: cargoMonthlyPlanId,
           vessel_name: cargoFormData.vessel_name,
-          load_ports: cargoFormData.load_ports || '', // Ensure it's not undefined
+          load_ports: formatLoadPorts(cargoFormData.load_ports),
           cargo_quantity: cargoQuantity,
         }
         
@@ -717,10 +962,6 @@ export default function HomePage() {
         // Add optional fields
         if (cargoFormData.inspector_name) payload.inspector_name = cargoFormData.inspector_name
         if (cargoFormData.laycan_window) payload.laycan_window = cargoFormData.laycan_window
-        if (cargoFormData.eta) payload.eta = cargoFormData.eta
-        if (cargoFormData.berthed) payload.berthed = cargoFormData.berthed
-        if (cargoFormData.commenced) payload.commenced = cargoFormData.commenced
-        if (cargoFormData.etc) payload.etc = cargoFormData.etc
         if (cargoFormData.notes) payload.notes = cargoFormData.notes
         if (cargoFormData.lc_status) {
           payload.lc_status = cargoFormData.lc_status as LCStatus
@@ -748,14 +989,10 @@ export default function HomePage() {
           product_name: cargoProductName,
           contract_id: cargoContractId,
           contract_type: contract.contract_type,
-          load_ports: cargoFormData.load_ports || '',
+          load_ports: formatLoadPorts(cargoFormData.load_ports),
           inspector_name: cargoFormData.inspector_name || undefined,
           cargo_quantity: cargoQuantity,
           laycan_window: cargoFormData.laycan_window || undefined,
-          eta: cargoFormData.eta || undefined,
-          berthed: cargoFormData.berthed || undefined,
-          commenced: cargoFormData.commenced || undefined,
-          etc: cargoFormData.etc || undefined,
           status: 'Planned' as CargoStatus,
           notes: cargoFormData.notes || undefined,
           monthly_plan_id: cargoMonthlyPlanId,
@@ -1526,6 +1763,10 @@ export default function HomePage() {
 
     // Apply filters
     let filteredCargos = allRows.filter(({ cargo, contract, customer, isMonthlyPlan }) => {
+      // Remove cargos that are currently Loading (they are shown in the port lanes above)
+      if (cargo && isCargoInLoadingLanes(cargo)) {
+        return false
+      }
       // Filter by customer
       if (portMovementFilterCustomer !== null && (!customer || customer.id !== portMovementFilterCustomer)) {
         return false
@@ -1589,6 +1830,7 @@ export default function HomePage() {
 
     // Sort by laycan date
     filteredCargos.sort((a, b) => a.laycanSortValue - b.laycanSortValue)
+    portMovementExportRowsRef.current = filteredCargos
 
     if (filteredCargos.length === 0 && portMovement.length === 0 && monthlyPlans.length === 0) {
       return (
@@ -1629,96 +1871,8 @@ export default function HomePage() {
       )
     }
 
-    // Export to Excel function
-    const handleExportToExcel = () => {
-      // Dynamic import of xlsx to avoid issues if not installed
-      import('xlsx').then((XLSX) => {
-        const exportData: any[] = []
-        
-        filteredCargos.forEach(({ cargo, contract, customer, laycan, monthlyPlan }) => {
-            exportData.push({
-            'Laycan': laycan,
-            'Vessel Name': cargo ? cargo.vessel_name : 'TBA',
-              'Customer Name': customer ? customer.name : '-',
-              'Contract Number': contract ? contract.contract_number : '-',
-              'FOB/CIF': contract ? contract.contract_type : '-',
-            'Payment Method': contract && contract.payment_method ? contract.payment_method : '-',
-            'LC Status': contract && contract.payment_method === 'LC' && cargo && cargo.lc_status ? cargo.lc_status : '-',
-              'Product': contract && contract.products && contract.products.length > 0
-              ? contract.products.map((p: ContractProduct) => p.name).join(', ')
-                : '-',
-            'Quantity': cargo ? cargo.cargo_quantity : (monthlyPlan ? monthlyPlan.month_quantity : '-'),
-            'Load Port': cargo ? (cargo.load_ports || '-') : (contract ? (contract.allowed_load_ports || '-') : '-'),
-              'Status': cargo ? cargo.status : 'Not Created',
-              'Remark': cargo ? (cargo.notes || '-') : '-',
-              'Inspector Name': cargo ? (cargo.inspector_name || '-') : '-',
-              'Laycan Window': cargo ? (cargo.laycan_window || '-') : '-',
-              'ETA': cargo ? (cargo.eta || '-') : '-',
-              'Berthed': cargo ? (cargo.berthed || '-') : '-',
-              'Commenced': cargo ? (cargo.commenced || '-') : '-',
-              'ETC': cargo ? (cargo.etc || '-') : '-',
-          })
-        })
-        
-        // Create worksheet
-        const ws = XLSX.utils.json_to_sheet(exportData)
-        
-        // Set column widths
-        const colWidths = [
-          { wch: 15 }, // Laycan
-          { wch: 20 }, // Vessel Name
-          { wch: 20 }, // Customer Name
-          { wch: 15 }, // Contract Number
-          { wch: 10 }, // FOB/CIF
-          { wch: 15 }, // Payment Method
-          { wch: 15 }, // LC Status
-          { wch: 20 }, // Product
-          { wch: 12 }, // Quantity
-          { wch: 15 }, // Load Port
-          { wch: 20 }, // Status
-          { wch: 30 }, // Remark
-          { wch: 20 }, // Inspector Name
-          { wch: 15 }, // Laycan Window
-          { wch: 15 }, // ETA
-          { wch: 15 }, // Berthed
-          { wch: 15 }, // Commenced
-          { wch: 15 }, // ETC
-        ]
-        ws['!cols'] = colWidths
-        
-        // Create workbook
-        const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, 'Port Movement')
-        
-        // Generate filename with current date
-        const dateStr = new Date().toISOString().split('T')[0]
-        const filename = `Port_Movement_${dateStr}.xlsx`
-        
-        // Save file
-        XLSX.writeFile(wb, filename)
-      }).catch((error) => {
-        console.error('Error exporting to Excel:', error)
-        alert('Error exporting to Excel. Please make sure the xlsx package is installed.')
-      })
-    }
-
     return (
       <Box>
-        <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<FileDownload />}
-            onClick={handleExportToExcel}
-            sx={{ 
-              fontSize: isMobile ? '0.75rem' : '0.875rem', 
-              minHeight: isMobile ? 40 : 36,
-              px: isMobile ? 1.5 : 2,
-            }}
-          >
-            Export to Excel
-          </Button>
-        </Box>
         <Box sx={{ mb: 2, p: { xs: 1, sm: 1.5 }, bgcolor: 'grey.50', borderRadius: 1 }}>
           <Grid container spacing={{ xs: 1, sm: 1.5 }}>
             <Grid item xs={6} sm={4} md={2}>
@@ -2194,6 +2348,19 @@ export default function HomePage() {
               Port Movement
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<FileDownload />}
+                onClick={handlePortMovementExportToExcel}
+                sx={{
+                  fontSize: isMobile ? '0.75rem' : '0.875rem',
+                  minHeight: isMobile ? 40 : 36,
+                  px: isMobile ? 1.5 : 2,
+                }}
+              >
+                Export to Excel
+              </Button>
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <InputLabel>Month</InputLabel>
                 <Select
@@ -2255,12 +2422,208 @@ export default function HomePage() {
             </Box>
           </Box>
           
+          {/* Load Port Sections: same "one-line" look as Port Movement table, but per-port ops editable inline */}
+          <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {PORT_SECTIONS.map((port) => {
+              const rows = (
+                activeLoadings
+                  .map((cargo) => ({ cargo, op: getPortOpForCargo(cargo, port) }))
+                  // Show both Loading and Completed Loading so a completed port doesn't disappear
+                  // until ALL ports complete (then it moves to Completed Cargos tab).
+                  .filter((x) => x.op && (x.op.status === 'Loading' || x.op.status === 'Completed Loading'))
+              ) as Array<{ cargo: Cargo; op: CargoPortOperation }>
+
+              // Keep Loading first for quick visibility, then Completed Loading
+              rows.sort((a, b) => (a.op.status === b.op.status ? 0 : a.op.status === 'Loading' ? -1 : 1))
+
+              return (
+                <Box key={port}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      {port}
+                    </Typography>
+                    <Chip size="small" label={`${rows.length}`} />
+                  </Box>
+
+                  {rows.length === 0 ? (
+                    <Paper sx={{ p: 2, borderRadius: 2 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        No vessels loading
+                      </Typography>
+                    </Paper>
+                  ) : (
+                    <TableContainer
+                      component={Paper}
+                      sx={{
+                        maxWidth: '100%',
+                        overflowX: 'auto',
+                        '& .MuiTable-root': {
+                          minWidth: isMobile ? 1600 : 1500,
+                        },
+                      }}
+                    >
+                      <Table stickyHeader sx={{ tableLayout: 'auto' }}>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>Vessel Name</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>Customer Name</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>Contract Number</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 90 }}>FOB/CIF</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>Payment Method</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 110 }}>LC Status</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>Product</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>Laycan</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 90 }}>Quantity</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 110 }}>Load Port(s)</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 110 }}>Inspector</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 100 }}>Port Status</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>ETA</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>Berthed</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>Commenced</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>ETC</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 200 }}>Notes</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {rows.map(({ cargo, op }) => {
+                            const monthlyPlan = monthlyPlans.find((mp) => mp.id === cargo.monthly_plan_id)
+                            const contract = monthlyPlan ? getContractForMonthlyPlan(monthlyPlan) : null
+                            const customer = contract ? customers.find((c) => c.id === contract.customer_id) : null
+                            const laycan = getCargoLaycanForRow(cargo)
+
+                            return (
+                              <TableRow
+                                key={`${cargo.id}:${port}`}
+                                hover
+                                sx={{ cursor: 'pointer' }}
+                                onClick={() => handleEditCargo(cargo)}
+                              >
+                                <TableCell sx={{ fontWeight: 600 }}>{cargo.vessel_name}</TableCell>
+                                <TableCell>{customer ? customer.name : '-'}</TableCell>
+                                <TableCell>{contract ? contract.contract_number : '-'}</TableCell>
+                                <TableCell>
+                                  {contract ? (
+                                    <Chip
+                                      label={contract.contract_type}
+                                      color={contract.contract_type === 'FOB' ? 'primary' : 'secondary'}
+                                      size="small"
+                                    />
+                                  ) : (
+                                    '-'
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {contract && contract.payment_method ? (
+                                    <Chip
+                                      label={contract.payment_method}
+                                      color={contract.payment_method === 'T/T' ? 'success' : undefined}
+                                      sx={
+                                        contract.payment_method === 'LC'
+                                          ? {
+                                              backgroundColor: '#9c27b0',
+                                              color: 'white',
+                                              '&:hover': { backgroundColor: '#7b1fa2' },
+                                            }
+                                          : {}
+                                      }
+                                      size="small"
+                                    />
+                                  ) : (
+                                    '-'
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {contract && contract.payment_method === 'LC' ? (
+                                    cargo.lc_status ? (
+                                      <Chip label={cargo.lc_status} size="small" {...getLCStatusChipProps(cargo.lc_status)} />
+                                    ) : (
+                                      <Chip label="-" size="small" />
+                                    )
+                                  ) : (
+                                    <Chip label="-" size="small" />
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {contract && contract.products && contract.products.length > 0
+                                    ? contract.products.map((p: ContractProduct) => p.name).join(', ')
+                                    : '-'}
+                                </TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap' }}>{laycan}</TableCell>
+                                <TableCell>{cargo.cargo_quantity?.toLocaleString?.() ?? cargo.cargo_quantity}</TableCell>
+                                <TableCell>{cargo.load_ports || '-'}</TableCell>
+                                <TableCell>{cargo.inspector_name || '-'}</TableCell>
+
+                                {/* Editable port operation fields */}
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                                    <Select
+                                      value={op.status || 'Planned'}
+                                      onChange={(e) =>
+                                        schedulePortOpSave(cargo.id, port, { status: e.target.value as PortOperationStatus })
+                                      }
+                                    >
+                                      {PORT_OP_STATUSES.map((s) => (
+                                        <MenuItem key={s} value={s}>
+                                          {s}
+                                        </MenuItem>
+                                      ))}
+                                    </Select>
+                                  </FormControl>
+                                </TableCell>
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <TextField
+                                    size="small"
+                                    value={op.eta || ''}
+                                    onChange={(e) => schedulePortOpSave(cargo.id, port, { eta: e.target.value })}
+                                  />
+                                </TableCell>
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <TextField
+                                    size="small"
+                                    value={op.berthed || ''}
+                                    onChange={(e) => schedulePortOpSave(cargo.id, port, { berthed: e.target.value })}
+                                  />
+                                </TableCell>
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <TextField
+                                    size="small"
+                                    value={op.commenced || ''}
+                                    onChange={(e) => schedulePortOpSave(cargo.id, port, { commenced: e.target.value })}
+                                  />
+                                </TableCell>
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <TextField
+                                    size="small"
+                                    value={op.etc || ''}
+                                    onChange={(e) => schedulePortOpSave(cargo.id, port, { etc: e.target.value })}
+                                  />
+                                </TableCell>
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <TextField
+                                    size="small"
+                                    value={op.notes || ''}
+                                    onChange={(e) => schedulePortOpSave(cargo.id, port, { notes: e.target.value })}
+                                    fullWidth
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </Box>
+              )
+            })}
+          </Box>
+
           {renderPortMovementTable()}
         </TabPanel>
         <TabPanel value={value} index={1}>
           <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
             <Typography variant="h6">
-              Completed Cargos (FOB + CIF After Discharge)
+              Completed Cargos
             </Typography>
             <FormControl size="small" sx={{ minWidth: 120 }}>
               <InputLabel>Month</InputLabel>
@@ -2394,15 +2757,75 @@ export default function HomePage() {
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField
-                  label="Load Port(s)"
-                  value={cargoFormData.load_ports}
-                  onChange={(e) => setCargoFormData({ ...cargoFormData, load_ports: e.target.value })}
-                  fullWidth
-                      disabled={isCompletedCargo}
-                      sx={isCompletedCargo ? disabledStyle : {}}
-                />
+                <FormControl fullWidth disabled={isCompletedCargo} sx={isCompletedCargo ? disabledStyle : {}}>
+                  <InputLabel>Load Port(s)</InputLabel>
+                  <Select
+                    multiple
+                    value={cargoFormData.load_ports}
+                    label="Load Port(s)"
+                    onChange={(e) => {
+                      const next = (e.target.value as string[]).map((v) => String(v))
+                      setCargoFormData({ ...cargoFormData, load_ports: next })
+                    }}
+                    renderValue={(selected) => {
+                      const ports = (selected as string[]).filter(Boolean)
+                      if (ports.length === 0) return 'Select port(s)'
+                      return (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {ports.map((p) => (
+                            <Chip key={p} label={p} size="small" />
+                          ))}
+                        </Box>
+                      )
+                    }}
+                  >
+                    {Array.from(new Set([...LOAD_PORT_OPTIONS, ...(cargoFormData.load_ports || [])])).map((port) => (
+                      <MenuItem key={port} value={port}>
+                        <Checkbox checked={(cargoFormData.load_ports || []).includes(port)} />
+                        <ListItemText primary={port} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
+
+              {editingCargo && Array.isArray(editingCargo.port_operations) && editingCargo.port_operations.length > 0 && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>
+                    Load Port Operations
+                  </Typography>
+                  <Grid container spacing={1}>
+                    {PORT_SECTIONS
+                      .filter((p) => parseLoadPorts(editingCargo.load_ports).includes(p))
+                      .map((port) => {
+                        const op = (editingCargo.port_operations || []).find((x) => x.port_code === port)
+                        if (!op) return null
+                        return (
+                          <Grid item xs={12} sm={6} md={3} key={port}>
+                            <Paper variant="outlined" sx={{ p: 1, borderRadius: 2 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                                {port}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                                Status: {op.status}
+                              </Typography>
+                              <Typography variant="caption" display="block">ETA: {op.eta || '-'}</Typography>
+                              <Typography variant="caption" display="block">Berthed: {op.berthed || '-'}</Typography>
+                              <Typography variant="caption" display="block">Commenced: {op.commenced || '-'}</Typography>
+                              <Typography variant="caption" display="block">ETC: {op.etc || '-'}</Typography>
+                              {op.notes && (
+                                <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                                  Notes: {op.notes}
+                                </Typography>
+                              )}
+                            </Paper>
+                          </Grid>
+                        )
+                      })}
+                  </Grid>
+                </Grid>
+              )}
+
               <Grid item xs={12} md={6}>
                     <FormControl fullWidth>
                       <InputLabel>Inspector Name</InputLabel>
@@ -2492,59 +2915,6 @@ export default function HomePage() {
                   </Grid>
                 </>
               )}
-              <Grid item xs={12}>
-                <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 2 }}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Vessel Operation Details
-                  </Typography>
-                  <Grid container spacing={2} sx={{ mt: 1 }}>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="ETA"
-                        value={cargoFormData.eta || ''}
-                        onChange={(e) => setCargoFormData({ ...cargoFormData, eta: e.target.value })}
-                        fullWidth
-                        placeholder="e.g., 15 Nov 2024 10:00"
-                        disabled={isCompletedCargo}
-                        sx={isCompletedCargo ? disabledStyle : {}}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="Berthed"
-                        value={cargoFormData.berthed || ''}
-                        onChange={(e) => setCargoFormData({ ...cargoFormData, berthed: e.target.value })}
-                        fullWidth
-                        placeholder="e.g., 15 Nov 2024 14:00"
-                        disabled={isCompletedCargo}
-                        sx={isCompletedCargo ? disabledStyle : {}}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="Commenced"
-                        value={cargoFormData.commenced || ''}
-                        onChange={(e) => setCargoFormData({ ...cargoFormData, commenced: e.target.value })}
-                        fullWidth
-                        placeholder="e.g., 15 Nov 2024 16:00"
-                        disabled={isCompletedCargo}
-                        sx={isCompletedCargo ? disabledStyle : {}}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="ETC"
-                        value={cargoFormData.etc || ''}
-                        onChange={(e) => setCargoFormData({ ...cargoFormData, etc: e.target.value })}
-                        fullWidth
-                        placeholder="e.g., 18 Nov 2024 12:00"
-                        disabled={isCompletedCargo}
-                        sx={isCompletedCargo ? disabledStyle : {}}
-                      />
-                    </Grid>
-                  </Grid>
-                </Box>
-              </Grid>
               {editingCargo && (
                 <>
                   <Grid item xs={12}>
