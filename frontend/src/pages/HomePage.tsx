@@ -1784,19 +1784,30 @@ export default function HomePage() {
     }
 
     // Get all cargos with their laycan and contract info
-    // Deduplicate cargos: if multiple cargos have same vessel_name, contract_id, monthly_plan_id, and product_name, keep only the most recent one
-    const seenCargos = new Map<string, Cargo>()
+    // Group combi cargos by combi_group_id, deduplicate others
+    const combiGroups = new Map<string, Cargo[]>()
+    const nonCombiCargos: Cargo[] = []
+    const seenNonCombiCargos = new Map<string, Cargo>()
+    
     portMovement.forEach(cargo => {
-      const key = `${cargo.vessel_name}_${cargo.contract_id}_${cargo.monthly_plan_id}_${cargo.product_name}`
-      const existing = seenCargos.get(key)
-      if (!existing || (cargo.id && existing.id && cargo.id > existing.id)) {
-        // Keep the cargo with the higher ID (more recent)
-        seenCargos.set(key, cargo)
+      if (cargo.combi_group_id) {
+        // Group combi cargos together
+        const existing = combiGroups.get(cargo.combi_group_id) || []
+        existing.push(cargo)
+        combiGroups.set(cargo.combi_group_id, existing)
+      } else {
+        // Deduplicate non-combi cargos
+        const key = `${cargo.vessel_name}_${cargo.contract_id}_${cargo.monthly_plan_id}_${cargo.product_name}`
+        const existing = seenNonCombiCargos.get(key)
+        if (!existing || (cargo.id && existing.id && cargo.id > existing.id)) {
+          seenNonCombiCargos.set(key, cargo)
+        }
       }
     })
-    const uniqueCargos = Array.from(seenCargos.values())
+    nonCombiCargos.push(...Array.from(seenNonCombiCargos.values()))
     
-    const cargosWithInfo = uniqueCargos.map(cargo => {
+    // Build cargo info for non-combi cargos
+    const nonCombiCargosWithInfo = nonCombiCargos.map(cargo => {
       const monthlyPlan = monthlyPlans.find(mp => mp.id === cargo.monthly_plan_id)
       const contract = monthlyPlan ? getContractForMonthlyPlan(monthlyPlan) : null
       const customer = contract ? customers.find(c => c.id === contract.customer_id) : null
@@ -1804,14 +1815,48 @@ export default function HomePage() {
       
       return {
         cargo,
+        combiCargos: null as Cargo[] | null,  // Not a combi group
         monthlyPlan,
         contract,
         customer,
         laycan,
         laycanSortValue: getLaycanSortValue(laycan),
-        isMonthlyPlan: false // Flag to indicate this is a cargo row
+        isMonthlyPlan: false,
+        isCombi: false,
       }
     })
+    
+    // Build cargo info for combi groups (unified rows)
+    const combiCargosWithInfo = Array.from(combiGroups.entries()).map(([_combiGroupId, cargos]) => {
+      // Use the first cargo as the primary reference
+      const primaryCargo = cargos[0]
+      const monthlyPlan = monthlyPlans.find(mp => mp.id === primaryCargo.monthly_plan_id)
+      const contract = monthlyPlan ? getContractForMonthlyPlan(monthlyPlan) : null
+      const customer = contract ? customers.find(c => c.id === contract.customer_id) : null
+      const laycan = getCargoLaycan(primaryCargo)
+      
+      // Create a unified cargo object for display
+      const totalQuantity = cargos.reduce((sum, c) => sum + c.cargo_quantity, 0)
+      const unifiedCargo: Cargo = {
+        ...primaryCargo,
+        cargo_quantity: totalQuantity,
+        product_name: cargos.map(c => c.product_name).join(' + '),
+      }
+      
+      return {
+        cargo: unifiedCargo,
+        combiCargos: cargos,  // Keep all cargos for editing
+        monthlyPlan,
+        contract,
+        customer,
+        laycan,
+        laycanSortValue: getLaycanSortValue(laycan),
+        isMonthlyPlan: false,
+        isCombi: true,
+      }
+    })
+    
+    const cargosWithInfo = [...nonCombiCargosWithInfo, ...combiCargosWithInfo]
     
     // Also add monthly plans that don't have cargos yet
     // Check all cargo arrays (portMovement, completedCargos, inRoadCIF) to see if monthly plan has any cargo
@@ -1831,13 +1876,15 @@ export default function HomePage() {
       const laycan = getLaycanDisplay(monthlyPlan, contract)
       
       return {
-        cargo: null, // No cargo yet
+        cargo: null as Cargo | null, // No cargo yet
+        combiCargos: null as Cargo[] | null,
         monthlyPlan,
         contract,
         customer,
         laycan,
         laycanSortValue: getLaycanSortValue(laycan),
-        isMonthlyPlan: true // Flag to indicate this is a monthly plan row
+        isMonthlyPlan: true, // Flag to indicate this is a monthly plan row
+        isCombi: false,
       }
     })
     
@@ -2135,14 +2182,15 @@ export default function HomePage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredCargos.map(({ cargo, contract, customer, laycan, isMonthlyPlan, monthlyPlan }) => (
+              {filteredCargos.map(({ cargo, combiCargos, contract, customer, laycan, isMonthlyPlan, monthlyPlan, isCombi }) => (
                     <TableRow 
-                  key={cargo ? `cargo-${cargo.id}` : `monthly-plan-${monthlyPlan.id}`}
+                  key={cargo ? (isCombi ? `combi-${cargo.combi_group_id}` : `cargo-${cargo.id}`) : `monthly-plan-${monthlyPlan?.id}`}
                   onClick={() => {
                     if (isMonthlyPlan && monthlyPlan) {
                       handleCreateCargoForPlan(monthlyPlan)
                     } else if (cargo) {
-                      handleEditCargo(cargo)
+                      // For combi cargos, edit the first cargo in the group
+                      handleEditCargo(isCombi && combiCargos ? combiCargos[0] : cargo)
                     }
                   }}
                       sx={{ 
@@ -2152,7 +2200,7 @@ export default function HomePage() {
                           minHeight: isMobile ? 56 : 48,
                           py: isMobile ? 1.5 : 1,
                     },
-                    bgcolor: isMonthlyPlan ? 'action.selected' : 'inherit'
+                    bgcolor: isMonthlyPlan ? 'action.selected' : (isCombi ? '#FEF3C7' : 'inherit')
                   }}
                 >
                       <TableCell sx={{ 
@@ -2162,7 +2210,22 @@ export default function HomePage() {
                         overflowWrap: 'break-word',
                         wordBreak: 'normal'
                       }}>
-                    {cargo ? cargo.vessel_name : 'TBA'}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      {cargo ? cargo.vessel_name : 'TBA'}
+                      {isCombi && (
+                        <Chip 
+                          label="Combi" 
+                          size="small" 
+                          sx={{ 
+                            height: 18, 
+                            fontSize: '0.65rem', 
+                            bgcolor: '#F59E0B', 
+                            color: 'white',
+                            fontWeight: 600,
+                          }}
+                        />
+                      )}
+                    </Box>
                       </TableCell>
                   <TableCell sx={{ 
                             minWidth: isMobile ? 120 : 'auto',
@@ -2241,9 +2304,21 @@ export default function HomePage() {
                         overflowWrap: 'break-word',
                         wordBreak: 'normal'
                       }}>
-                        {contract && contract.products && contract.products.length > 0
-                            ? contract.products.map((p: ContractProduct) => p.name).join(', ')
-                          : '-'}
+                        {isCombi && combiCargos ? (
+                          <Box>
+                            {combiCargos.map((c) => (
+                              <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
+                                {c.product_name}: {c.cargo_quantity} KT
+                              </Typography>
+                            ))}
+                          </Box>
+                        ) : (
+                          cargo ? cargo.product_name : (
+                            contract && contract.products && contract.products.length > 0
+                              ? contract.products.map((p: ContractProduct) => p.name).join(', ')
+                              : '-'
+                          )
+                        )}
                       </TableCell>
                   <TableCell sx={{ 
                             minWidth: isMobile ? 100 : 120,
@@ -2309,7 +2384,18 @@ export default function HomePage() {
                         wordBreak: 'normal',
                         overflowWrap: 'anywhere'
                       }}>
-                    {cargo ? cargo.cargo_quantity : (monthlyPlan ? monthlyPlan.month_quantity : '-')}
+                    {cargo ? (
+                      <Box>
+                        <Typography variant="body2" fontWeight={isCombi ? 600 : 400}>
+                          {cargo.cargo_quantity} KT
+                        </Typography>
+                        {isCombi && (
+                          <Typography variant="caption" color="text.secondary">
+                            (Total)
+                          </Typography>
+                        )}
+                      </Box>
+                    ) : (monthlyPlan ? `${monthlyPlan.month_quantity} KT` : '-')}
                       </TableCell>
                       <TableCell sx={{ 
                         minWidth: isMobile ? 120 : 'auto',
