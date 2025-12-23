@@ -19,7 +19,9 @@ import {
   TableHead,
   TableRow,
   Paper,
+  Button,
 } from '@mui/material'
+import { FileDownload, PictureAsPdf } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan } from '../types'
 
@@ -196,20 +198,167 @@ export default function ContractSummaryPage() {
     }, 900)
   }
 
+  const handleExportToExcel = () => {
+    import('xlsx').then((XLSX) => {
+      const exportData = filteredContracts.map((c) => {
+        const customerName = customerNameById[c.customer_id] || '-'
+        const qt = quarterTotalsByContractId[c.id] || { q1: 0, q2: 0, q3: 0, q4: 0 }
+        const productsLabel = c.products.length === 0 ? '-' : c.products.map((p) => p.name).filter(Boolean).join(', ')
+        const jetA1Selected = c.products.some((p) => p.name === 'JET A-1')
+
+        return {
+          'Customer': customerName,
+          'Contract #': c.contract_number,
+          'Contract Period': formatDateRange(c.start_period, c.end_period),
+          'Product(s)': productsLabel,
+          'Firm Total': firmTotalFor(c),
+          'Type': c.contract_type,
+          'Payment': c.payment_method || '-',
+          'Q1': qt.q1,
+          'Q2': qt.q2,
+          'Q3': qt.q3,
+          'Q4': qt.q4,
+          'Optional Qty': optionalTotalFor(c),
+          'Discharge Ranges': c.discharge_ranges || '-',
+          'Fax Received': formatDateOnly(c.fax_received_date),
+          'Concluded Memo': formatDateOnly(c.concluded_memo_received_date),
+          'Additives Required': !jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-',
+          'Remarks': c.remarks || '',
+        }
+      })
+
+      const ws = XLSX.utils.json_to_sheet(exportData)
+      ws['!cols'] = [
+        { wch: 20 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, { wch: 12 },
+        { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+        { wch: 12 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 30 },
+      ]
+
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Contract Summary')
+
+      const dateStr = new Date().toISOString().split('T')[0]
+      XLSX.writeFile(wb, `Contract_Summary_${selectedYear}_${dateStr}.xlsx`)
+    }).catch((error) => {
+      console.error('Error exporting to Excel:', error)
+      alert('Error exporting to Excel.')
+    })
+  }
+
+  const handleExportToPDF = async () => {
+    try {
+      const { jsPDF } = await import('jspdf')
+      const autoTable = (await import('jspdf-autotable')).default
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+      
+      doc.setFontSize(16)
+      doc.text(`Contract Summary - ${selectedYear}`, 14, 15)
+
+      const tableData = filteredContracts.map((c) => {
+        const customerName = customerNameById[c.customer_id] || '-'
+        const qt = quarterTotalsByContractId[c.id] || { q1: 0, q2: 0, q3: 0, q4: 0 }
+        const productsLabel = c.products.length === 0 ? '-' : c.products.map((p) => p.name).filter(Boolean).join(', ')
+        const jetA1Selected = c.products.some((p) => p.name === 'JET A-1')
+
+        return [
+          customerName,
+          c.contract_number,
+          formatDateRange(c.start_period, c.end_period),
+          productsLabel,
+          firmTotalFor(c).toString(),
+          c.contract_type,
+          c.payment_method || '-',
+          `Q1:${qt.q1} Q2:${qt.q2} Q3:${qt.q3} Q4:${qt.q4}`,
+          optionalTotalFor(c).toString(),
+          c.discharge_ranges || '-',
+          `Fax: ${formatDateOnly(c.fax_received_date)}\nMemo: ${formatDateOnly(c.concluded_memo_received_date)}`,
+          !jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-',
+          c.remarks || '',
+        ]
+      })
+
+      autoTable(doc, {
+        head: [['Customer', 'Contract #', 'Period', 'Products', 'Firm', 'Type', 'Payment', 'Qty Distribution', 'Optional', 'Discharge Ranges', 'Fax/Memo', 'Additives', 'Remarks']],
+        body: tableData,
+        startY: 25,
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 18 },
+          2: { cellWidth: 25 },
+          3: { cellWidth: 20 },
+          4: { cellWidth: 12 },
+          5: { cellWidth: 12 },
+          6: { cellWidth: 12 },
+          7: { cellWidth: 28 },
+          8: { cellWidth: 14 },
+          9: { cellWidth: 25 },
+          10: { cellWidth: 25 },
+          11: { cellWidth: 14 },
+          12: { cellWidth: 30 },
+        },
+      })
+
+      const dateStr = new Date().toISOString().split('T')[0]
+      doc.save(`Contract_Summary_${selectedYear}_${dateStr}.pdf`)
+    } catch (error) {
+      console.error('Error exporting to PDF:', error)
+      alert(`Error exporting to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700 }}>
-          Contract Summary
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Read-only contract summary. Only “Remarks” can be edited here.
-        </Typography>
-        {!remarksEnabled && (
-          <Typography variant="body2" color="error" sx={{ mt: 1 }}>
-            Remarks are disabled because the database is missing the <b>contracts.remarks</b> column. Apply the remarks migration, then refresh.
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+            Contract Summary
           </Typography>
-        )}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Read-only contract summary. Only "Remarks" can be edited here.
+          </Typography>
+          {!remarksEnabled && (
+            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+              Remarks are disabled because the database is missing the <b>contracts.remarks</b> column. Apply the remarks migration, then refresh.
+            </Typography>
+          )}
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <Button
+            variant="outlined"
+            startIcon={<FileDownload />}
+            onClick={handleExportToExcel}
+            disabled={loading || filteredContracts.length === 0}
+            sx={{
+              borderColor: '#2563EB',
+              color: '#2563EB',
+              '&:hover': {
+                borderColor: '#1D4ED8',
+                bgcolor: 'rgba(37, 99, 235, 0.04)',
+              },
+            }}
+          >
+            Export Excel
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<PictureAsPdf />}
+            onClick={handleExportToPDF}
+            disabled={loading || filteredContracts.length === 0}
+            sx={{
+              borderColor: '#DC2626',
+              color: '#DC2626',
+              '&:hover': {
+                borderColor: '#B91C1C',
+                bgcolor: 'rgba(220, 38, 38, 0.04)',
+              },
+            }}
+          >
+            Save PDF
+          </Button>
+        </Box>
       </Box>
 
       <Card sx={{ mb: 3 }}>
