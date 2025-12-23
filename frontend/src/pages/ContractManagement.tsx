@@ -67,8 +67,6 @@ export default function ContractManagement() {
   const [open, setOpen] = useState(false)
   const [tabValue, setTabValue] = useState(0)
   const [editingContract, setEditingContract] = useState<Contract | null>(null)
-  const [editingQuarterlyPlan, setEditingQuarterlyPlan] = useState<QuarterlyPlan | null>(null)
-  const [quarterlyPlanDialogOpen, setQuarterlyPlanDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [filterCustomer, setFilterCustomer] = useState<number[]>([])
   const [filterYear, setFilterYear] = useState<number[]>([])
@@ -417,16 +415,6 @@ export default function ContractManagement() {
     }
   }
 
-  const handleEditQuarterlyPlan = (plan: QuarterlyPlan) => {
-    setEditingQuarterlyPlan(plan)
-    setQuarterlyPlanDialogOpen(true)
-  }
-
-  const handleCloseQuarterlyPlanDialog = () => {
-    setQuarterlyPlanDialogOpen(false)
-    setEditingQuarterlyPlan(null)
-  }
-
   // Error boundary for rendering
   if (!contracts || !Array.isArray(contracts)) {
     return (
@@ -773,222 +761,16 @@ export default function ContractManagement() {
               <TabPanel value={tabValue} index={0}>
                 {selectedContract && selectedContract.id ? (
                   <Box>
-                    {(() => {
-                      // Check if this is a multi-product contract
-                      const products = Array.isArray(selectedContract.products) ? selectedContract.products : []
-                      const isMultiProduct = products.length > 1
-                      
-                      // For multi-product contracts, check which products already have quarterly plans
-                      const productsWithPlans = (quarterlyPlans || [])
-                        .filter((p: QuarterlyPlan) => p.product_name)
-                        .map((p: QuarterlyPlan) => p.product_name)
-                      
-                      // Determine if we need to show the create form
-                      const needsMorePlans = isMultiProduct 
-                        ? products.some((p: any) => !productsWithPlans.includes(p.name))
-                        : (quarterlyPlans || []).length === 0
-                      
-                      if (needsMorePlans) {
-                        try {
-                          return (
-                            <QuarterlyPlanForm
-                              contractId={selectedContract.id}
-                              contract={selectedContract}
-                              existingPlans={quarterlyPlans || []}
-                              onPlanCreated={handlePlanCreated}
-                            />
-                          )
-                        } catch (error: any) {
-                          console.error('Error rendering QuarterlyPlanForm:', error)
-                          return (
-                            <Box sx={{ p: 2 }}>
-                              <Typography color="error" variant="h6">Error Loading Form</Typography>
-                              <Typography color="error">{error?.message || 'Unknown error'}</Typography>
-                              <Typography variant="body2" sx={{ mt: 2 }}>
-                                Contract ID: {selectedContract.id}
-                              </Typography>
-                            </Box>
-                          )
-                        }
-                      } else {
-                        return (
-                          <Box sx={{ p: 2 }}>
-                            <Typography color="text.secondary" variant="body1">
-                              {isMultiProduct 
-                                ? 'Quarterly plans have been created for all products. You can edit them using the edit buttons below.'
-                                : 'A quarterly plan already exists for this contract. You can edit it using the edit button below.'}
-                            </Typography>
-                          </Box>
-                        )
-                      }
-                    })()}
-                    {quarterlyPlanDialogOpen && editingQuarterlyPlan && (
-                      <Dialog open={quarterlyPlanDialogOpen} onClose={handleCloseQuarterlyPlanDialog} maxWidth="sm" fullWidth>
-                        <DialogTitle>
-                          Edit Quarterly Plan
-                          {editingQuarterlyPlan.product_name && (
-                            <Box component="span" sx={{ ml: 1, px: 1, py: 0.25, bgcolor: '#DBEAFE', color: '#1D4ED8', borderRadius: 1, fontSize: '0.875rem' }}>
-                              {editingQuarterlyPlan.product_name}
-                            </Box>
-                          )}
-                        </DialogTitle>
-                        <DialogContent>
-                          <QuarterlyPlanForm
-                            contractId={selectedContract.id}
-                            contract={selectedContract}
-                            editingPlan={editingQuarterlyPlan}
-                            existingPlans={quarterlyPlans || []}
-                            onPlanCreated={handlePlanCreated}
-                            onCancel={handleCloseQuarterlyPlanDialog}
-                          />
-                        </DialogContent>
-                      </Dialog>
-                    )}
+                    {/* Always show the QuarterlyPlanForm - it handles both create and edit */}
+                    <QuarterlyPlanForm
+                      contractId={selectedContract.id}
+                      contract={selectedContract}
+                      existingPlans={quarterlyPlans || []}
+                      onPlanCreated={handlePlanCreated}
+                    />
                   </Box>
                 ) : (
                   <Typography color="text.secondary">Please select a contract first</Typography>
-                )}
-                {quarterlyPlans && quarterlyPlans.length > 0 && (
-                  <Box sx={{ mt: 2 }}>
-                    {/* Display Contract Quantities */}
-                    {selectedContract && selectedContract.products && Array.isArray(selectedContract.products) && selectedContract.products.length > 0 && (
-                      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'info.light', borderRadius: 1 }}>
-                        <Typography variant="body2" fontWeight="bold" gutterBottom sx={{ color: '#000000' }}>Contract Quantities:</Typography>
-                        {selectedContract.products.map((p: any, idx: number) => (
-                          <Typography key={idx} variant="body2" sx={{ color: '#000000' }}>
-                            {p?.name || 'Unknown'}: {(p?.total_quantity || 0).toLocaleString()} KT total
-                          </Typography>
-                        ))}
-                        <Typography variant="body2" sx={{ mt: 1, fontWeight: 'bold', color: '#000000' }}>
-                          Total: {selectedContract.products.reduce((sum: number, p: any) => sum + (p?.total_quantity || 0), 0).toLocaleString()} KT
-                        </Typography>
-                      </Box>
-                    )}
-                    <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
-                      Quarterly Plan:
-                    </Typography>
-                    {quarterlyPlans.map((plan) => {
-                      // Determine quarter order based on contract start period
-                      const getQuarterOrder = (startMonth: number): ('Q1' | 'Q2' | 'Q3' | 'Q4')[] => {
-                        if (startMonth >= 1 && startMonth <= 3) {
-                          return ['Q1', 'Q2', 'Q3', 'Q4']
-                        } else if (startMonth >= 4 && startMonth <= 6) {
-                          return ['Q2', 'Q3', 'Q4', 'Q1']
-                        } else if (startMonth >= 7 && startMonth <= 9) {
-                          return ['Q3', 'Q4', 'Q1', 'Q2']
-                        } else {
-                          return ['Q4', 'Q1', 'Q2', 'Q3']
-                        }
-                      }
-                      
-                      const getQuarterLabel = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): string => {
-                        const labels: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', string> = {
-                          Q1: 'Jan-Mar',
-                          Q2: 'Apr-Jun',
-                          Q3: 'Jul-Sep',
-                          Q4: 'Oct-Dec',
-                        }
-                        return labels[quarter]
-                      }
-                      
-                      const getQuarterQuantity = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): number => {
-                        // Database fields (q1_quantity, q2_quantity, q3_quantity, q4_quantity) represent CONTRACT quarters 1-4
-                        // NOT calendar quarters Q1-Q4
-                        // We need to map calendar quarters to contract quarters based on position
-                        const dbQuantities = [
-                          plan.q1_quantity || 0,  // Contract quarter 1
-                          plan.q2_quantity || 0,   // Contract quarter 2
-                          plan.q3_quantity || 0,   // Contract quarter 3
-                          plan.q4_quantity || 0,   // Contract quarter 4
-                        ]
-                        // Find the position of this calendar quarter in the contract quarter order
-                        const quarterIndex = quarterOrder.indexOf(quarter)
-                        return dbQuantities[quarterIndex] || 0
-                      }
-                      
-                      // Get start month from contract
-                      const startMonth = selectedContract?.start_period 
-                        ? new Date(selectedContract.start_period).getMonth() + 1 
-                        : 1
-                      const quarterOrder = getQuarterOrder(startMonth)
-                      
-                      // Get product-specific target quantity for multi-product contracts
-                      const products = Array.isArray(selectedContract?.products) ? selectedContract.products : []
-                      const isMultiProduct = products.length > 1
-                      let targetQuantity: number
-                      
-                      if (isMultiProduct && plan.product_name) {
-                        const product = products.find((p: any) => p.name === plan.product_name)
-                        targetQuantity = product?.total_quantity || 0
-                      } else {
-                        targetQuantity = products.reduce((sum: number, p: any) => sum + (p?.total_quantity || 0), 0)
-                      }
-                      
-                      return (
-                        <Box 
-                          key={plan.id} 
-                          sx={{ 
-                            p: 2.5, 
-                            mt: 2,
-                            bgcolor: '#FFFFFF',
-                            borderRadius: 2,
-                            boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.05)',
-                            border: plan.product_name ? '2px solid #DBEAFE' : undefined,
-                          }}
-                        >
-                          {/* Product name header for multi-product contracts */}
-                          {plan.product_name && (
-                            <Box sx={{ mb: 2, pb: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-                              <Box sx={{ 
-                                display: 'inline-flex', 
-                                alignItems: 'center', 
-                                px: 1.5, 
-                                py: 0.5, 
-                                bgcolor: '#DBEAFE', 
-                                color: '#1D4ED8', 
-                                borderRadius: 1,
-                                fontWeight: 600,
-                                fontSize: '0.875rem',
-                              }}>
-                                {plan.product_name}
-                              </Box>
-                            </Box>
-                          )}
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                            <Box sx={{ flex: 1 }}>
-                              {quarterOrder.map((quarter, index) => (
-                                <Typography key={quarter} variant="body1" sx={{ mb: 1 }}>
-                                  <strong>{quarter} ({getQuarterLabel(quarter)}) - Contract Quarter {index + 1}:</strong> {getQuarterQuantity(quarter).toLocaleString()} KT
-                                </Typography>
-                              ))}
-                              {(() => {
-                                const quarterlyTotal = (plan.q1_quantity || 0) + (plan.q2_quantity || 0) + (plan.q3_quantity || 0) + (plan.q4_quantity || 0)
-                                
-                                return (
-                                  <>
-                                    <Typography variant="body1" sx={{ mt: 2, fontWeight: 'bold', borderTop: '1px solid', borderColor: 'divider', pt: 1, color: '#000000' }}>
-                                      Total: {quarterlyTotal.toLocaleString()} KT
-                                    </Typography>
-                                    <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic', color: '#000000' }}>
-                                      Note: Quarterly plan total must equal {plan.product_name ? `the ${plan.product_name} total` : 'the contract total'} ({targetQuantity.toLocaleString()} KT)
-                                    </Typography>
-                                  </>
-                                )
-                              })()}
-                            </Box>
-                            <IconButton
-                              size="small"
-                              onClick={() => handleEditQuarterlyPlan(plan)}
-                              color="primary"
-                              sx={{ ml: 2 }}
-                            >
-                              <Edit />
-                            </IconButton>
-                          </Box>
-                        </Box>
-                      )
-                    })}
-                  </Box>
                 )}
               </TabPanel>
               <TabPanel value={tabValue} index={1}>

@@ -5,21 +5,17 @@ import {
   TextField,
   Typography,
   Paper,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Chip,
+  Grid,
   Alert,
 } from '@mui/material'
-import { Add } from '@mui/icons-material'
+import { Add, Save } from '@mui/icons-material'
 import { quarterlyPlanAPI, contractAPI } from '../api/client'
 
 interface QuarterlyPlanFormProps {
   contractId: number
   contract?: any  // Contract object with products
-  editingPlan?: any  // Quarterly plan being edited
-  existingPlans?: any[]  // Existing quarterly plans for this contract (to check which products already have plans)
+  editingPlan?: any  // Quarterly plan being edited (for single product edit)
+  existingPlans?: any[]  // Existing quarterly plans for this contract
   onPlanCreated: () => void
   onCancel?: () => void
 }
@@ -27,16 +23,12 @@ interface QuarterlyPlanFormProps {
 // Determine quarter order based on contract start month
 const getQuarterOrder = (startMonth: number): ('Q1' | 'Q2' | 'Q3' | 'Q4')[] => {
   if (startMonth >= 1 && startMonth <= 3) {
-    // Jan-Mar: Q1, Q2, Q3, Q4
     return ['Q1', 'Q2', 'Q3', 'Q4']
   } else if (startMonth >= 4 && startMonth <= 6) {
-    // Apr-Jun: Q2, Q3, Q4, Q1
     return ['Q2', 'Q3', 'Q4', 'Q1']
   } else if (startMonth >= 7 && startMonth <= 9) {
-    // Jul-Sep: Q3, Q4, Q1, Q2
     return ['Q3', 'Q4', 'Q1', 'Q2']
   } else {
-    // Oct-Dec: Q4, Q1, Q2, Q3
     return ['Q4', 'Q1', 'Q2', 'Q3']
   }
 }
@@ -52,16 +44,22 @@ const getQuarterLabel = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): string => {
   return labels[quarter]
 }
 
-export default function QuarterlyPlanForm({ contractId, contract, editingPlan, existingPlans = [], onPlanCreated, onCancel }: QuarterlyPlanFormProps) {
-  const [formData, setFormData] = useState({
-    q1_quantity: editingPlan ? editingPlan.q1_quantity.toString() : '',
-    q2_quantity: editingPlan ? editingPlan.q2_quantity.toString() : '',
-    q3_quantity: editingPlan ? editingPlan.q3_quantity.toString() : '',
-    q4_quantity: editingPlan ? editingPlan.q4_quantity.toString() : '',
-  })
-  const [selectedProduct, setSelectedProduct] = useState<string>(editingPlan?.product_name || '')
+interface ProductPlanData {
+  productName: string
+  totalQuantity: number
+  optionalQuantity: number
+  existingPlanId?: number
+  q1: string
+  q2: string
+  q3: string
+  q4: string
+}
+
+export default function QuarterlyPlanForm({ contractId, contract, existingPlans = [], onPlanCreated, onCancel }: QuarterlyPlanFormProps) {
   const [quarterOrder, setQuarterOrder] = useState<('Q1' | 'Q2' | 'Q3' | 'Q4')[]>(['Q1', 'Q2', 'Q3', 'Q4'])
   const [contractData, setContractData] = useState<any>(contract)
+  const [productPlans, setProductPlans] = useState<ProductPlanData[]>([])
+  const [isSaving, setIsSaving] = useState(false)
 
   // Load contract and determine quarter order
   useEffect(() => {
@@ -80,11 +78,8 @@ export default function QuarterlyPlanForm({ contractId, contract, editingPlan, e
       }
 
       if (contractToUse && contractToUse.start_period) {
-        // Parse start period to get start month
         const startDate = new Date(contractToUse.start_period)
         const startMonth = startDate.getMonth() + 1
-        
-        // Determine quarter order
         const order = getQuarterOrder(startMonth)
         setQuarterOrder(order)
       }
@@ -92,390 +87,324 @@ export default function QuarterlyPlanForm({ contractId, contract, editingPlan, e
     loadContract()
   }, [contract, contractId])
 
-  // Update form when editingPlan changes
-  // Need to remap database values to form fields based on contract quarter order
+  // Initialize product plans when contract data or existing plans change
   useEffect(() => {
-    if (editingPlan && contractData && contractData.start_period) {
-      // Get contract start month to determine quarter order
-      const startDate = new Date(contractData.start_period)
-      const startMonth = startDate.getMonth() + 1
-      const order = getQuarterOrder(startMonth)
+    if (!contractData) return
+    
+    const products = Array.isArray(contractData.products) ? contractData.products : []
+    const isMultiProduct = products.length > 1
+    
+    if (isMultiProduct) {
+      // Multi-product: Create a plan data entry for each product
+      const newProductPlans: ProductPlanData[] = products.map((product: any) => {
+        // Find existing plan for this product
+        const existingPlan = existingPlans.find(p => p.product_name === product.name)
+        
+        // Map database quantities to form (based on quarter order)
+        let q1 = '', q2 = '', q3 = '', q4 = ''
+        if (existingPlan && contractData.start_period) {
+          const startDate = new Date(contractData.start_period)
+          const startMonth = startDate.getMonth() + 1
+          const order = getQuarterOrder(startMonth)
+          
+          const dbQuantities = [
+            existingPlan.q1_quantity || 0,
+            existingPlan.q2_quantity || 0,
+            existingPlan.q3_quantity || 0,
+            existingPlan.q4_quantity || 0,
+          ]
+          
+          // Map to calendar quarters
+          const calendarQuantities: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number> = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
+          order.forEach((calQ, contractIdx) => {
+            calendarQuantities[calQ] = dbQuantities[contractIdx]
+          })
+          
+          q1 = calendarQuantities.Q1.toString()
+          q2 = calendarQuantities.Q2.toString()
+          q3 = calendarQuantities.Q3.toString()
+          q4 = calendarQuantities.Q4.toString()
+        }
+        
+        return {
+          productName: product.name,
+          totalQuantity: product.total_quantity || 0,
+          optionalQuantity: product.optional_quantity || 0,
+          existingPlanId: existingPlan?.id,
+          q1,
+          q2,
+          q3,
+          q4,
+        }
+      })
+      setProductPlans(newProductPlans)
+    } else if (products.length === 1) {
+      // Single product
+      const product = products[0]
+      const existingPlan = existingPlans.length > 0 ? existingPlans[0] : null
       
-      // Map database fields (q1_quantity, q2_quantity, q3_quantity, q4_quantity) 
-      // to contract quarters (position 0, 1, 2, 3)
-      // Then map contract quarters to calendar quarters (Q1, Q2, Q3, Q4)
-      const dbQuantities = [
-        editingPlan.q1_quantity || 0,  // Contract quarter 1
-        editingPlan.q2_quantity || 0,  // Contract quarter 2
-        editingPlan.q3_quantity || 0,  // Contract quarter 3
-        editingPlan.q4_quantity || 0,  // Contract quarter 4
-      ]
-      
-      // Map contract quarters to calendar quarters
-      const formDataMap: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number> = {
-        Q1: 0,
-        Q2: 0,
-        Q3: 0,
-        Q4: 0,
+      let q1 = '', q2 = '', q3 = '', q4 = ''
+      if (existingPlan && contractData.start_period) {
+        const startDate = new Date(contractData.start_period)
+        const startMonth = startDate.getMonth() + 1
+        const order = getQuarterOrder(startMonth)
+        
+        const dbQuantities = [
+          existingPlan.q1_quantity || 0,
+          existingPlan.q2_quantity || 0,
+          existingPlan.q3_quantity || 0,
+          existingPlan.q4_quantity || 0,
+        ]
+        
+        const calendarQuantities: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number> = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
+        order.forEach((calQ, contractIdx) => {
+          calendarQuantities[calQ] = dbQuantities[contractIdx]
+        })
+        
+        q1 = calendarQuantities.Q1.toString()
+        q2 = calendarQuantities.Q2.toString()
+        q3 = calendarQuantities.Q3.toString()
+        q4 = calendarQuantities.Q4.toString()
       }
       
-      order.forEach((calendarQuarter, contractQuarterIndex) => {
-        formDataMap[calendarQuarter] = dbQuantities[contractQuarterIndex]
-      })
-      
-      setFormData({
-        q1_quantity: formDataMap.Q1.toString(),
-        q2_quantity: formDataMap.Q2.toString(),
-        q3_quantity: formDataMap.Q3.toString(),
-        q4_quantity: formDataMap.Q4.toString(),
-      })
-    } else if (editingPlan) {
-      // Wait for contract data to load - don't use fallback as it will be incorrect
-      // The contract data should be loaded by the useEffect above
-    } else {
-      setFormData({
-        q1_quantity: '',
-        q2_quantity: '',
-        q3_quantity: '',
-        q4_quantity: '',
-      })
+      setProductPlans([{
+        productName: product.name,
+        totalQuantity: product.total_quantity || 0,
+        optionalQuantity: product.optional_quantity || 0,
+        existingPlanId: existingPlan?.id,
+        q1,
+        q2,
+        q3,
+        q4,
+      }])
     }
-  }, [editingPlan, contractData])
+  }, [contractData, existingPlans])
+
+  const handleQuantityChange = (productIndex: number, quarter: 'q1' | 'q2' | 'q3' | 'q4', value: string) => {
+    setProductPlans(prev => {
+      const updated = [...prev]
+      updated[productIndex] = { ...updated[productIndex], [quarter]: value }
+      return updated
+    })
+  }
+
+  const getProductTotal = (plan: ProductPlanData): number => {
+    return (parseFloat(plan.q1) || 0) + (parseFloat(plan.q2) || 0) + (parseFloat(plan.q3) || 0) + (parseFloat(plan.q4) || 0)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!contractId) {
-      alert('Contract ID is missing. Please select a contract first.')
+    if (!contractId || !contractData) {
+      alert('Contract data not loaded. Please try again.')
       return
     }
 
-    // Load contract if not provided
-    let contractData = contract
-    if (!contractData) {
-      try {
-        const contractRes = await contractAPI.getById(contractId)
-        contractData = contractRes.data
-      } catch (error) {
-        alert('Error loading contract details. Please try again.')
+    // Validate all products
+    for (const plan of productPlans) {
+      const total = getProductTotal(plan)
+      const maxAllowed = plan.totalQuantity + plan.optionalQuantity
+      
+      if (total < plan.totalQuantity) {
+        alert(`${plan.productName}: Total (${total.toLocaleString()} KT) is less than required (${plan.totalQuantity.toLocaleString()} KT)`)
+        return
+      }
+      if (total > maxAllowed) {
+        alert(`${plan.productName}: Total (${total.toLocaleString()} KT) exceeds maximum allowed (${maxAllowed.toLocaleString()} KT)`)
+        return
+      }
+      if (total !== plan.totalQuantity && total !== maxAllowed) {
+        alert(`${plan.productName}: Total must equal either ${plan.totalQuantity.toLocaleString()} KT or ${maxAllowed.toLocaleString()} KT (with optional)`)
         return
       }
     }
 
-    // Calculate total quarterly quantity
-    const q1 = parseFloat(formData.q1_quantity) || 0
-    const q2 = parseFloat(formData.q2_quantity) || 0
-    const q3 = parseFloat(formData.q3_quantity) || 0
-    const q4 = parseFloat(formData.q4_quantity) || 0
-    const totalQuarterlyQuantity = q1 + q2 + q3 + q4
-
-    // Calculate contract total and optional quantities
-    const contractProducts = Array.isArray(contractData.products) ? contractData.products : []
-    if (contractProducts.length === 0) {
-      alert('Contract has no products. Please add products to the contract first.')
-      return
-    }
-
-    // For multi-product contracts, validate that a product is selected
-    const isMultiProduct = contractProducts.length > 1
-    if (isMultiProduct && !selectedProduct && !editingPlan) {
-      alert('Please select a product for this quarterly plan.')
-      return
-    }
-
-    // Get the selected product's quantities (or total if single product)
-    let totalContractQuantity: number
-    let totalOptionalQuantity: number
-    
-    if (isMultiProduct && selectedProduct) {
-      const product = contractProducts.find((p: any) => p.name === selectedProduct)
-      if (!product) {
-        alert('Selected product not found in contract.')
-        return
-      }
-      totalContractQuantity = product.total_quantity || 0
-      totalOptionalQuantity = product.optional_quantity || 0
-    } else {
-      totalContractQuantity = contractProducts.reduce((sum: number, p: any) => sum + (p.total_quantity || 0), 0)
-      totalOptionalQuantity = contractProducts.reduce((sum: number, p: any) => sum + (p.optional_quantity || 0), 0)
-    }
-    
-    const maxAllowedQuantity = totalContractQuantity + totalOptionalQuantity
-
-    // Check if total doesn't equal contract total (must be exactly equal)
-    if (totalQuarterlyQuantity !== totalContractQuantity) {
-      if (totalQuarterlyQuantity < totalContractQuantity) {
-        alert(`Error: Total quarterly quantity (${totalQuarterlyQuantity.toLocaleString()} KT) is less than the contract total quantity (${totalContractQuantity.toLocaleString()} KT). The quarterly plan total must equal the contract total.`)
-        return
-      } else if (totalQuarterlyQuantity > maxAllowedQuantity) {
-        alert(`Error: Total quarterly quantity (${totalQuarterlyQuantity.toLocaleString()} KT) exceeds the maximum allowed quantity (${maxAllowedQuantity.toLocaleString()} KT = ${totalContractQuantity.toLocaleString()} KT total + ${totalOptionalQuantity.toLocaleString()} KT optional).`)
-        return
-      } else {
-        // Using optional quantities - must equal total + optional
-        if (totalQuarterlyQuantity !== maxAllowedQuantity) {
-          alert(`Error: Total quarterly quantity (${totalQuarterlyQuantity.toLocaleString()} KT) must equal either the contract total (${totalContractQuantity.toLocaleString()} KT) or the maximum allowed (${maxAllowedQuantity.toLocaleString()} KT = total + optional).`)
-          return
-        }
-        // Using optional quantities - show warning
-        const optionalUsed = totalQuarterlyQuantity - totalContractQuantity
-        const confirmMessage = `Warning: You are using ${optionalUsed.toLocaleString()} KT of optional quantity (Total: ${totalContractQuantity.toLocaleString()} KT, Optional: ${totalOptionalQuantity.toLocaleString()} KT).\n\nThe quarterly plan total equals the contract total + optional.\n\nDo you want to continue?`
-        if (!window.confirm(confirmMessage)) {
-          return
-        }
-      }
-    }
-    
-    const usingOptionalQuantity = totalQuarterlyQuantity > totalContractQuantity
+    setIsSaving(true)
 
     try {
-      // Remap form data (calendar quarters Q1-Q4) to database fields (contract quarters 1-4)
-      // Get contract start month to determine quarter order
-      if (!contractData || !contractData.start_period) {
-        alert('Error: Contract data not loaded. Please try again.')
-        return
-      }
-      
       const startDate = new Date(contractData.start_period)
       const startMonth = startDate.getMonth() + 1
       const order = getQuarterOrder(startMonth)
       
-      
-      // Map calendar quarters (Q1-Q4) from form to contract quarters (1-4) for database
-      const formQuantities: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number> = {
-        Q1: q1,
-        Q2: q2,
-        Q3: q3,
-        Q4: q4,
-      }
-      
-      // Map to database fields: q1_quantity = contract quarter 1, q2_quantity = contract quarter 2, etc.
-      const dbQuantities = [
-        formQuantities[order[0]],  // Contract quarter 1 -> q1_quantity
-        formQuantities[order[1]],   // Contract quarter 2 -> q2_quantity
-        formQuantities[order[2]],   // Contract quarter 3 -> q3_quantity
-        formQuantities[order[3]],   // Contract quarter 4 -> q4_quantity
-      ]
-      
-      
-      if (editingPlan) {
-        // Update existing plan
-        await quarterlyPlanAPI.update(editingPlan.id, {
-          q1_quantity: dbQuantities[0],
-          q2_quantity: dbQuantities[1],
-          q3_quantity: dbQuantities[2],
-          q4_quantity: dbQuantities[3],
-        })
-        onPlanCreated()
-        const successMsg = usingOptionalQuantity 
-          ? `Quarterly plan updated successfully! Total equals contract total + optional (${totalQuarterlyQuantity.toLocaleString()} KT = ${totalContractQuantity.toLocaleString()} KT + ${(totalQuarterlyQuantity - totalContractQuantity).toLocaleString()} KT optional).`
-          : `Quarterly plan updated successfully! Total equals contract total (${totalQuarterlyQuantity.toLocaleString()} KT).`
-        alert(successMsg)
-        if (onCancel) onCancel()
-      } else {
-        // Create new plan
-        const createPayload: any = {
-          contract_id: contractId,
-          q1_quantity: dbQuantities[0],
-          q2_quantity: dbQuantities[1],
-          q3_quantity: dbQuantities[2],
-          q4_quantity: dbQuantities[3],
+      const isMultiProduct = productPlans.length > 1
+
+      // Save each product's quarterly plan
+      for (const plan of productPlans) {
+        // Map calendar quarters to database fields
+        const calendarQuantities: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number> = {
+          Q1: parseFloat(plan.q1) || 0,
+          Q2: parseFloat(plan.q2) || 0,
+          Q3: parseFloat(plan.q3) || 0,
+          Q4: parseFloat(plan.q4) || 0,
         }
         
-        // Add product_name for multi-product contracts
-        const contractProducts = Array.isArray(contractData.products) ? contractData.products : []
-        if (contractProducts.length > 1 && selectedProduct) {
-          createPayload.product_name = selectedProduct
-        }
-        
-        const response = await quarterlyPlanAPI.create(createPayload)
-        
-        if (response.data) {
-          setFormData({
-            q1_quantity: '',
-            q2_quantity: '',
-            q3_quantity: '',
-            q4_quantity: '',
+        const dbQuantities = order.map(calQ => calendarQuantities[calQ])
+
+        if (plan.existingPlanId) {
+          // Update existing plan
+          await quarterlyPlanAPI.update(plan.existingPlanId, {
+            q1_quantity: dbQuantities[0],
+            q2_quantity: dbQuantities[1],
+            q3_quantity: dbQuantities[2],
+            q4_quantity: dbQuantities[3],
           })
-          onPlanCreated()
-          const successMsg = usingOptionalQuantity 
-            ? `Quarterly plan created successfully! Total equals contract total + optional (${totalQuarterlyQuantity.toLocaleString()} KT = ${totalContractQuantity.toLocaleString()} KT + ${(totalQuarterlyQuantity - totalContractQuantity).toLocaleString()} KT optional).`
-            : `Quarterly plan created successfully! Total equals contract total (${totalQuarterlyQuantity.toLocaleString()} KT).`
-          alert(successMsg)
+        } else {
+          // Create new plan
+          const createPayload: any = {
+            contract_id: contractId,
+            q1_quantity: dbQuantities[0],
+            q2_quantity: dbQuantities[1],
+            q3_quantity: dbQuantities[2],
+            q4_quantity: dbQuantities[3],
+          }
+          
+          // Add product_name for multi-product contracts
+          if (isMultiProduct) {
+            createPayload.product_name = plan.productName
+          }
+          
+          await quarterlyPlanAPI.create(createPayload)
         }
       }
+
+      alert('Quarterly plan(s) saved successfully!')
+      onPlanCreated()
+      if (onCancel) onCancel()
     } catch (error: any) {
       console.error('Error saving quarterly plan:', error)
       const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error occurred'
       alert(`Error saving quarterly plan: ${errorMessage}`)
+    } finally {
+      setIsSaving(false)
     }
   }
 
-  // Safety check for contract products
-  const contractProducts = contract && contract.products 
-    ? (Array.isArray(contract.products) ? contract.products : [])
-    : []
+  const contractProducts = contractData?.products || []
+  const isMultiProduct = contractProducts.length > 1
 
-  // Check which products already have quarterly plans
-  const productsWithPlans = existingPlans
-    .filter(p => p.product_name)
-    .map(p => p.product_name)
-  
-  // For multi-product contracts, determine available products
-  const availableProducts = contractProducts.filter(
-    (p: any) => !productsWithPlans.includes(p.name) || (editingPlan && editingPlan.product_name === p.name)
-  )
+  if (!contractData || productPlans.length === 0) {
+    return (
+      <Paper sx={{ p: 2 }}>
+        <Typography>Loading contract details...</Typography>
+      </Paper>
+    )
+  }
 
   return (
-    <Paper sx={{ p: 2 }}>
+    <Paper sx={{ p: 3 }}>
       <Typography variant="h6" gutterBottom>
-        {editingPlan ? 'Edit Quarterly Plan' : 'Create Quarterly Plan'}
-        {editingPlan?.product_name && (
-          <Chip 
-            label={editingPlan.product_name} 
-            size="small" 
-            color="info" 
-            sx={{ ml: 1, verticalAlign: 'middle' }}
-          />
-        )}
+        {existingPlans.length > 0 ? 'Edit Quarterly Plan' : 'Create Quarterly Plan'}
       </Typography>
       
-      {/* Multi-product contract info */}
-      {contract && contractProducts.length > 1 && !editingPlan && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          This contract has multiple products. Create a separate quarterly plan for each product.
-          {productsWithPlans.length > 0 && (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              Plans already created for: {productsWithPlans.join(', ')}
-            </Typography>
-          )}
+      {isMultiProduct && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          This contract has multiple products. Enter quarterly quantities for each product below.
         </Alert>
       )}
 
-      {/* Product selector for multi-product contracts (only when creating new) */}
-      {contract && contractProducts.length > 1 && !editingPlan && (
-        <FormControl fullWidth sx={{ mb: 2 }}>
-          <InputLabel>Select Product</InputLabel>
-          <Select
-            value={selectedProduct}
-            label="Select Product"
-            onChange={(e) => setSelectedProduct(e.target.value)}
-          >
-            {availableProducts.map((p: any) => (
-              <MenuItem key={p.name} value={p.name}>
-                {p.name} ({(p.total_quantity || 0).toLocaleString()} KT)
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      )}
+      <Box component="form" onSubmit={handleSubmit}>
+        <Grid container spacing={3}>
+          {productPlans.map((plan, productIndex) => {
+            const total = getProductTotal(plan)
+            const isValid = total === plan.totalQuantity || total === (plan.totalQuantity + plan.optionalQuantity)
+            const isExact = total === plan.totalQuantity
+            
+            return (
+              <Grid item xs={12} md={isMultiProduct ? 6 : 12} key={plan.productName}>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    p: 2, 
+                    bgcolor: '#FAFBFC',
+                    border: isMultiProduct ? '2px solid' : '1px solid',
+                    borderColor: isMultiProduct ? '#DBEAFE' : 'divider',
+                  }}
+                >
+                  {/* Product Header */}
+                  <Box sx={{ mb: 2, pb: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <Box sx={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      px: 1.5, 
+                      py: 0.5, 
+                      bgcolor: '#DBEAFE', 
+                      color: '#1D4ED8', 
+                      borderRadius: 1,
+                      fontWeight: 600,
+                      fontSize: '0.95rem',
+                    }}>
+                      {plan.productName}
+                    </Box>
+                    <Typography variant="body2" sx={{ mt: 1, color: 'text.secondary' }}>
+                      Total: {plan.totalQuantity.toLocaleString()} KT
+                      {plan.optionalQuantity > 0 && ` (+${plan.optionalQuantity.toLocaleString()} KT optional)`}
+                    </Typography>
+                  </Box>
 
-      {contract && contractProducts.length > 0 && (
-        <Box sx={{ mb: 2, p: 1.5, bgcolor: 'info.light', borderRadius: 1 }}>
-          <Typography variant="body2" fontWeight="bold" gutterBottom sx={{ color: '#000000' }}>
-            {contractProducts.length > 1 && selectedProduct 
-              ? `${selectedProduct} Quantities:` 
-              : 'Contract Quantities:'}
-          </Typography>
-          {contractProducts.length > 1 && selectedProduct ? (
-            // Show only selected product
-            (() => {
-              const product = contractProducts.find((p: any) => p.name === selectedProduct)
-              return product ? (
-                <Typography variant="body2" sx={{ color: '#000000' }}>
-                  {product.name}: {(product.total_quantity || 0).toLocaleString()} KT total
-                  {product.optional_quantity > 0 && ` (+${product.optional_quantity.toLocaleString()} KT optional)`}
-                </Typography>
-              ) : null
-            })()
-          ) : (
-            // Show all products
-            <>
-              {contractProducts.map((p: any, idx: number) => (
-                <Typography key={idx} variant="body2" sx={{ color: '#000000' }}>
-                  {p?.name || 'Unknown'}: {(p?.total_quantity || 0).toLocaleString()} KT total
-                </Typography>
-              ))}
-              <Typography variant="body2" sx={{ mt: 1, fontWeight: 'bold', color: '#000000' }}>
-                Total: {contractProducts.reduce((sum: number, p: any) => sum + (p?.total_quantity || 0), 0).toLocaleString()} KT
-              </Typography>
-            </>
-          )}
-        </Box>
-      )}
-      <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {quarterOrder.map((quarter, index) => {
-          // Map contract quarter position to database field
-          // For July-June: Q3 (position 0) -> q1_quantity, Q4 (position 1) -> q2_quantity, etc.
-          // The database fields (q1_quantity, q2_quantity, q3_quantity, q4_quantity) represent contract quarters 1-4
-          // NOT calendar quarters Q1-Q4
-          const fieldMap: ('q1_quantity' | 'q2_quantity' | 'q3_quantity' | 'q4_quantity')[] = [
-            'q1_quantity',  // Contract quarter 1
-            'q2_quantity',  // Contract quarter 2
-            'q3_quantity',  // Contract quarter 3
-            'q4_quantity',  // Contract quarter 4
-          ]
-          const fieldName = fieldMap[index]
-          
-          return (
-            <TextField
-              key={quarter}
-              label={`${quarter} Quantity (${getQuarterLabel(quarter)}) - Contract Quarter ${index + 1}`}
-              type="number"
-              value={formData[fieldName]}
-              onChange={(e) => setFormData({ ...formData, [fieldName]: e.target.value })}
-              fullWidth
-            />
-          )
-        })}
-        
-        {/* Display quarterly plan total and validation */}
-        {contract && contractProducts.length > 0 && (
-          <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
-            {(() => {
-              const q1 = parseFloat(formData.q1_quantity) || 0
-              const q2 = parseFloat(formData.q2_quantity) || 0
-              const q3 = parseFloat(formData.q3_quantity) || 0
-              const q4 = parseFloat(formData.q4_quantity) || 0
-              const quarterlyTotal = q1 + q2 + q3 + q4
-              
-              // Get the correct target quantity based on product selection
-              let targetQuantity: number
-              if (contractProducts.length > 1 && selectedProduct) {
-                const product = contractProducts.find((p: any) => p.name === selectedProduct)
-                targetQuantity = product?.total_quantity || 0
-              } else {
-                targetQuantity = contractProducts.reduce((sum: number, p: any) => sum + (p?.total_quantity || 0), 0)
-              }
-              
-              const isValid = quarterlyTotal === targetQuantity
-              
-              return (
-                <>
-                  <Typography variant="body2" sx={{ fontWeight: 'bold', color: isValid ? 'success.main' : '#000000' }}>
-                    Total: {quarterlyTotal.toLocaleString()} KT
-                    {isValid && ' ✓'}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic', color: '#000000' }}>
-                    Note: Quarterly plan total (Q1+Q2+Q3+Q4) must equal {contractProducts.length > 1 && selectedProduct ? `the ${selectedProduct} total` : 'the contract total'} ({targetQuantity.toLocaleString()} KT)
-                  </Typography>
-                </>
-              )
-            })()}
-          </Box>
-        )}
-        
-        <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                  {/* Quarter Inputs */}
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {quarterOrder.map((quarter) => {
+                      const fieldKey = `q${['Q1', 'Q2', 'Q3', 'Q4'].indexOf(quarter) + 1}` as 'q1' | 'q2' | 'q3' | 'q4'
+                      return (
+                        <TextField
+                          key={quarter}
+                          label={`${quarter} (${getQuarterLabel(quarter)})`}
+                          type="number"
+                          size="small"
+                          value={plan[fieldKey]}
+                          onChange={(e) => handleQuantityChange(productIndex, fieldKey, e.target.value)}
+                          fullWidth
+                          InputProps={{
+                            endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
+                          }}
+                        />
+                      )
+                    })}
+                  </Box>
+
+                  {/* Total and Validation */}
+                  <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Typography 
+                      variant="body1" 
+                      sx={{ 
+                        fontWeight: 'bold', 
+                        color: isValid ? 'success.main' : total > 0 ? 'error.main' : 'text.primary' 
+                      }}
+                    >
+                      Total: {total.toLocaleString()} KT
+                      {isValid && ' ✓'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {isExact 
+                        ? `Matches contract total (${plan.totalQuantity.toLocaleString()} KT)`
+                        : isValid 
+                          ? `Using optional quantity (${plan.totalQuantity.toLocaleString()} + ${plan.optionalQuantity.toLocaleString()} KT)`
+                          : `Target: ${plan.totalQuantity.toLocaleString()} KT`}
+                    </Typography>
+                  </Box>
+                </Paper>
+              </Grid>
+            )
+          })}
+        </Grid>
+
+        {/* Submit Button */}
+        <Box sx={{ display: 'flex', gap: 2, mt: 3, justifyContent: 'flex-end' }}>
           {onCancel && (
-            <Button onClick={onCancel} variant="outlined">
+            <Button onClick={onCancel} variant="outlined" disabled={isSaving}>
               Cancel
             </Button>
           )}
-          <Button type="submit" variant="contained" startIcon={editingPlan ? undefined : <Add />}>
-            {editingPlan ? 'Update Quarterly Plan' : 'Create Quarterly Plan'}
+          <Button 
+            type="submit" 
+            variant="contained" 
+            startIcon={existingPlans.length > 0 ? <Save /> : <Add />}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving...' : existingPlans.length > 0 ? 'Save Changes' : 'Create Plan'}
           </Button>
         </Box>
       </Box>
     </Paper>
   )
 }
-
