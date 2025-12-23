@@ -74,6 +74,7 @@ class QuarterlyPlan(Base):
     __tablename__ = "quarterly_plans"
     
     id = Column(Integer, primary_key=True, index=True)
+    product_name = Column(String, nullable=True)  # Product name - makes quarterly plan product-specific for multi-product contracts
     q1_quantity = Column(Float, default=0)
     q2_quantity = Column(Float, default=0)
     q3_quantity = Column(Float, default=0)
@@ -118,6 +119,8 @@ class Cargo(Base):
     customer_id = Column(Integer, nullable=False)  # Reference to customer, derived from contract
     product_name = Column(String, nullable=False)  # Product name from contract's products list (e.g., "JET A-1")
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
+    # Combi cargo support - links multiple cargos (different products) that share the same vessel/laycan
+    combi_group_id = Column(String, nullable=True, index=True)  # UUID to link combi cargos together
     # Legacy field for backward compatibility
     product_id = Column(Integer, nullable=True, default=0)  # Old field, no longer used
     contract_type = Column(Enum(ContractType), nullable=False)  # FOB or CIF

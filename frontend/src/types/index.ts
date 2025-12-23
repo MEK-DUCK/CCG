@@ -48,6 +48,7 @@ export interface Contract {
 
 export interface QuarterlyPlan {
   id: number
+  product_name?: string  // Product name - makes quarterly plan product-specific for multi-product contracts
   q1_quantity: number
   q2_quantity: number
   q3_quantity: number
@@ -102,6 +103,7 @@ export interface Cargo {
   inspector_name?: string
   cargo_quantity: number
   laycan_window?: string
+  combi_group_id?: string  // UUID to link combi cargos together (same vessel, different products)
   // Manual vessel operation fields
   eta?: string  // ETA (manual entry)
   berthed?: string  // Berthed (manual entry)

@@ -88,6 +88,7 @@ class Contract(ContractBase):
 
 # Quarterly Plan Schemas
 class QuarterlyPlanBase(BaseModel):
+    product_name: Optional[str] = None  # Product name - makes quarterly plan product-specific
     q1_quantity: float = Field(0, ge=0)
     q2_quantity: float = Field(0, ge=0)
     q3_quantity: float = Field(0, ge=0)
@@ -97,6 +98,7 @@ class QuarterlyPlanCreate(QuarterlyPlanBase):
     contract_id: int
 
 class QuarterlyPlanUpdate(BaseModel):
+    product_name: Optional[str] = None
     q1_quantity: Optional[float] = Field(None, ge=0)
     q2_quantity: Optional[float] = Field(None, ge=0)
     q3_quantity: Optional[float] = Field(None, ge=0)
@@ -192,6 +194,7 @@ class CargoCreate(CargoBase):
     product_name: str  # Product name from contract's products list
     contract_id: int
     monthly_plan_id: int
+    combi_group_id: Optional[str] = None  # UUID to link combi cargos together
 
 class CargoUpdate(BaseModel):
     vessel_name: Optional[str] = None
@@ -236,6 +239,7 @@ class Cargo(CargoBase):
     contract_type: ContractType
     status: CargoStatus
     monthly_plan_id: int
+    combi_group_id: Optional[str] = None  # UUID to link combi cargos together
     created_at: datetime
     updated_at: Optional[datetime] = None
     port_operations: Optional[List["CargoPortOperation"]] = None

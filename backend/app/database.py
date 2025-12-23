@@ -76,26 +76,53 @@ def ensure_schema():
     """
     try:
         insp = inspect(engine)
-        if not insp.has_table("monthly_plans"):
-            return
-
-        cols = [c.get("name") for c in insp.get_columns("monthly_plans")]
-        missing = []
-        for name in ["laycan_2_days_remark", "delivery_window_remark"]:
-            if name not in cols:
-                missing.append(name)
-
-        if not missing:
-            return
-
         dialect = engine.dialect.name
-        with engine.begin() as conn:
-            for col in missing:
-                if dialect == "postgresql":
-                    conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS {col} TEXT'))
-                else:
-                    # SQLite (and others): we've already checked column absence, so safe to add.
-                    conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col} TEXT'))
+        
+        # Monthly plans migrations
+        if insp.has_table("monthly_plans"):
+            cols = [c.get("name") for c in insp.get_columns("monthly_plans")]
+            missing = []
+            for name in ["laycan_2_days_remark", "delivery_window_remark"]:
+                if name not in cols:
+                    missing.append(name)
+
+            if missing:
+                with engine.begin() as conn:
+                    for col in missing:
+                        if dialect == "postgresql":
+                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS {col} TEXT'))
+                        else:
+                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col} TEXT'))
+
+        # Quarterly plans migrations - add product_name for multi-product contracts
+        if insp.has_table("quarterly_plans"):
+            cols = [c.get("name") for c in insp.get_columns("quarterly_plans")]
+            if "product_name" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN IF NOT EXISTS product_name VARCHAR'))
+                    else:
+                        conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN product_name VARCHAR'))
+
+        # Cargos migrations - add combi_group_id for combi cargos
+        if insp.has_table("cargos"):
+            cols = [c.get("name") for c in insp.get_columns("cargos")]
+            if "combi_group_id" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE cargos ADD COLUMN IF NOT EXISTS combi_group_id VARCHAR'))
+                    else:
+                        conn.execute(text('ALTER TABLE cargos ADD COLUMN combi_group_id VARCHAR'))
+                # Add index for combi_group_id
+                try:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text('CREATE INDEX IF NOT EXISTS ix_cargos_combi_group_id ON cargos (combi_group_id)'))
+                        else:
+                            conn.execute(text('CREATE INDEX IF NOT EXISTS ix_cargos_combi_group_id ON cargos (combi_group_id)'))
+                except Exception:
+                    pass  # Index may already exist
+                    
     except Exception:
         # Never block app startup on best-effort migrations
         return
