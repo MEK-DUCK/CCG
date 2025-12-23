@@ -916,7 +916,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                   }
                                   label={
                                     <Typography variant="body2" sx={{ fontWeight: entry.is_combi ? 600 : 400, color: entry.is_combi ? '#B45309' : 'inherit' }}>
-                                      Combi Cargo (multiple products in one vessel)
+                                      Combie Cargo (multiple products in one vessel)
                                     </Typography>
                                   }
                                   sx={{ mb: 1 }}
@@ -926,7 +926,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               {/* Show combi badge for existing combi entries */}
                               {entry.is_combi && entry.id && (
                                 <Chip 
-                                  label="Combi Cargo"
+                                  label="Combie Cargo"
                                   size="small" 
                                   sx={{ mb: 1, bgcolor: '#F59E0B', color: 'white' }} 
                                 />

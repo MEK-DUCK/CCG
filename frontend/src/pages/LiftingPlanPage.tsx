@@ -326,7 +326,7 @@ export default function LiftingPlanPage() {
           let result = `${entry.quantity.toLocaleString()} KT`
           
           if (entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0) {
-            result += ' [Combi]'
+            result += ' [Combie]'
             const productDetails = entry.combiProducts.map(cp => `${cp.productName}: ${cp.quantity.toLocaleString()} KT`).join(', ')
             result += `\n(${productDetails})`
           }
@@ -427,7 +427,7 @@ export default function LiftingPlanPage() {
           let result = `${entry.quantity.toLocaleString()} KT`
           
           if (entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0) {
-            result += ' [Combi]'
+            result += ' [Combie]'
             const productDetails = entry.combiProducts.map(cp => `${cp.productName}: ${cp.quantity.toLocaleString()} KT`).join('\n')
             result += `\n(${productDetails})`
           }
@@ -584,7 +584,7 @@ export default function LiftingPlanPage() {
                             </Typography>
                             {entry.isCombi && (
                               <Chip 
-                                label="Combi" 
+                                label="Combie" 
                                 size="small" 
                                 sx={{ 
                                   height: 18, 
@@ -651,7 +651,7 @@ export default function LiftingPlanPage() {
                             </Typography>
                             {entry.isCombi && (
                               <Chip 
-                                label="Combi" 
+                                label="Combie" 
                                 size="small" 
                                 sx={{ 
                                   height: 18, 
@@ -718,7 +718,7 @@ export default function LiftingPlanPage() {
                             </Typography>
                             {entry.isCombi && (
                               <Chip 
-                                label="Combi" 
+                                label="Combie" 
                                 size="small" 
                                 sx={{ 
                                   height: 18, 

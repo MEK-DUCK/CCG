@@ -2209,7 +2209,7 @@ export default function HomePage() {
                       {cargo ? cargo.vessel_name : 'TBA'}
                       {isCombi && (
                         <Chip 
-                          label="Combi" 
+                          label="Combie" 
                           size="small" 
                           sx={{ 
                             height: 18, 
