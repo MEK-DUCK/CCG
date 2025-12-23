@@ -151,6 +151,11 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
     # For lc_status, database only has values, so we must use .value
     lc_status_for_db = cargo.lc_status.value if cargo.lc_status else None
     
+    # Get combi_group_id - either from cargo payload or inherit from monthly plan
+    combi_group_id = cargo.combi_group_id
+    if not combi_group_id and monthly_plan and monthly_plan.combi_group_id:
+        combi_group_id = monthly_plan.combi_group_id
+    
     db_cargo = models.Cargo(
         cargo_id=cargo_id,
         vessel_name=cargo.vessel_name,
@@ -176,6 +181,7 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
         discharge_completion_time=cargo.discharge_completion_time,
         notes=cargo.notes,
         monthly_plan_id=cargo.monthly_plan_id,
+        combi_group_id=combi_group_id,  # Link combi cargos together
         status=CargoStatus.PLANNED,  # Always start as Planned, user will update manually
         product_id=0  # Legacy field, set to 0 for backward compatibility
     )
