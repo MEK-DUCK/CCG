@@ -379,6 +379,7 @@ export default function HomePage() {
   const [cargoContract, setCargoContract] = useState<Contract | null>(null)
   const [cargoProductName, setCargoProductName] = useState<string | null>(null)
   const [newCargoMonthlyPlanId, setNewCargoMonthlyPlanId] = useState<number | null>(null) // For moving cargo
+  const [combiMonthlyPlansForCargo, setCombiMonthlyPlansForCargo] = useState<(MonthlyPlan & { quarterlyPlanId?: number })[]>([]) // For combie cargo creation
   const [cargoFormData, setCargoFormData] = useState({
     vessel_name: '',
     load_ports: [] as string[],
@@ -690,10 +691,12 @@ export default function HomePage() {
     }
   }
 
-  const handleCreateCargoForPlan = async (monthlyPlan: MonthlyPlan & { quarterlyPlanId?: number }) => {
-    // Check if this monthly plan already has a cargo
+  const handleCreateCargoForPlan = async (monthlyPlan: MonthlyPlan & { quarterlyPlanId?: number }, combiPlans?: (MonthlyPlan & { quarterlyPlanId?: number })[]) => {
+    // For combie cargos, check if ANY of the monthly plans already has a cargo
+    const plansToCheck = combiPlans || [monthlyPlan]
+    for (const plan of plansToCheck) {
     const existingCargo = [...portMovement, ...completedCargos, ...inRoadCIF].find(
-      cargo => cargo.monthly_plan_id === monthlyPlan.id
+        cargo => cargo.monthly_plan_id === plan.id
     )
     
     if (existingCargo) {
@@ -701,6 +704,7 @@ export default function HomePage() {
       // Optionally, open the edit dialog for the existing cargo
       handleEditCargo(existingCargo)
       return
+      }
     }
     
     // Find the contract for this monthly plan through quarterly plan
@@ -731,8 +735,14 @@ export default function HomePage() {
     setCargoContract(contract)
     setCargoProductName(defaultProductName)
     
-    // Get quantity from monthly plan
-    const cargoQuantity = monthlyPlan.month_quantity.toString()
+    // Store combie monthly plans for creating multiple cargos
+    setCombiMonthlyPlansForCargo(combiPlans || [])
+    
+    // Get total quantity from all monthly plans in combie group
+    const totalQuantity = combiPlans 
+      ? combiPlans.reduce((sum, p) => sum + p.month_quantity, 0)
+      : monthlyPlan.month_quantity
+    const cargoQuantity = totalQuantity.toString()
     
     // Get laycan window from monthly plan:
     // - CIF: use loading_window
@@ -828,25 +838,48 @@ export default function HomePage() {
           cargo_quantity: parseFloat(cargoFormData.cargo_quantity),
         }
         
-        // Update in Port Movement tab
+        // Shared fields to update for all combie cargos (not quantity - that's per product)
+        const sharedFields = {
+          vessel_name: cargoFormData.vessel_name,
+          load_ports: formatLoadPorts(cargoFormData.load_ports),
+          inspector_name: cargoFormData.inspector_name || undefined,
+          laycan_window: cargoFormData.laycan_window || undefined,
+          notes: cargoFormData.notes || undefined,
+          status: cargoFormData.status as CargoStatus,
+          lc_status: cargoFormData.lc_status || undefined,
+        }
+        
+        // Update in Port Movement tab (including all combie cargos)
         setPortMovement(prevCargos =>
-          prevCargos.map(cargo =>
-            cargo.id === editingCargo.id ? updatedCargo : cargo
-          )
+          prevCargos.map(cargo => {
+            if (cargo.id === editingCargo.id) return updatedCargo
+            if (editingCargo.combi_group_id && cargo.combi_group_id === editingCargo.combi_group_id) {
+              return { ...cargo, ...sharedFields }
+            }
+            return cargo
+          })
         )
         
-        // Update in Completed Cargos tab if it exists there
+        // Update in Completed Cargos tab (including all combie cargos)
         setCompletedCargos(prevCargos =>
-          prevCargos.map(cargo =>
-            cargo.id === editingCargo.id ? updatedCargo : cargo
-          )
+          prevCargos.map(cargo => {
+            if (cargo.id === editingCargo.id) return updatedCargo
+            if (editingCargo.combi_group_id && cargo.combi_group_id === editingCargo.combi_group_id) {
+              return { ...cargo, ...sharedFields }
+            }
+            return cargo
+          })
         )
         
-        // Update in In-Road CIF tab if it exists there
+        // Update in In-Road CIF tab (including all combie cargos)
         setInRoadCIF(prevCargos =>
-          prevCargos.map(cargo =>
-            cargo.id === editingCargo.id ? updatedCargo : cargo
-          )
+          prevCargos.map(cargo => {
+            if (cargo.id === editingCargo.id) return updatedCargo
+            if (editingCargo.combi_group_id && cargo.combi_group_id === editingCargo.combi_group_id) {
+              return { ...cargo, ...sharedFields }
+            }
+            return cargo
+          })
         )
         
         // OPTIMISTIC: If status changed to Loading, add to activeLoadings so it shows in port sections immediately
@@ -855,7 +888,13 @@ export default function HomePage() {
             // Check if already in activeLoadings
             const exists = prev.some(c => c.id === editingCargo.id)
             if (exists) {
-              return prev.map(c => c.id === editingCargo.id ? updatedCargo : c)
+              return prev.map(c => {
+                if (c.id === editingCargo.id) return updatedCargo
+                if (editingCargo.combi_group_id && c.combi_group_id === editingCargo.combi_group_id) {
+                  return { ...c, ...sharedFields }
+                }
+                return c
+              })
             }
             return [...prev, updatedCargo]
           })
@@ -864,10 +903,37 @@ export default function HomePage() {
         // Close dialog immediately
         setCargoDialogOpen(false)
         
+        // For combie cargos, update ALL cargos in the group with the same shared fields
+        // (status, vessel_name, load_ports, inspector_name, laycan_window, notes, lc_status)
+        const combieCargosToUpdate = editingCargo.combi_group_id
+          ? [...portMovement, ...completedCargos, ...inRoadCIF, ...activeLoadings]
+              .filter(c => c.combi_group_id === editingCargo.combi_group_id && c.id !== editingCargo.id)
+              .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i) // dedupe
+          : []
+        
         // Send API call in background.
         // IMPORTANT: Only revert the optimistic update if the UPDATE request itself fails.
         // Follow-up refresh failures should not revert a successful save.
-        cargoAPI.update(editingCargo.id, updatePayload)
+        const updatePromises = [cargoAPI.update(editingCargo.id, updatePayload)]
+        
+        // Also update other cargos in the combie group with shared fields (not cargo_quantity)
+        if (combieCargosToUpdate.length > 0) {
+          const sharedUpdatePayload = {
+            vessel_name: cargoFormData.vessel_name,
+            load_ports: formatLoadPorts(cargoFormData.load_ports),
+            inspector_name: cargoFormData.inspector_name || undefined,
+            laycan_window: cargoFormData.laycan_window || undefined,
+            notes: cargoFormData.notes || undefined,
+            status: cargoFormData.status,
+            lc_status: cargoFormData.lc_status || undefined,
+          }
+          
+          combieCargosToUpdate.forEach(c => {
+            updatePromises.push(cargoAPI.update(c.id, sharedUpdatePayload))
+          })
+        }
+        
+        Promise.all(updatePromises)
           .then(() => {
             // Refresh in background (best-effort)
             loadData().catch((e) => console.error('Error refreshing data after cargo update:', e))
@@ -975,7 +1041,7 @@ export default function HomePage() {
         // Show success message immediately
         alert('Vessel updated successfully!' + (isChangingToCompletedLoading && isCIF ? ' A copy will be created for In-Road CIF tracking.' : ''))
       } else {
-        // Create new cargo for monthly plan
+        // Create new cargo for monthly plan (or multiple cargos for combie)
         if (!cargoMonthlyPlanId || !cargoContractId || !cargoContract || !cargoProductName) {
           alert('Missing monthly plan, contract, or product information. Please try clicking on the row again.')
           return
@@ -984,20 +1050,8 @@ export default function HomePage() {
         const contract = cargoContract
 
         // Validate required fields
-        if (!cargoFormData.vessel_name || !cargoFormData.cargo_quantity) {
-          alert('Please fill in all required fields: Vessel Name and Cargo Quantity')
-          return
-        }
-
-        const cargoQuantity = parseFloat(cargoFormData.cargo_quantity)
-        if (isNaN(cargoQuantity) || cargoQuantity <= 0) {
-          alert('Cargo Quantity must be a valid positive number')
-          return
-        }
-
-        // Validate product selection
-        if (!cargoProductName) {
-          alert('Please select a product')
+        if (!cargoFormData.vessel_name) {
+          alert('Please fill in vessel name')
           return
         }
 
@@ -1012,70 +1066,97 @@ export default function HomePage() {
         // Close dialog immediately
         setCargoDialogOpen(false)
         
-        // Prepare the payload
-        const payload: any = {
-          customer_id: contract.customer_id,
-          product_name: cargoProductName,
-          contract_id: cargoContractId,
-          monthly_plan_id: cargoMonthlyPlanId,
-          vessel_name: cargoFormData.vessel_name,
-          load_ports: formatLoadPorts(cargoFormData.load_ports),
-          cargo_quantity: cargoQuantity,
-        }
-
-        // Add optional fields
-        if (cargoFormData.inspector_name) payload.inspector_name = cargoFormData.inspector_name
-        if (cargoFormData.laycan_window) payload.laycan_window = cargoFormData.laycan_window
-        if (cargoFormData.notes) payload.notes = cargoFormData.notes
-        if (cargoFormData.lc_status) {
-          payload.lc_status = cargoFormData.lc_status as LCStatus
-        }
-
-        // Add CIF specific fields
-        if (contract.contract_type === 'CIF') {
-          if (cargoFormData.eta_discharge_port) payload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
-          if (cargoFormData.discharge_port_location) payload.discharge_port_location = cargoFormData.discharge_port_location
-          if (cargoFormData.discharge_completion_time) payload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
-        }
-
-        // Create optimistic cargo object
-        const optimisticCargo: Cargo = {
-          id: Date.now(),
-          cargo_id: `TEMP-${Date.now()}`,
-          vessel_name: cargoFormData.vessel_name,
-          customer_id: contract.customer_id,
-          product_name: cargoProductName,
-          contract_id: cargoContractId!,
-          contract_type: contract.contract_type,
-          load_ports: formatLoadPorts(cargoFormData.load_ports),
-          inspector_name: cargoFormData.inspector_name || undefined,
-          cargo_quantity: cargoQuantity,
-          laycan_window: cargoFormData.laycan_window || undefined,
-          status: 'Planned' as CargoStatus,
-          notes: cargoFormData.notes || undefined,
-          monthly_plan_id: cargoMonthlyPlanId!,
-          lc_status: cargoFormData.lc_status || undefined,
-          created_at: new Date().toISOString(),
-        }
+        // Check if this is a combie cargo (multiple monthly plans)
+        const isCombieCargo = combiMonthlyPlansForCargo.length > 0
+        const plansToCreate = isCombieCargo ? combiMonthlyPlansForCargo : [{ id: cargoMonthlyPlanId, month_quantity: parseFloat(cargoFormData.cargo_quantity), product_name: cargoProductName } as any]
+        
+        // Create optimistic cargos for all plans
+        const optimisticCargos: Cargo[] = plansToCreate.map((plan, index) => {
+          // Get product name from quarterly plan (MonthlyPlan doesn't have product_name directly)
+          // Try both quarterly_plan_id (from API) and quarterlyPlanId (added in loadData)
+          const qpId = plan.quarterly_plan_id || (plan as any).quarterlyPlanId
+          const qp = quarterlyPlansMap.get(qpId)
+          const productName = qp?.product_name || (plan as any).product_name || cargoProductName
+          
+          return {
+            id: Date.now() + index,
+            cargo_id: `TEMP-${Date.now()}-${index}`,
+            vessel_name: cargoFormData.vessel_name,
+            customer_id: contract.customer_id,
+            product_name: productName,
+            contract_id: cargoContractId!,
+            contract_type: contract.contract_type,
+            load_ports: formatLoadPorts(cargoFormData.load_ports),
+            inspector_name: cargoFormData.inspector_name || undefined,
+            cargo_quantity: plan.month_quantity,
+            laycan_window: cargoFormData.laycan_window || undefined,
+            status: 'Planned' as CargoStatus,
+            notes: cargoFormData.notes || undefined,
+            monthly_plan_id: plan.id,
+            lc_status: cargoFormData.lc_status || undefined,
+            created_at: new Date().toISOString(),
+            combi_group_id: isCombieCargo ? plansToCreate[0].combi_group_id : undefined,
+          }
+        })
 
         // OPTIMISTIC UPDATE: Add to Port Movement immediately
-        setPortMovement(prevCargos => [...prevCargos, optimisticCargo])
+        setPortMovement(prevCargos => [...prevCargos, ...optimisticCargos])
 
         try {
-          const response = await cargoAPI.create(payload)
-          // Replace optimistic cargo with real cargo from API
-          if (response.data) {
-            setPortMovement(prevCargos =>
-              prevCargos.map(cargo =>
-                cargo.id === optimisticCargo.id ? response.data : cargo
-              )
-            )
+          // Create cargos for all monthly plans in the combie group
+          const createdCargos: Cargo[] = []
+          
+          for (const plan of plansToCreate) {
+            // Get product name from quarterly plan (MonthlyPlan doesn't have product_name directly)
+            // Try both quarterly_plan_id (from API) and quarterlyPlanId (added in loadData)
+            const qpId = plan.quarterly_plan_id || (plan as any).quarterlyPlanId
+            const qp = quarterlyPlansMap.get(qpId)
+            const productName = qp?.product_name || (plan as any).product_name || cargoProductName
+            
+          const payload: any = {
+            customer_id: contract.customer_id,
+            product_name: productName,
+            contract_id: cargoContractId,
+              monthly_plan_id: plan.id,
+            vessel_name: cargoFormData.vessel_name,
+            load_ports: formatLoadPorts(cargoFormData.load_ports),
+              cargo_quantity: plan.month_quantity,
           }
-          alert('Cargo created successfully!')
+
+          // Add optional fields
+          if (cargoFormData.inspector_name) payload.inspector_name = cargoFormData.inspector_name
+          if (cargoFormData.laycan_window) payload.laycan_window = cargoFormData.laycan_window
+            if (cargoFormData.notes) payload.notes = cargoFormData.notes
+          if (cargoFormData.lc_status) {
+            payload.lc_status = cargoFormData.lc_status as LCStatus
+          }
+
+          // Add CIF specific fields
+          if (contract.contract_type === 'CIF') {
+            if (cargoFormData.eta_discharge_port) payload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
+            if (cargoFormData.discharge_port_location) payload.discharge_port_location = cargoFormData.discharge_port_location
+            if (cargoFormData.discharge_completion_time) payload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
+          }
+
+            const response = await cargoAPI.create(payload)
+            if (response.data) {
+              createdCargos.push(response.data)
+            }
+          }
+          
+          // Replace optimistic cargos with real cargos from API
+          setPortMovement(prevCargos => {
+            // Remove optimistic cargos
+            const withoutOptimistic = prevCargos.filter(c => !optimisticCargos.some(oc => oc.id === c.id))
+            // Add real cargos
+            return [...withoutOptimistic, ...createdCargos]
+          })
+          
+          alert(isCombieCargo ? `Combie cargo created successfully! (${createdCargos.length} products)` : 'Cargo created successfully!')
         } catch (error: any) {
-          // Remove optimistic cargo on error
+          // Remove optimistic cargos on error
           setPortMovement(prevCargos =>
-            prevCargos.filter(cargo => cargo.id !== optimisticCargo.id)
+            prevCargos.filter(cargo => !optimisticCargos.some(oc => oc.id === cargo.id))
           )
           const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error'
           alert(`Error creating cargo: ${errorMessage}`)
@@ -1084,6 +1165,9 @@ export default function HomePage() {
         // Refresh data
         loadData()
         loadPortMovement()
+        
+        // Clear combie monthly plans state
+        setCombiMonthlyPlansForCargo([])
       }
     } catch (error: any) {
       console.error('Error in handleCargoSubmit:', error)
@@ -1289,7 +1373,19 @@ export default function HomePage() {
       )
     }
 
-    if (cargos.length === 0) {
+    // Group combie cargos - only show one row per combi_group_id
+    const seenCombiGroups = new Set<string>()
+    const groupedCargos = cargos.filter((cargo) => {
+      if (cargo.combi_group_id) {
+        if (seenCombiGroups.has(cargo.combi_group_id)) {
+          return false // Skip duplicate combie rows
+        }
+        seenCombiGroups.add(cargo.combi_group_id)
+      }
+      return true
+    })
+
+    if (groupedCargos.length === 0) {
       return (
         <Typography variant="body1" color="text.secondary" sx={{ p: 2 }}>
           No cargos found
@@ -1314,6 +1410,7 @@ export default function HomePage() {
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Vessel Name</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Customer</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Status</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Load Port(s)</TableCell>
@@ -1321,9 +1418,18 @@ export default function HomePage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {cargos.map((cargo) => (
+            {groupedCargos.map((cargo) => {
+              // Get all cargos in combie group for display - search in all cargo arrays
+              const allCargosForLookup = [...portMovement, ...completedCargos, ...inRoadCIF, ...activeLoadings, ...cargos]
+              const combieCargos = cargo.combi_group_id 
+                ? allCargosForLookup
+                    .filter(c => c.combi_group_id === cargo.combi_group_id)
+                    .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i) // dedupe
+                : [cargo]
+              
+              return (
               <TableRow 
-                key={cargo.id}
+                  key={cargo.combi_group_id ? `combi-${cargo.combi_group_id}` : cargo.id}
                 onClick={() => handleEditCargo(cargo)}
                 sx={{ 
                   cursor: 'pointer', 
@@ -1331,12 +1437,56 @@ export default function HomePage() {
                   '& td': { 
                     minHeight: isMobile ? 56 : 48,
                     py: isMobile ? 1.5 : 1,
-                  }
-                }}
-              >
-                <TableCell>{cargo.vessel_name}</TableCell>
+                    },
+                    bgcolor: 'inherit'
+                  }}
+                >
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {cargo.vessel_name}
+                      {cargo.combi_group_id && (
+                        <Chip 
+                          label="Combie" 
+                          size="small" 
+                          sx={{ 
+                            bgcolor: '#F59E0B', 
+                            color: 'white', 
+                            fontWeight: 600,
+                            fontSize: '0.7rem',
+                            height: 20,
+                          }} 
+                        />
+                      )}
+                    </Box>
+                  </TableCell>
                 <TableCell>{getCustomerName(cargo.customer_id)}</TableCell>
-                <TableCell>{getProductName(cargo.product_name)}</TableCell>
+                  <TableCell>
+                    {cargo.combi_group_id ? (
+                      <Box>
+                        {combieCargos.map(c => (
+                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
+                            {c.product_name}: {c.cargo_quantity} KT
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      getProductName(cargo.product_name)
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {cargo.combi_group_id ? (
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          {combieCargos.reduce((sum, c) => sum + c.cargo_quantity, 0)} KT
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          (Total)
+                        </Typography>
+                      </Box>
+                    ) : (
+                      cargo.cargo_quantity
+                    )}
+                  </TableCell>
                 <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
                 <TableCell>
                   <Chip 
@@ -1349,7 +1499,8 @@ export default function HomePage() {
                 <TableCell>{cargo.load_ports}</TableCell>
                 <TableCell>{cargo.notes || '-'}</TableCell>
               </TableRow>
-            ))}
+              )
+            })}
           </TableBody>
         </Table>
       </TableContainer>
@@ -1447,7 +1598,19 @@ export default function HomePage() {
       return matchesSearch
     })
 
-    if (filteredCompletedCargos.length === 0) {
+    // Group combie cargos - only show one row per combi_group_id
+    const seenCombiGroups = new Set<string>()
+    const groupedCompletedCargos = filteredCompletedCargos.filter((cargo) => {
+      if (cargo.combi_group_id) {
+        if (seenCombiGroups.has(cargo.combi_group_id)) {
+          return false // Skip duplicate combie rows
+        }
+        seenCombiGroups.add(cargo.combi_group_id)
+      }
+      return true
+    })
+
+    if (groupedCompletedCargos.length === 0) {
       return (
         <Typography variant="body1" color="text.secondary" sx={{ p: 2 }}>
           {completedCargos.length === 0 
@@ -1486,7 +1649,7 @@ export default function HomePage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredCompletedCargos.map((cargo) => {
+            {groupedCompletedCargos.map((cargo) => {
               // Find contract by matching cargo.contract_id with contract.id
               // This gets the contract_number field that was entered in Contract Management
               const contract = contracts.find((c) => {
@@ -1496,9 +1659,17 @@ export default function HomePage() {
               // Display contract_number (the field typed in Contract Management page)
               const contractNumber = contract?.contract_number || (cargo.contract_id ? `Contract ID: ${cargo.contract_id}` : '-')
               
+              // Get all cargos in combie group for display - search in all cargo arrays
+              const allCargosForLookup = [...portMovement, ...completedCargos, ...inRoadCIF, ...activeLoadings]
+              const combieCargos = cargo.combi_group_id 
+                ? allCargosForLookup
+                    .filter(c => c.combi_group_id === cargo.combi_group_id)
+                    .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i) // dedupe
+                : [cargo]
+              
               return (
                 <TableRow 
-                  key={cargo.id}
+                  key={cargo.combi_group_id ? `combi-${cargo.combi_group_id}` : cargo.id}
                   onClick={() => handleEditCargo(cargo)}
                   sx={{ 
                     cursor: 'pointer', 
@@ -1506,12 +1677,42 @@ export default function HomePage() {
                     '& td': { 
                       minHeight: isMobile ? 56 : 48,
                       py: isMobile ? 1.5 : 1,
-                    }
+                    },
+                    bgcolor: 'inherit'
                   }}
                 >
-                  <TableCell>{cargo.vessel_name}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {cargo.vessel_name}
+                      {cargo.combi_group_id && (
+                        <Chip 
+                          label="Combie" 
+                          size="small" 
+                          sx={{ 
+                            bgcolor: '#F59E0B', 
+                            color: 'white', 
+                            fontWeight: 600,
+                            fontSize: '0.7rem',
+                            height: 20,
+                          }} 
+                        />
+                      )}
+                    </Box>
+                  </TableCell>
                   <TableCell>{getCustomerName(cargo.customer_id)}</TableCell>
-                  <TableCell>{getProductName(cargo.product_name)}</TableCell>
+                  <TableCell>
+                    {cargo.combi_group_id ? (
+                      <Box>
+                        {combieCargos.map(c => (
+                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
+                            {c.product_name}: {c.cargo_quantity} KT
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      getProductName(cargo.product_name)
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Chip
                       label={cargo.contract_type || '-'}
@@ -1547,7 +1748,20 @@ export default function HomePage() {
                     )}
                   </TableCell>
                   <TableCell>{contractNumber || '-'}</TableCell>
-                  <TableCell>{cargo.cargo_quantity}</TableCell>
+                  <TableCell>
+                    {cargo.combi_group_id ? (
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          {combieCargos.reduce((sum, c) => sum + c.cargo_quantity, 0)} KT
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          (Total)
+                        </Typography>
+                      </Box>
+                    ) : (
+                      cargo.cargo_quantity
+                    )}
+                  </TableCell>
                 <TableCell>
                     {(() => {
                       // Get laycan from monthly plan (2 days > 5 days > TBA)
@@ -1752,9 +1966,9 @@ export default function HomePage() {
         combiGroups.set(cargo.combi_group_id, existing)
       } else {
         // Deduplicate non-combi cargos
-        const key = `${cargo.vessel_name}_${cargo.contract_id}_${cargo.monthly_plan_id}_${cargo.product_name}`
+      const key = `${cargo.vessel_name}_${cargo.contract_id}_${cargo.monthly_plan_id}_${cargo.product_name}`
         const existing = seenNonCombiCargos.get(key)
-        if (!existing || (cargo.id && existing.id && cargo.id > existing.id)) {
+      if (!existing || (cargo.id && existing.id && cargo.id > existing.id)) {
           seenNonCombiCargos.set(key, cargo)
         }
       }
@@ -2182,7 +2396,8 @@ export default function HomePage() {
                   }
                   onClick={() => {
                     if (isMonthlyPlan && monthlyPlan) {
-                      handleCreateCargoForPlan(monthlyPlan)
+                      // For combie, pass all monthly plans in the group
+                      handleCreateCargoForPlan(monthlyPlan, isCombi && combiMonthlyPlans ? combiMonthlyPlans : undefined)
                     } else if (cargo) {
                       // For combi cargos, edit the first cargo in the group
                       handleEditCargo(isCombi && combiCargos ? combiCargos[0] : cargo)
@@ -2195,7 +2410,7 @@ export default function HomePage() {
                           minHeight: isMobile ? 56 : 48,
                           py: isMobile ? 1.5 : 1,
                     },
-                    bgcolor: isMonthlyPlan ? (isCombi ? '#FEF3C7' : 'action.selected') : (isCombi ? '#FEF3C7' : 'inherit')
+                    bgcolor: isMonthlyPlan ? 'action.selected' : 'inherit'
                   }}
                 >
                       <TableCell sx={{ 
@@ -2206,7 +2421,7 @@ export default function HomePage() {
                         wordBreak: 'normal'
                       }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      {cargo ? cargo.vessel_name : 'TBA'}
+                    {cargo ? cargo.vessel_name : 'TBA'}
                       {isCombi && (
                         <Chip 
                           label="Combie" 
@@ -2323,7 +2538,7 @@ export default function HomePage() {
                         ) : (
                           cargo ? cargo.product_name : (
                             contract && contract.products && contract.products.length > 0
-                              ? contract.products.map((p: ContractProduct) => p.name).join(', ')
+                            ? contract.products.map((p: ContractProduct) => p.name).join(', ')
                               : '-'
                           )
                         )}
@@ -2657,13 +2872,25 @@ export default function HomePage() {
 
             <Box sx={{ p: { xs: 1.5, sm: 2 }, display: 'flex', flexDirection: 'column', gap: 2 }}>
               {PORT_SECTIONS.map((port) => {
-                const rows = (
+                const allRows = (
                   activeLoadings
                     .map((cargo) => ({ cargo, op: getPortOpForCargo(cargo, port) }))
                     // Show both Loading and Completed Loading so a completed port doesn't disappear
                     // until ALL ports complete (then it moves to Completed Cargos tab).
                     .filter((x) => x.op && (x.op.status === 'Loading' || x.op.status === 'Completed Loading'))
                 ) as Array<{ cargo: Cargo; op: CargoPortOperation }>
+
+                // Group combie cargos - only show one row per combi_group_id
+                const seenCombiGroups = new Set<string>()
+                const rows = allRows.filter(({ cargo }) => {
+                  if (cargo.combi_group_id) {
+                    if (seenCombiGroups.has(cargo.combi_group_id)) {
+                      return false // Skip duplicate combie rows
+                    }
+                    seenCombiGroups.add(cargo.combi_group_id)
+                  }
+                  return true
+                })
 
                 // Keep Loading first for quick visibility, then Completed Loading
                 rows.sort((a, b) => (a.op.status === b.op.status ? 0 : a.op.status === 'Loading' ? -1 : 1))
@@ -2743,7 +2970,24 @@ export default function HomePage() {
                                 sx={{ cursor: 'pointer' }}
                                 onClick={() => handleEditCargo(cargo)}
                               >
-                                <TableCell sx={{ fontWeight: 600 }}>{cargo.vessel_name}</TableCell>
+                                <TableCell sx={{ fontWeight: 600 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    {cargo.vessel_name}
+                                    {cargo.combi_group_id && (
+                                      <Chip 
+                                        label="Combie" 
+                                        size="small" 
+                                        sx={{ 
+                                          bgcolor: '#F59E0B', 
+                                          color: 'white', 
+                                          fontWeight: 600,
+                                          fontSize: '0.7rem',
+                                          height: 20,
+                                        }} 
+                                      />
+                                    )}
+                                  </Box>
+                                </TableCell>
                                 <TableCell>{customer ? customer.name : '-'}</TableCell>
                                 <TableCell>{contract ? contract.contract_number : '-'}</TableCell>
                                 <TableCell>
@@ -2780,12 +3024,44 @@ export default function HomePage() {
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  {contract && contract.products && contract.products.length > 0
-                                    ? contract.products.map((p: ContractProduct) => p.name).join(', ')
-                                    : '-'}
+                                  {cargo.combi_group_id ? (
+                                    // For combie cargos, show all products in the combie group
+                                    // Look in all cargo arrays since not all combie cargos may be in activeLoadings
+                                    <Box>
+                                      {[...portMovement, ...activeLoadings, ...completedCargos, ...inRoadCIF]
+                                        .filter(c => c.combi_group_id === cargo.combi_group_id)
+                                        .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i) // dedupe
+                                        .map(c => (
+                                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
+                                            {c.product_name}: {c.cargo_quantity} KT
+                                          </Typography>
+                                        ))
+                                      }
+                                    </Box>
+                                  ) : (
+                                    cargo.product_name || '-'
+                                  )}
                                 </TableCell>
                                 <TableCell sx={{ whiteSpace: 'nowrap' }}>{laycan}</TableCell>
-                                <TableCell>{cargo.cargo_quantity?.toLocaleString?.() ?? cargo.cargo_quantity}</TableCell>
+                                <TableCell>
+                                  {cargo.combi_group_id ? (
+                                    // For combie cargos, show total quantity
+                                    // Look in all cargo arrays since not all combie cargos may be in activeLoadings
+                                    <Box>
+                                      <Typography variant="body2" fontWeight={600}>
+                                        {[...portMovement, ...activeLoadings, ...completedCargos, ...inRoadCIF]
+                                          .filter(c => c.combi_group_id === cargo.combi_group_id)
+                                          .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i) // dedupe
+                                          .reduce((sum, c) => sum + c.cargo_quantity, 0)} KT
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        (Total)
+                                      </Typography>
+                                    </Box>
+                                  ) : (
+                                    cargo.cargo_quantity?.toLocaleString?.() ?? cargo.cargo_quantity
+                                  )}
+                                </TableCell>
                                 <TableCell>{cargo.load_ports || '-'}</TableCell>
                                 <TableCell>{cargo.inspector_name || '-'}</TableCell>
 
@@ -3033,24 +3309,78 @@ export default function HomePage() {
               
               return (
             <Grid container spacing={isMobile ? 1.5 : 2}>
-              {!editingCargo && cargoContract && (
-                <Grid item xs={12}>
-                  <FormControl fullWidth required>
-                    <InputLabel>Product</InputLabel>
-                    <Select
-                      value={cargoProductName || ''}
-                      label="Product"
-                      onChange={(e) => setCargoProductName(e.target.value)}
-                    >
-                      {cargoContract.products?.map((product) => (
-                        <MenuItem key={product.name} value={product.name}>
-                          {product.name} (Total: {product.total_quantity} KT, Optional: {product.optional_quantity || 0} KT)
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              )}
+              {/* Product info - shown for both new and existing cargos */}
+                    <Grid item xs={12}>
+                {!editingCargo && cargoContract ? (
+                  // Creating new cargo
+                  combiMonthlyPlansForCargo.length > 0 ? (
+                    // Combie cargo - show products as read-only
+                    <Box sx={{ p: 2, bgcolor: '#FEF3C7', borderRadius: 1, border: '1px solid #F59E0B' }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: '#92400E' }}>
+                        Combie Cargo Products:
+                          </Typography>
+                      {combiMonthlyPlansForCargo.map((mp) => {
+                        const qpId = mp.quarterly_plan_id || (mp as any).quarterlyPlanId
+                        const qp = quarterlyPlansMap.get(qpId)
+                        const productName = qp?.product_name || 'Unknown'
+                        return (
+                          <Typography key={mp.id} variant="body2" sx={{ color: '#78350F' }}>
+                            • {productName}: {mp.month_quantity} KT
+                          </Typography>
+                        )
+                      })}
+                      <Typography variant="body2" sx={{ mt: 1, fontWeight: 600, color: '#92400E' }}>
+                        Total: {combiMonthlyPlansForCargo.reduce((sum, mp) => sum + mp.month_quantity, 0)} KT
+                          </Typography>
+                        </Box>
+                  ) : (
+                    // Single product cargo - show as read-only
+                    <Box sx={{ p: 2, bgcolor: '#F3F4F6', borderRadius: 1, border: '1px solid #D1D5DB' }}>
+                      <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 600, color: '#374151' }}>
+                        Product:
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: '#111827', fontWeight: 500 }}>
+                        {cargoProductName} - {cargoFormData.cargo_quantity} KT
+                      </Typography>
+                      </Box>
+                  )
+                ) : editingCargo ? (
+                  // Editing existing cargo
+                  editingCargo.combi_group_id ? (
+                    // Combie cargo - show all products in the group
+                    <Box sx={{ p: 2, bgcolor: '#FEF3C7', borderRadius: 1, border: '1px solid #F59E0B' }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: '#92400E' }}>
+                        Combie Cargo Products:
+                      </Typography>
+                      {[...portMovement, ...completedCargos, ...inRoadCIF, ...activeLoadings]
+                        .filter(c => c.combi_group_id === editingCargo.combi_group_id)
+                        .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i) // dedupe
+                        .map(c => (
+                          <Typography key={c.id} variant="body2" sx={{ color: '#78350F' }}>
+                            • {c.product_name}: {c.cargo_quantity} KT
+                          </Typography>
+                        ))
+                      }
+                      <Typography variant="body2" sx={{ mt: 1, fontWeight: 600, color: '#92400E' }}>
+                        Total: {[...portMovement, ...completedCargos, ...inRoadCIF, ...activeLoadings]
+                          .filter(c => c.combi_group_id === editingCargo.combi_group_id)
+                          .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
+                          .reduce((sum, c) => sum + c.cargo_quantity, 0)} KT
+                      </Typography>
+                            </Box>
+                  ) : (
+                    // Single product cargo - show as read-only
+                    <Box sx={{ p: 2, bgcolor: '#F3F4F6', borderRadius: 1, border: '1px solid #D1D5DB' }}>
+                      <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 600, color: '#374151' }}>
+                        Product:
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: '#111827', fontWeight: 500 }}>
+                        {editingCargo.product_name} - {editingCargo.cargo_quantity} KT
+                      </Typography>
+                    </Box>
+                  )
+                ) : null}
+                    </Grid>
               <Grid item xs={12} md={6}>
                 <TextField
                   label="Vessel Name"
