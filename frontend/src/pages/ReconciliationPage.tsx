@@ -214,16 +214,29 @@ export default function ReconciliationPage() {
     return { prevByMonth, curByMonth, remarkByMonth, previousTotal, currentTotal }
   }, [weeklyData, weeklyProduct, contractIdToCategories])
 
-  const getActionColor = (action: string) => {
+  // Custom chip styles for audit logs - distinct from FOB/CIF/T/T/LC colors
+  const getTypeChipSx = (isMonthly: boolean) => {
+    if (isMonthly) {
+      // Monthly: Teal
+      return { bgcolor: '#CCFBF1', color: '#0F766E', fontWeight: 500 }
+    }
+    // Quarterly: Pink
+    return { bgcolor: '#FCE7F3', color: '#BE185D', fontWeight: 500 }
+  }
+
+  const getActionChipSx = (action: string) => {
     switch (action) {
       case 'CREATE':
-        return 'success'
+        // Cyan
+        return { bgcolor: '#CFFAFE', color: '#0E7490', fontWeight: 500 }
       case 'UPDATE':
-        return 'info'
+        // Indigo
+        return { bgcolor: '#E0E7FF', color: '#4338CA', fontWeight: 500 }
       case 'DELETE':
-        return 'error'
+        // Rose
+        return { bgcolor: '#FFE4E6', color: '#BE123C', fontWeight: 500 }
       default:
-        return 'default'
+        return { bgcolor: '#F1F5F9', color: '#475569', fontWeight: 500 }
     }
   }
 
@@ -513,17 +526,15 @@ export default function ReconciliationPage() {
                       <TableCell>
                         <Chip
                           label={isMonthlyPlanLog(log) ? 'Monthly' : 'Quarterly'}
-                          color={isMonthlyPlanLog(log) ? 'primary' : 'secondary'}
                           size="small"
-                          sx={{ fontWeight: 500 }}
+                          sx={getTypeChipSx(isMonthlyPlanLog(log))}
                         />
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={log.action}
-                          color={getActionColor(log.action) as any}
                           size="small"
-                          sx={{ fontWeight: 500 }}
+                          sx={getActionChipSx(log.action)}
                         />
                       </TableCell>
                       <TableCell>
