@@ -2809,8 +2809,12 @@ export default function HomePage() {
                 value={inRoadCIFFilterCustomers}
                 label="Filter by Customer"
                 onChange={(e) => {
-                  const val = e.target.value
-                  setInRoadCIFFilterCustomers(typeof val === 'string' ? [] : val as number[])
+                  const val = e.target.value as number[]
+                  if (val.includes(-1)) {
+                    setInRoadCIFFilterCustomers([])
+                  } else {
+                    setInRoadCIFFilterCustomers(val)
+                  }
                 }}
                 renderValue={(selected) => {
                   if ((selected as number[]).length === 0) return 'All Customers'
@@ -2830,6 +2834,10 @@ export default function HomePage() {
                   )
                 }}
               >
+                <MenuItem value={-1}>
+                  <Checkbox checked={inRoadCIFFilterCustomers.length === 0} />
+                  <ListItemText primary="All Customers" />
+                </MenuItem>
                 {customers.map((customer) => (
                   <MenuItem key={customer.id} value={customer.id}>
                     <Checkbox checked={inRoadCIFFilterCustomers.includes(customer.id)} />
