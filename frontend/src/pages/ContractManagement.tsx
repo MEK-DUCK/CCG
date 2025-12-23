@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -25,6 +25,7 @@ import {
   InputLabel,
   Select,
   Checkbox,
+  TablePagination,
 } from '@mui/material'
 import { Add, Edit, Delete, Search, Dashboard } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
@@ -69,6 +70,15 @@ export default function ContractManagement() {
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [filterCustomer, setFilterCustomer] = useState<number[]>([])
   const [filterYear, setFilterYear] = useState<number[]>([])
+
+  // Pagination
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(25)
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(0)
+  }, [searchTerm, filterCustomer, filterYear])
   const [formData, setFormData] = useState({
     customer_id: '',
     contract_number: '',
@@ -353,6 +363,48 @@ export default function ContractManagement() {
     return customer ? customer.name : `Customer ID: ${customerId}`
   }
 
+  // Memoized filtered contracts for pagination
+  const filteredContracts = useMemo(() => {
+    return contracts.filter((contract) => {
+      // Search filter
+      if (searchTerm.trim()) {
+        const searchLower = searchTerm.toLowerCase().trim()
+        const customerName = getCustomerName(contract.customer_id).toLowerCase()
+        const contractNumber = contract.contract_number.toLowerCase()
+        if (!customerName.includes(searchLower) && !contractNumber.includes(searchLower)) {
+          return false
+        }
+      }
+      
+      // Customer filter
+      if (filterCustomer.length > 0 && !filterCustomer.includes(contract.customer_id)) {
+        return false
+      }
+      
+      // Year filter - check if contract period overlaps with any selected year
+      if (filterYear.length > 0) {
+        const startDate = new Date(contract.start_period)
+        const endDate = new Date(contract.end_period)
+        const contractStartYear = startDate.getFullYear()
+        const contractEndYear = endDate.getFullYear()
+        
+        // Get all years the contract spans
+        const contractYears: number[] = []
+        for (let year = contractStartYear; year <= contractEndYear; year++) {
+          contractYears.push(year)
+        }
+        
+        // Check if any selected year overlaps with contract years
+        const hasMatchingYear = filterYear.some(year => contractYears.includes(year))
+        if (!hasMatchingYear) {
+          return false
+        }
+      }
+      
+      return true
+    })
+  }, [contracts, searchTerm, filterCustomer, filterYear, customers])
+
   const handlePlanCreated = async () => {
     if (selectedContract && selectedContract.id) {
       try {
@@ -520,44 +572,10 @@ export default function ContractManagement() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {contracts.filter((contract) => {
-                  // Search filter
-                  if (searchTerm.trim()) {
-                    const searchLower = searchTerm.toLowerCase().trim()
-                    const customerName = getCustomerName(contract.customer_id).toLowerCase()
-                    const contractNumber = contract.contract_number.toLowerCase()
-                    if (!customerName.includes(searchLower) && !contractNumber.includes(searchLower)) {
-                      return false
-                    }
-                  }
-                  
-                  // Customer filter
-                  if (filterCustomer.length > 0 && !filterCustomer.includes(contract.customer_id)) {
-                    return false
-                  }
-                  
-                  // Year filter - check if contract period overlaps with any selected year
-                  if (filterYear.length > 0) {
-                    const startDate = new Date(contract.start_period)
-                    const endDate = new Date(contract.end_period)
-                    const contractStartYear = startDate.getFullYear()
-                    const contractEndYear = endDate.getFullYear()
-                    
-                    // Get all years the contract spans
-                    const contractYears: number[] = []
-                    for (let year = contractStartYear; year <= contractEndYear; year++) {
-                      contractYears.push(year)
-                    }
-                    
-                    // Check if any selected year overlaps with contract years
-                    const hasMatchingYear = filterYear.some(year => contractYears.includes(year))
-                    if (!hasMatchingYear) {
-                      return false
-                    }
-                  }
-                  
-                  return true
-                }).map((contract) => (
+                {(rowsPerPage > 0
+                  ? filteredContracts.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                  : filteredContracts
+                ).map((contract) => (
                   <TableRow
                     key={contract.id}
                     onClick={() => {
@@ -647,6 +665,18 @@ export default function ContractManagement() {
                 ))}
               </TableBody>
               </Table>
+              <TablePagination
+                rowsPerPageOptions={[25, 50, { label: 'All', value: -1 }]}
+                component="div"
+                count={filteredContracts.length}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                onPageChange={(_, newPage) => setPage(newPage)}
+                onRowsPerPageChange={(e) => {
+                  setRowsPerPage(parseInt(e.target.value, 10))
+                  setPage(0)
+                }}
+              />
             </TableContainer>
           </Box>
         </Grid>

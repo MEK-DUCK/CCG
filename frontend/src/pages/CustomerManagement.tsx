@@ -16,6 +16,7 @@ import {
   TextField,
   Typography,
   IconButton,
+  TablePagination,
 } from '@mui/material'
 import { Add, Edit, Delete } from '@mui/icons-material'
 import { customerAPI } from '../api/client'
@@ -29,6 +30,10 @@ export default function CustomerManagement() {
     name: '',
   })
   const [isLoading, setIsLoading] = useState(false)
+
+  // Pagination
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(25)
 
   useEffect(() => {
     // Only load once on mount - use a ref to prevent duplicate calls
@@ -183,7 +188,10 @@ export default function CustomerManagement() {
                 </TableCell>
               </TableRow>
             ) : (
-              customers.map((customer) => (
+              (rowsPerPage > 0
+                ? customers.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                : customers
+              ).map((customer) => (
                 <TableRow key={customer.id}>
                   <TableCell>{customer.customer_id}</TableCell>
                   <TableCell>{customer.name}</TableCell>
@@ -208,6 +216,18 @@ export default function CustomerManagement() {
             )}
           </TableBody>
         </Table>
+        <TablePagination
+          rowsPerPageOptions={[25, 50, { label: 'All', value: -1 }]}
+          component="div"
+          count={customers.length}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(parseInt(e.target.value, 10))
+            setPage(0)
+          }}
+        />
       </TableContainer>
 
       <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>

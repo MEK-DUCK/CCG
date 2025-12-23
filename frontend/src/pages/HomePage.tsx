@@ -811,6 +811,18 @@ export default function HomePage() {
           )
         )
         
+        // OPTIMISTIC: If status changed to Loading, add to activeLoadings so it shows in port sections immediately
+        if (cargoFormData.status === 'Loading' && editingCargo.status !== 'Loading') {
+          setActiveLoadings(prev => {
+            // Check if already in activeLoadings
+            const exists = prev.some(c => c.id === editingCargo.id)
+            if (exists) {
+              return prev.map(c => c.id === editingCargo.id ? updatedCargo : c)
+            }
+            return [...prev, updatedCargo]
+          })
+        }
+        
         // Close dialog immediately
         setCargoDialogOpen(false)
         
@@ -822,6 +834,7 @@ export default function HomePage() {
             // Refresh in background (best-effort)
             loadData().catch((e) => console.error('Error refreshing data after cargo update:', e))
             loadPortMovement().catch((e) => console.error('Error refreshing port movement after cargo update:', e))
+            loadActiveLoadings().catch((e) => console.error('Error refreshing active loadings after cargo update:', e))
           })
           .catch((error) => {
             // UPDATE request failed - revert optimistic update
@@ -847,6 +860,11 @@ export default function HomePage() {
                 cargo.id === editingCargo.id ? originalCargo : cargo
               )
             )
+            
+            // Revert Active Loadings (if we optimistically added it)
+            if (cargoFormData.status === 'Loading' && editingCargo.status !== 'Loading') {
+              setActiveLoadings(prev => prev.filter(c => c.id !== editingCargo.id))
+            }
             
             // Reopen dialog with original data (prevents missing sections/state after failures)
             handleEditCargo(originalCargo)

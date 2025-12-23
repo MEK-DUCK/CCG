@@ -20,6 +20,7 @@ import {
   Card,
   CardContent,
   Button,
+  TablePagination,
 } from '@mui/material'
 import { format } from 'date-fns'
 import { Refresh } from '@mui/icons-material'
@@ -49,6 +50,15 @@ export default function ReconciliationPage() {
   const [weeklyError, setWeeklyError] = useState<string | null>(null)
   const [weeklyProduct, setWeeklyProduct] = useState<string>('') // '' = all
   const [contracts, setContracts] = useState<Contract[]>([])
+
+  // Pagination for logs table
+  const [logsPage, setLogsPage] = useState(0)
+  const [logsRowsPerPage, setLogsRowsPerPage] = useState(25)
+
+  // Reset page when filters change
+  useEffect(() => {
+    setLogsPage(0)
+  }, [selectedMonth, selectedYear, selectedAction])
 
   useEffect(() => {
     loadLogs()
@@ -438,7 +448,10 @@ export default function ReconciliationPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {logs.map((log) => (
+              {(logsRowsPerPage > 0
+                ? logs.slice(logsPage * logsRowsPerPage, logsPage * logsRowsPerPage + logsRowsPerPage)
+                : logs
+              ).map((log) => (
                 <TableRow key={log.id} hover>
                   <TableCell>
                     <Typography variant="body2">
@@ -519,6 +532,18 @@ export default function ReconciliationPage() {
               ))}
             </TableBody>
           </Table>
+          <TablePagination
+            rowsPerPageOptions={[25, 50, { label: 'All', value: -1 }]}
+            component="div"
+            count={logs.length}
+            rowsPerPage={logsRowsPerPage}
+            page={logsPage}
+            onPageChange={(_, newPage) => setLogsPage(newPage)}
+            onRowsPerPageChange={(e) => {
+              setLogsRowsPerPage(parseInt(e.target.value, 10))
+              setLogsPage(0)
+            }}
+          />
         </TableContainer>
       )}
     </Box>
