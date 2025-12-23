@@ -99,6 +99,7 @@ interface MonthlyPlanEntry {
   is_combi: boolean
   combi_group_id?: string
   combi_quantities: Record<string, string>  // For combi entries - quantity per product (e.g., { "GASOIL": "45", "JET A-1": "10" })
+  _combi_plan_ids?: number[]  // For existing combi entries - all plan IDs in the group
 }
 
 export default function MonthlyPlanForm({ contractId, contract: propContract, quarterlyPlans, onPlanCreated }: MonthlyPlanFormProps) {
@@ -220,9 +221,67 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         }
         setPlanStatuses(statusMap)
         
+        // Group plans by combi_group_id first
+        const combiGroups = new Map<string, any[]>()
+        const nonCombiPlans: any[] = []
+        
+        allPlans.forEach((plan: any) => {
+          if (plan.combi_group_id) {
+            const existing = combiGroups.get(plan.combi_group_id) || []
+            existing.push(plan)
+            combiGroups.set(plan.combi_group_id, existing)
+          } else {
+            nonCombiPlans.push(plan)
+          }
+        })
+        
         // Group by month-year
         const entries: Record<string, MonthlyPlanEntry[]> = {}
-        allPlans.forEach((plan: any) => {
+        
+        // Process combi groups - create unified entries
+        combiGroups.forEach((combiPlans, combiGroupId) => {
+          if (combiPlans.length === 0) return
+          
+          const firstPlan = combiPlans[0]
+          const key = `${firstPlan.month}-${firstPlan.year}`
+          if (!entries[key]) {
+            entries[key] = []
+          }
+          
+          // Build combi_quantities from all plans in the group
+          const combiQuantities: Record<string, string> = {}
+          const combiPlanIds: number[] = []
+          combiPlans.forEach((plan: any) => {
+            combiQuantities[plan.product_name] = plan.month_quantity.toString()
+            combiPlanIds.push(plan.id)
+          })
+          
+          // Calculate total quantity
+          const totalQuantity = combiPlans.reduce((sum: number, p: any) => sum + p.month_quantity, 0)
+          
+          entries[key].push({
+            id: firstPlan.id,  // Use first plan's ID as reference
+            quarterly_plan_id: firstPlan.quarterly_plan_id,
+            product_name: '',  // Combi entries don't have a single product
+            quantity: totalQuantity.toString(),
+            laycan_5_days: firstPlan.laycan_5_days || '',
+            laycan_2_days: firstPlan.laycan_2_days || '',
+            laycan_2_days_remark: firstPlan.laycan_2_days_remark || '',
+            loading_month: firstPlan.loading_month || '',
+            loading_window: firstPlan.loading_window || '',
+            delivery_month: firstPlan.delivery_month || '',
+            delivery_window: firstPlan.delivery_window || '',
+            delivery_window_remark: firstPlan.delivery_window_remark || '',
+            is_combi: true,
+            combi_group_id: combiGroupId,
+            combi_quantities: combiQuantities,
+            // Store all plan IDs for updates/deletes
+            _combi_plan_ids: combiPlanIds,
+          } as MonthlyPlanEntry & { _combi_plan_ids?: number[] })
+        })
+        
+        // Process non-combi plans individually
+        nonCombiPlans.forEach((plan: any) => {
           const key = `${plan.month}-${plan.year}`
           if (!entries[key]) {
             entries[key] = []
@@ -240,8 +299,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             delivery_month: plan.delivery_month || '',
             delivery_window: plan.delivery_window || '',
             delivery_window_remark: plan.delivery_window_remark || '',
-            is_combi: !!plan.combi_group_id,
-            combi_group_id: plan.combi_group_id || undefined,
+            is_combi: false,
+            combi_group_id: undefined,
             combi_quantities: {},
           })
         })
@@ -504,6 +563,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     try {
       const plansToKeep = new Set<number>()
       const plansToCreate: Array<{ month: number, year: number, entry: MonthlyPlanEntry }> = []
+      const combiEntriesToUpdate: Array<{ entry: MonthlyPlanEntry, month: number, year: number }> = []
       
       Object.keys(monthEntries).forEach(key => {
         const [month, year] = key.split('-').map(Number)
@@ -511,15 +571,23 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         
         entries.forEach(entry => {
           if (entry.id) {
-            plansToKeep.add(entry.id)
+            // Existing entry
+            if (entry.is_combi && entry._combi_plan_ids) {
+              // Combi entry - keep all plan IDs in the group
+              entry._combi_plan_ids.forEach(id => plansToKeep.add(id))
+              combiEntriesToUpdate.push({ entry, month, year })
+            } else {
+              // Single product entry
+              plansToKeep.add(entry.id)
+            }
           } else if (entry.is_combi) {
-            // For combi entries, check if any product has quantity
+            // New combi entry - check if any product has quantity
             const hasQuantity = Object.values(entry.combi_quantities).some(qty => parseFloat(qty) > 0)
             if (hasQuantity) {
               plansToCreate.push({ month, year, entry })
             }
           } else if (!entry.is_combi && entry.quarterly_plan_id && parseFloat(entry.quantity || '0') > 0) {
-            // Single product entry
+            // New single product entry
             plansToCreate.push({ month, year, entry })
           }
         })
@@ -541,32 +609,66 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         }
       }
 
-      // Update existing plans
-      for (const existingPlan of existingMonthlyPlans) {
-        if (plansToKeep.has(existingPlan.id)) {
-          const key = `${existingPlan.month}-${existingPlan.year}`
-          const entries = monthEntries[key] || []
-          const entry = entries.find(e => e.id === existingPlan.id)
+      // Update existing combi entries - update each plan in the group with its product's quantity
+      for (const { entry } of combiEntriesToUpdate) {
+        if (!entry._combi_plan_ids) continue
+        
+        for (const planId of entry._combi_plan_ids) {
+          const existingPlan = existingMonthlyPlans.find(p => p.id === planId)
+          if (!existingPlan) continue
           
-          if (entry) {
-            const updateData: any = {
-              month_quantity: parseFloat(entry.quantity || '0'),
-              number_of_liftings: 1,
-              laycan_5_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
-              laycan_2_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
-              laycan_2_days_remark: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
-              loading_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_month || undefined) : undefined,
-              loading_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_window || undefined) : undefined,
-              delivery_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_month || undefined) : undefined,
-              delivery_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window || undefined) : undefined,
-              delivery_window_remark: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window_remark || undefined) : undefined,
-            }
-            
-            try {
-              await monthlyPlanAPI.update(existingPlan.id, updateData)
-            } catch (error: any) {
-              console.error(`Error updating plan ${existingPlan.id}:`, error)
-            }
+          // Get the quantity for this plan's product from combi_quantities
+          const productQty = parseFloat(entry.combi_quantities[existingPlan.product_name] || '0')
+          
+          const updateData: any = {
+            month_quantity: productQty,
+            number_of_liftings: 1,
+            laycan_5_days: contractType === 'FOB' && productQty > 0 ? (entry.laycan_5_days || undefined) : undefined,
+            laycan_2_days: contractType === 'FOB' && productQty > 0 ? (entry.laycan_2_days || undefined) : undefined,
+            laycan_2_days_remark: contractType === 'FOB' && productQty > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
+            loading_month: contractType === 'CIF' && productQty > 0 ? (entry.loading_month || undefined) : undefined,
+            loading_window: contractType === 'CIF' && productQty > 0 ? (entry.loading_window || undefined) : undefined,
+            delivery_month: contractType === 'CIF' && productQty > 0 ? (entry.delivery_month || undefined) : undefined,
+            delivery_window: contractType === 'CIF' && productQty > 0 ? (entry.delivery_window || undefined) : undefined,
+            delivery_window_remark: contractType === 'CIF' && productQty > 0 ? (entry.delivery_window_remark || undefined) : undefined,
+          }
+          
+          try {
+            await monthlyPlanAPI.update(planId, updateData)
+          } catch (error: any) {
+            console.error(`Error updating combi plan ${planId}:`, error)
+          }
+        }
+      }
+
+      // Update existing non-combi plans
+      for (const existingPlan of existingMonthlyPlans) {
+        // Skip if already handled as combi or will be deleted
+        if (!plansToKeep.has(existingPlan.id)) continue
+        if (existingPlan.combi_group_id) continue  // Already handled above
+        
+        const key = `${existingPlan.month}-${existingPlan.year}`
+        const entries = monthEntries[key] || []
+        const entry = entries.find(e => e.id === existingPlan.id && !e.is_combi)
+        
+        if (entry) {
+          const updateData: any = {
+            month_quantity: parseFloat(entry.quantity || '0'),
+            number_of_liftings: 1,
+            laycan_5_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
+            laycan_2_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
+            laycan_2_days_remark: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
+            loading_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_month || undefined) : undefined,
+            loading_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_window || undefined) : undefined,
+            delivery_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_month || undefined) : undefined,
+            delivery_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window || undefined) : undefined,
+            delivery_window_remark: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window_remark || undefined) : undefined,
+          }
+          
+          try {
+            await monthlyPlanAPI.update(existingPlan.id, updateData)
+          } catch (error: any) {
+            console.error(`Error updating plan ${existingPlan.id}:`, error)
           }
         }
       }
@@ -824,7 +926,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               {/* Show combi badge for existing combi entries */}
                               {entry.is_combi && entry.id && (
                                 <Chip 
-                                  label={`Combi: ${entry.product_name}`}
+                                  label="Combi Cargo"
                                   size="small" 
                                   sx={{ mb: 1, bgcolor: '#F59E0B', color: 'white' }} 
                                 />
@@ -857,12 +959,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                 />
                               )}
                               
-                              {/* Combi cargo: individual quantity inputs for each product */}
-                              {entry.is_combi && !entry.id && (
+                              {/* Combi cargo: individual quantity inputs for each product (both new and existing) */}
+                              {entry.is_combi && (
                                 <Box sx={{ mb: 1.5 }}>
-                                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                                    Enter quantity for each product:
-                                  </Typography>
                                   {products.map((p: any) => (
                                     <TextField
                                       key={p.name}
@@ -872,7 +971,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       value={entry.combi_quantities[p.name] || ''}
                                       onChange={(e) => handleCombiQuantityChange(month, year, entryIndex, p.name, e.target.value)}
                                       fullWidth
-                                      disabled={isLocked}
+                                      disabled={isLocked || hasCargos}
                                       sx={{ mb: 0.5 }}
                                     />
                                   ))}
