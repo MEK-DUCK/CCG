@@ -2106,6 +2106,7 @@ export default function HomePage() {
                 <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Load Port</TableCell>
                 <TableCell sx={{ minWidth: isMobile ? 100 : 110, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Inspector</TableCell>
                 <TableCell sx={{ minWidth: isMobile ? 80 : 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Status</TableCell>
+                <TableCell sx={{ minWidth: isMobile ? 100 : 130, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Delivery Window</TableCell>
                 <TableCell sx={{ minWidth: isMobile ? 100 : 150, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Remark</TableCell>
                 <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Actions</TableCell>
               </TableRow>
@@ -2322,6 +2323,15 @@ export default function HomePage() {
                         ) : (
                       <Chip label="Not Created" color="default" size="small" />
                         )}
+                      </TableCell>
+                      <TableCell sx={{ 
+                        minWidth: isMobile ? 100 : 130,
+                        whiteSpace: 'normal',
+                        wordWrap: 'break-word',
+                        overflowWrap: 'break-word',
+                        wordBreak: 'normal'
+                      }}>
+                        {contract?.contract_type === 'CIF' && monthlyPlan?.delivery_window ? monthlyPlan.delivery_window : '-'}
                       </TableCell>
                       <TableCell sx={{ 
                         minWidth: isMobile ? 150 : 'auto',
@@ -2589,6 +2599,7 @@ export default function HomePage() {
                             <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>Berthed</TableCell>
                             <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>Commenced</TableCell>
                             <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>ETC</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold', minWidth: 130 }}>Delivery Window</TableCell>
                             <TableCell sx={{ fontWeight: 'bold', minWidth: 200 }}>Notes</TableCell>
                           </TableRow>
                         </TableHead>
@@ -2692,6 +2703,9 @@ export default function HomePage() {
                                     value={op.etc || ''}
                                     onSave={(val) => schedulePortOpSave(cargo.id, port, { etc: val })}
                                   />
+                                </TableCell>
+                                <TableCell>
+                                  {contract?.contract_type === 'CIF' && monthlyPlan?.delivery_window ? monthlyPlan.delivery_window : '-'}
                                 </TableCell>
                                 <TableCell onClick={(e) => e.stopPropagation()}>
                                   <InlineTextField
