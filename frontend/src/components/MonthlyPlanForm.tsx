@@ -16,8 +16,6 @@ import {
   Chip,
   Checkbox,
   FormControlLabel,
-  ListItemText,
-  OutlinedInput,
 } from '@mui/material'
 import { Save, Add, Delete, Lock } from '@mui/icons-material'
 import { monthlyPlanAPI, contractAPI } from '../api/client'
@@ -100,7 +98,7 @@ interface MonthlyPlanEntry {
   // Combi cargo fields
   is_combi: boolean
   combi_group_id?: string
-  combi_products: string[]  // For new combi entries - list of products to create
+  combi_quantities: Record<string, string>  // For combi entries - quantity per product (e.g., { "GASOIL": "45", "JET A-1": "10" })
 }
 
 export default function MonthlyPlanForm({ contractId, contract: propContract, quarterlyPlans, onPlanCreated }: MonthlyPlanFormProps) {
@@ -244,7 +242,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             delivery_window_remark: plan.delivery_window_remark || '',
             is_combi: !!plan.combi_group_id,
             combi_group_id: plan.combi_group_id || undefined,
-            combi_products: [],
+            combi_quantities: {},
           })
         })
         
@@ -328,15 +326,24 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     const key = `${month}-${year}`
     const entries = monthEntries[key] || []
     
-    // Default to first product (or all products if combi)
+    // For single product contracts, always use the first product
+    // For multi-product contracts, default to first product unless combi
     const defaultProduct = products[0]?.name || ''
     const defaultQp = productQuarterlyPlanMap.get(defaultProduct)
+    
+    // Initialize combi quantities with empty values for all products
+    const initialCombiQuantities: Record<string, string> = {}
+    if (isCombi) {
+      products.forEach((p: any) => {
+        initialCombiQuantities[p.name] = ''
+      })
+    }
     
     setMonthEntries({
       ...monthEntries,
       [key]: [...entries, {
-        quarterly_plan_id: isCombi ? 0 : (defaultQp?.id || 0),  // Will be set per-product for combi
-        product_name: isCombi ? '' : defaultProduct,
+        quarterly_plan_id: isCombi ? 0 : (defaultQp?.id || 0),
+        product_name: isMultiProduct ? (isCombi ? '' : defaultProduct) : defaultProduct,
         quantity: '',
         laycan_5_days: '',
         laycan_2_days: '',
@@ -348,7 +355,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         delivery_window_remark: '',
         is_combi: isCombi,
         combi_group_id: isCombi ? generateUUID() : undefined,
-        combi_products: isCombi ? products.map((p: any) => p.name) : [],  // Default to all products for combi
+        combi_quantities: initialCombiQuantities,
       }],
     })
   }
@@ -359,14 +366,20 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     const updatedEntries = [...entries]
     
     if (isCombi) {
-      // Switching to combi mode
+      // Switching to combi mode - initialize quantities for all products
+      const initialCombiQuantities: Record<string, string> = {}
+      products.forEach((p: any) => {
+        initialCombiQuantities[p.name] = ''
+      })
+      
       updatedEntries[entryIndex] = {
         ...updatedEntries[entryIndex],
         is_combi: true,
         combi_group_id: generateUUID(),
-        combi_products: products.map((p: any) => p.name),
-        product_name: '',  // Clear single product selection
+        combi_quantities: initialCombiQuantities,
+        product_name: '',
         quarterly_plan_id: 0,
+        quantity: '',  // Clear total quantity - will be calculated from combi quantities
       }
     } else {
       // Switching to single product mode
@@ -376,7 +389,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         ...updatedEntries[entryIndex],
         is_combi: false,
         combi_group_id: undefined,
-        combi_products: [],
+        combi_quantities: {},
         product_name: defaultProduct,
         quarterly_plan_id: defaultQp?.id || 0,
       }
@@ -388,14 +401,25 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     })
   }
 
-  const handleCombiProductsChange = (month: number, year: number, entryIndex: number, selectedProducts: string[]) => {
+  const handleCombiQuantityChange = (month: number, year: number, entryIndex: number, productName: string, value: string) => {
     const key = `${month}-${year}`
     const entries = monthEntries[key] || []
     const updatedEntries = [...entries]
     
+    const newCombiQuantities = {
+      ...updatedEntries[entryIndex].combi_quantities,
+      [productName]: value,
+    }
+    
+    // Calculate total quantity from all combi quantities
+    const totalQuantity = Object.values(newCombiQuantities).reduce((sum, qty) => {
+      return sum + (parseFloat(qty) || 0)
+    }, 0)
+    
     updatedEntries[entryIndex] = {
       ...updatedEntries[entryIndex],
-      combi_products: selectedProducts,
+      combi_quantities: newCombiQuantities,
+      quantity: totalQuantity > 0 ? totalQuantity.toString() : '',
     }
     
     setMonthEntries({
@@ -441,12 +465,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       const key = `${month}-${year}`
       const entries = monthEntries[key] || []
       return sum + entries.reduce((entrySum, entry) => {
-        const qty = parseFloat(entry.quantity || '0') || 0
-        if (entry.is_combi && entry.combi_products.includes(productName)) {
-          // For combi entries, split quantity among selected products
-          const numProducts = entry.combi_products.length || 1
-          return entrySum + (qty / numProducts)
-        } else if (!entry.is_combi && entry.product_name === productName) {
+        if (entry.is_combi) {
+          // For combi entries, use the specific product's quantity
+          const productQty = parseFloat(entry.combi_quantities[productName] || '0') || 0
+          return entrySum + productQty
+        } else if (entry.product_name === productName) {
+          // Single product entry
+          const qty = parseFloat(entry.quantity || '0') || 0
           return entrySum + qty
         }
         return entrySum
@@ -487,14 +512,15 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         entries.forEach(entry => {
           if (entry.id) {
             plansToKeep.add(entry.id)
-          } else if (parseFloat(entry.quantity || '0') > 0) {
-            if (entry.is_combi && entry.combi_products.length > 0) {
-              // For combi entries, we'll create multiple plans (one per product)
-              plansToCreate.push({ month, year, entry })
-            } else if (!entry.is_combi && entry.quarterly_plan_id) {
-              // Single product entry
+          } else if (entry.is_combi) {
+            // For combi entries, check if any product has quantity
+            const hasQuantity = Object.values(entry.combi_quantities).some(qty => parseFloat(qty) > 0)
+            if (hasQuantity) {
               plansToCreate.push({ month, year, entry })
             }
+          } else if (!entry.is_combi && entry.quarterly_plan_id && parseFloat(entry.quantity || '0') > 0) {
+            // Single product entry
+            plansToCreate.push({ month, year, entry })
           }
         })
       })
@@ -549,14 +575,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       const createPromises: Promise<any>[] = []
       
       for (const { month, year, entry } of plansToCreate) {
-        const totalQuantity = parseFloat(entry.quantity || '0')
-        
-        if (entry.is_combi && entry.combi_products.length > 0) {
-          // Combi entry: create one plan per selected product
-          const quantityPerProduct = totalQuantity / entry.combi_products.length
+        if (entry.is_combi) {
+          // Combi entry: create one plan per product with its specific quantity
           const combiGroupId = entry.combi_group_id || generateUUID()
           
-          for (const productName of entry.combi_products) {
+          for (const productName of products.map((p: any) => p.name)) {
+            const productQty = parseFloat(entry.combi_quantities[productName] || '0')
+            if (productQty <= 0) continue  // Skip products with no quantity
+            
             const qp = productQuarterlyPlanMap.get(productName)
             if (!qp) continue
             
@@ -564,21 +590,22 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               quarterly_plan_id: qp.id,
               month: month,
               year: year,
-              month_quantity: quantityPerProduct,
+              month_quantity: productQty,
               number_of_liftings: 1,
-              laycan_5_days: contractType === 'FOB' && totalQuantity > 0 ? (entry.laycan_5_days || undefined) : undefined,
-              laycan_2_days: contractType === 'FOB' && totalQuantity > 0 ? (entry.laycan_2_days || undefined) : undefined,
-              laycan_2_days_remark: contractType === 'FOB' && totalQuantity > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
-              loading_month: contractType === 'CIF' && totalQuantity > 0 ? (entry.loading_month || undefined) : undefined,
-              loading_window: contractType === 'CIF' && totalQuantity > 0 ? (entry.loading_window || undefined) : undefined,
-              delivery_month: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_month || undefined) : undefined,
-              delivery_window: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window || undefined) : undefined,
-              delivery_window_remark: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window_remark || undefined) : undefined,
+              laycan_5_days: contractType === 'FOB' ? (entry.laycan_5_days || undefined) : undefined,
+              laycan_2_days: contractType === 'FOB' ? (entry.laycan_2_days || undefined) : undefined,
+              laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark || undefined) : undefined,
+              loading_month: contractType === 'CIF' ? (entry.loading_month || undefined) : undefined,
+              loading_window: contractType === 'CIF' ? (entry.loading_window || undefined) : undefined,
+              delivery_month: contractType === 'CIF' ? (entry.delivery_month || undefined) : undefined,
+              delivery_window: contractType === 'CIF' ? (entry.delivery_window || undefined) : undefined,
+              delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark || undefined) : undefined,
               combi_group_id: combiGroupId,
             }))
           }
         } else {
           // Single product entry
+          const totalQuantity = parseFloat(entry.quantity || '0')
           createPromises.push(monthlyPlanAPI.create({
             quarterly_plan_id: entry.quarterly_plan_id,
             month: month,
@@ -774,7 +801,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                 borderRadius: 1,
                               }}
                             >
-                              {/* Combi Cargo option for multi-product contracts */}
+                              {/* Combi Cargo option - only for multi-product contracts and new entries */}
                               {isMultiProduct && !entry.id && (
                                 <FormControlLabel
                                   control={
@@ -787,7 +814,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                   }
                                   label={
                                     <Typography variant="body2" sx={{ fontWeight: entry.is_combi ? 600 : 400, color: entry.is_combi ? '#B45309' : 'inherit' }}>
-                                      Combi Cargo (multiple products)
+                                      Combi Cargo (multiple products in one vessel)
                                     </Typography>
                                   }
                                   sx={{ mb: 1 }}
@@ -797,14 +824,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               {/* Show combi badge for existing combi entries */}
                               {entry.is_combi && entry.id && (
                                 <Chip 
-                                  label="Combi Cargo" 
+                                  label={`Combi: ${entry.product_name}`}
                                   size="small" 
                                   sx={{ mb: 1, bgcolor: '#F59E0B', color: 'white' }} 
                                 />
                               )}
                               
-                              {/* Product selection */}
-                              {isMultiProduct && !entry.is_combi && (
+                              {/* Product selection - only for multi-product contracts and non-combi entries */}
+                              {isMultiProduct && !entry.is_combi && !entry.id && (
                                 <FormControl fullWidth size="small" sx={{ mb: 1 }} disabled={isLocked}>
                                   <InputLabel>Product</InputLabel>
                                   <Select
@@ -821,66 +848,91 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                 </FormControl>
                               )}
                               
-                              {/* Multi-product selection for combi cargo */}
-                              {isMultiProduct && entry.is_combi && !entry.id && (
-                                <FormControl fullWidth size="small" sx={{ mb: 1 }} disabled={isLocked}>
-                                  <InputLabel>Products</InputLabel>
-                                  <Select
-                                    multiple
-                                    value={entry.combi_products}
-                                    onChange={(e) => handleCombiProductsChange(month, year, entryIndex, e.target.value as string[])}
-                                    input={<OutlinedInput label="Products" />}
-                                    renderValue={(selected) => (
-                                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                        {selected.map((value) => (
-                                          <Chip key={value} label={value} size="small" />
-                                        ))}
-                                      </Box>
-                                    )}
-                                  >
-                                    {products.map((p: any) => (
-                                      <MenuItem key={p.name} value={p.name}>
-                                        <Checkbox checked={entry.combi_products.includes(p.name)} size="small" />
-                                        <ListItemText primary={p.name} />
-                                      </MenuItem>
-                                    ))}
-                                  </Select>
-                                </FormControl>
+                              {/* Show product name for existing non-combi entries in multi-product contracts */}
+                              {isMultiProduct && !entry.is_combi && entry.id && (
+                                <Chip 
+                                  label={entry.product_name}
+                                  size="small" 
+                                  sx={{ mb: 1, bgcolor: '#DBEAFE', color: '#1D4ED8' }} 
+                                />
                               )}
                               
-                              <TextField
-                                label={isMultiProduct 
-                                  ? `Quantity (KT)` 
-                                  : `${getMonthName(month)} ${year}${entries.length > 1 ? ` (${entryIndex + 1})` : ''}`
-                                }
-                                type="number"
-                                value={entry.quantity}
-                                onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
-                                required
-                                fullWidth
-                                disabled={isLocked}
-                                helperText={
-                                  entry.id 
-                                    ? `${isLocked ? '(Locked)' : hasCargos ? '(Has cargos)' : ''}`
-                                    : ''
-                                }
-                                InputProps={{
-                                  endAdornment: (
-                                    <InputAdornment position="end">
-                                      {entries.length > 1 && !isLocked && !hasCargos && (
-                                        <IconButton
-                                          size="small"
-                                          color="error"
-                                          onClick={() => handleRemoveEntry(month, year, entryIndex)}
-                                          edge="end"
-                                        >
-                                          <Delete fontSize="small" />
-                                        </IconButton>
-                                      )}
-                                    </InputAdornment>
-                                  ),
-                                }}
-                              />
+                              {/* Combi cargo: individual quantity inputs for each product */}
+                              {entry.is_combi && !entry.id && (
+                                <Box sx={{ mb: 1.5 }}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                                    Enter quantity for each product:
+                                  </Typography>
+                                  {products.map((p: any) => (
+                                    <TextField
+                                      key={p.name}
+                                      label={`${p.name} (KT)`}
+                                      type="number"
+                                      size="small"
+                                      value={entry.combi_quantities[p.name] || ''}
+                                      onChange={(e) => handleCombiQuantityChange(month, year, entryIndex, p.name, e.target.value)}
+                                      fullWidth
+                                      disabled={isLocked}
+                                      sx={{ mb: 0.5 }}
+                                    />
+                                  ))}
+                                  {parseFloat(entry.quantity || '0') > 0 && (
+                                    <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 600, color: '#B45309' }}>
+                                      Total: {parseFloat(entry.quantity).toLocaleString()} KT
+                                    </Typography>
+                                  )}
+                                </Box>
+                              )}
+                              
+                              {/* Single quantity input - for single product contracts OR multi-product non-combi */}
+                              {!entry.is_combi && (
+                                <TextField
+                                  label={!isMultiProduct 
+                                    ? `${getMonthName(month)} ${year}${entries.length > 1 ? ` (${entryIndex + 1})` : ''}`
+                                    : 'Quantity (KT)'
+                                  }
+                                  type="number"
+                                  value={entry.quantity}
+                                  onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
+                                  required
+                                  fullWidth
+                                  disabled={isLocked}
+                                  helperText={
+                                    entry.id 
+                                      ? `${isLocked ? '(Locked)' : hasCargos ? '(Has cargos)' : ''}`
+                                      : ''
+                                  }
+                                  InputProps={{
+                                    endAdornment: (
+                                      <InputAdornment position="end">
+                                        {entries.length > 1 && !isLocked && !hasCargos && (
+                                          <IconButton
+                                            size="small"
+                                            color="error"
+                                            onClick={() => handleRemoveEntry(month, year, entryIndex)}
+                                            edge="end"
+                                          >
+                                            <Delete fontSize="small" />
+                                          </IconButton>
+                                        )}
+                                      </InputAdornment>
+                                    ),
+                                  }}
+                                />
+                              )}
+                              
+                              {/* Delete button for combi entries */}
+                              {entry.is_combi && !entry.id && entries.length > 1 && (
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 0.5 }}>
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => handleRemoveEntry(month, year, entryIndex)}
+                                  >
+                                    <Delete fontSize="small" />
+                                  </IconButton>
+                                </Box>
+                              )}
                               {showLaycans && (
                                 <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                                   <TextField
