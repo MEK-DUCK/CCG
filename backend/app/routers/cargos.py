@@ -575,6 +575,51 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
     
     # Debug logging
     print(f"[DEBUG] Updating cargo {cargo_id} with data: {update_data}")
+
+    # Guardrail: prevent putting a cargo into Loading lifecycle without at least one load port selected.
+    # Otherwise it disappears from the main Port Movement table (filtered out) and has no port lane to show in.
+    def _coerce_load_ports_to_str(val) -> Optional[str]:
+        if val is None:
+            return None
+        if isinstance(val, str):
+            return val
+        if isinstance(val, list):
+            try:
+                return ",".join([str(x).strip() for x in val if str(x).strip()])
+            except Exception:
+                return None
+        try:
+            return str(val)
+        except Exception:
+            return None
+
+    try:
+        intended_status = update_data.get("status", db_cargo.status)
+        if isinstance(intended_status, str):
+            try:
+                intended_status = CargoStatus(intended_status)
+            except Exception:
+                intended_status = db_cargo.status
+
+        intended_load_ports = _coerce_load_ports_to_str(update_data.get("load_ports", getattr(db_cargo, "load_ports", None)))
+        selected_ports = _parse_load_ports(intended_load_ports)
+
+        if intended_status in {CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING} and len(selected_ports) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Please select at least one Load Port before setting status to Loading."
+            )
+
+        if getattr(db_cargo, "status", None) in {CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING} and "load_ports" in update_data and len(selected_ports) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="A cargo in Loading status must have at least one Load Port. Please select a port before clearing."
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # Never block updates due to guard computation errors; backend validation above is best-effort.
+        pass
     
     # Store old values for audit logging
     old_monthly_plan_id = db_cargo.monthly_plan_id

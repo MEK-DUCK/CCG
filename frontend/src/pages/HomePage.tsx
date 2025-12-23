@@ -737,6 +737,12 @@ export default function HomePage() {
   const handleCargoSubmit = async () => {
     try {
       if (editingCargo) {
+        const hasPorts = Array.isArray(cargoFormData.load_ports) && cargoFormData.load_ports.filter(Boolean).length > 0
+        if ((cargoFormData.status === 'Loading' || cargoFormData.status === 'Completed Loading') && !hasPorts) {
+          alert('Please select at least one Load Port before setting status to Loading.')
+          return
+        }
+
         // Check if status is being changed to "Completed Loading"
         const isChangingToCompletedLoading = cargoFormData.status === 'Completed Loading' && editingCargo.status !== 'Completed Loading'
         const isCIF = editingCargo.contract_type === 'CIF'
@@ -2992,10 +2998,23 @@ export default function HomePage() {
                           <Select
                             value={cargoFormData.status}
                             label="Current Status"
-                            onChange={(e) => setCargoFormData({ ...cargoFormData, status: e.target.value as CargoStatus })}
+                            onChange={(e) => {
+                              const nextStatus = e.target.value as CargoStatus
+                              const hasPorts = Array.isArray(cargoFormData.load_ports) && cargoFormData.load_ports.filter(Boolean).length > 0
+                              if ((nextStatus === 'Loading' || nextStatus === 'Completed Loading') && !hasPorts) {
+                                alert('Please select at least one Load Port before setting status to Loading.')
+                                return
+                              }
+                              setCargoFormData({ ...cargoFormData, status: nextStatus })
+                            }}
                           >
                             <MenuItem value="Planned">Planned</MenuItem>
-                            <MenuItem value="Loading">Loading</MenuItem>
+                            <MenuItem
+                              value="Loading"
+                              disabled={!Array.isArray(cargoFormData.load_ports) || cargoFormData.load_ports.filter(Boolean).length === 0}
+                            >
+                              Loading
+                            </MenuItem>
                             {/* Show Pending Nomination only when editing from Port Movement tab */}
                             {value === 0 && (
                               <MenuItem value="Pending Nomination">Pending Nomination</MenuItem>
@@ -3008,7 +3027,12 @@ export default function HomePage() {
                             {value === 0 && (
                               <MenuItem value="Nomination Released">Nomination Released</MenuItem>
                             )}
-                            <MenuItem value="Completed Loading">Completed Loading</MenuItem>
+                            <MenuItem
+                              value="Completed Loading"
+                              disabled={!Array.isArray(cargoFormData.load_ports) || cargoFormData.load_ports.filter(Boolean).length === 0}
+                            >
+                              Completed Loading
+                            </MenuItem>
                           </Select>
                         </FormControl>
                       </Box>
