@@ -378,8 +378,6 @@ export default function HomePage() {
   const [cargoContractId, setCargoContractId] = useState<number | null>(null)
   const [cargoContract, setCargoContract] = useState<Contract | null>(null)
   const [cargoProductName, setCargoProductName] = useState<string | null>(null)
-  const [isCombiCargo, setIsCombiCargo] = useState(false)  // For creating combi cargos with multiple products
-  const [combiProducts, setCombiProducts] = useState<string[]>([])  // Products selected for combi cargo
   const [newCargoMonthlyPlanId, setNewCargoMonthlyPlanId] = useState<number | null>(null) // For moving cargo
   const [cargoFormData, setCargoFormData] = useState({
     vessel_name: '',
@@ -732,9 +730,6 @@ export default function HomePage() {
     setCargoContractId(contract.id)
     setCargoContract(contract)
     setCargoProductName(defaultProductName)
-    // Reset combi cargo state
-    setIsCombiCargo(false)
-    setCombiProducts([])
     
     // Get quantity from monthly plan
     const cargoQuantity = monthlyPlan.month_quantity.toString()
@@ -1000,14 +995,8 @@ export default function HomePage() {
           return
         }
 
-        // Validate combi cargo
-        if (isCombiCargo && combiProducts.length < 2) {
-          alert('Please select at least 2 products for a combi cargo')
-          return
-        }
-
-        // Validate single product selection
-        if (!isCombiCargo && !cargoProductName) {
+        // Validate product selection
+        if (!cargoProductName) {
           alert('Please select a product')
           return
         }
@@ -1020,110 +1009,76 @@ export default function HomePage() {
           return d.toISOString()
         }
 
-        // Generate combi group ID if creating combi cargo
-        const combiGroupId = isCombiCargo ? `combi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` : undefined
-
-        // Determine which products to create cargos for
-        const productsToCreate = isCombiCargo ? combiProducts : [cargoProductName!]
-        
-        // Calculate quantity per product for combi cargo (split equally)
-        const quantityPerProduct = isCombiCargo ? cargoQuantity / combiProducts.length : cargoQuantity
-
-        console.log('Creating cargo(s):', { isCombiCargo, productsToCreate, quantityPerProduct, combiGroupId })
-
         // Close dialog immediately
         setCargoDialogOpen(false)
         
-        // Create cargos for each product
-        const creationPromises = productsToCreate.map(async (productName, index) => {
-          // Prepare the payload
-          const payload: any = {
-            customer_id: contract.customer_id,
-            product_name: productName,
-            contract_id: cargoContractId,
-            monthly_plan_id: cargoMonthlyPlanId,
-            vessel_name: cargoFormData.vessel_name,
-            load_ports: formatLoadPorts(cargoFormData.load_ports),
-            cargo_quantity: quantityPerProduct,
-            combi_group_id: combiGroupId,
-          }
+        // Prepare the payload
+        const payload: any = {
+          customer_id: contract.customer_id,
+          product_name: cargoProductName,
+          contract_id: cargoContractId,
+          monthly_plan_id: cargoMonthlyPlanId,
+          vessel_name: cargoFormData.vessel_name,
+          load_ports: formatLoadPorts(cargoFormData.load_ports),
+          cargo_quantity: cargoQuantity,
+        }
 
-          // Add optional fields
-          if (cargoFormData.inspector_name) payload.inspector_name = cargoFormData.inspector_name
-          if (cargoFormData.laycan_window) payload.laycan_window = cargoFormData.laycan_window
-          if (cargoFormData.notes) {
-            payload.notes = isCombiCargo 
-              ? `[Combi: ${combiProducts.join(' + ')}] ${cargoFormData.notes}`.trim()
-              : cargoFormData.notes
-          } else if (isCombiCargo) {
-            payload.notes = `[Combi: ${combiProducts.join(' + ')}]`
-          }
-          if (cargoFormData.lc_status) {
-            payload.lc_status = cargoFormData.lc_status as LCStatus
-          }
+        // Add optional fields
+        if (cargoFormData.inspector_name) payload.inspector_name = cargoFormData.inspector_name
+        if (cargoFormData.laycan_window) payload.laycan_window = cargoFormData.laycan_window
+        if (cargoFormData.notes) payload.notes = cargoFormData.notes
+        if (cargoFormData.lc_status) {
+          payload.lc_status = cargoFormData.lc_status as LCStatus
+        }
 
-          // Add CIF specific fields
-          if (contract.contract_type === 'CIF') {
-            if (cargoFormData.eta_discharge_port) payload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
-            if (cargoFormData.discharge_port_location) payload.discharge_port_location = cargoFormData.discharge_port_location
-            if (cargoFormData.discharge_completion_time) payload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
-          }
+        // Add CIF specific fields
+        if (contract.contract_type === 'CIF') {
+          if (cargoFormData.eta_discharge_port) payload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
+          if (cargoFormData.discharge_port_location) payload.discharge_port_location = cargoFormData.discharge_port_location
+          if (cargoFormData.discharge_completion_time) payload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
+        }
 
-          // Create optimistic cargo object
-          const optimisticCargo: Cargo = {
-            id: Date.now() + index,
-            cargo_id: `TEMP-${Date.now()}-${index}`,
-            vessel_name: cargoFormData.vessel_name,
-            customer_id: contract.customer_id,
-            product_name: productName,
-            contract_id: cargoContractId!,
-            contract_type: contract.contract_type,
-            load_ports: formatLoadPorts(cargoFormData.load_ports),
-            inspector_name: cargoFormData.inspector_name || undefined,
-            cargo_quantity: quantityPerProduct,
-            laycan_window: cargoFormData.laycan_window || undefined,
-            status: 'Planned' as CargoStatus,
-            notes: payload.notes || undefined,
-            monthly_plan_id: cargoMonthlyPlanId!,
-            lc_status: cargoFormData.lc_status || undefined,
-            combi_group_id: combiGroupId,
-            created_at: new Date().toISOString(),
-          }
+        // Create optimistic cargo object
+        const optimisticCargo: Cargo = {
+          id: Date.now(),
+          cargo_id: `TEMP-${Date.now()}`,
+          vessel_name: cargoFormData.vessel_name,
+          customer_id: contract.customer_id,
+          product_name: cargoProductName,
+          contract_id: cargoContractId!,
+          contract_type: contract.contract_type,
+          load_ports: formatLoadPorts(cargoFormData.load_ports),
+          inspector_name: cargoFormData.inspector_name || undefined,
+          cargo_quantity: cargoQuantity,
+          laycan_window: cargoFormData.laycan_window || undefined,
+          status: 'Planned' as CargoStatus,
+          notes: cargoFormData.notes || undefined,
+          monthly_plan_id: cargoMonthlyPlanId!,
+          lc_status: cargoFormData.lc_status || undefined,
+          created_at: new Date().toISOString(),
+        }
 
-          // OPTIMISTIC UPDATE: Add to Port Movement immediately
-          setPortMovement(prevCargos => [...prevCargos, optimisticCargo])
+        // OPTIMISTIC UPDATE: Add to Port Movement immediately
+        setPortMovement(prevCargos => [...prevCargos, optimisticCargo])
 
-          try {
-            const response = await cargoAPI.create(payload)
-            // Replace optimistic cargo with real cargo from API
-            if (response.data) {
-              setPortMovement(prevCargos =>
-                prevCargos.map(cargo =>
-                  cargo.id === optimisticCargo.id ? response.data : cargo
-                )
-              )
-            }
-            return { success: true, productName }
-          } catch (error: any) {
-            // Remove optimistic cargo on error
+        try {
+          const response = await cargoAPI.create(payload)
+          // Replace optimistic cargo with real cargo from API
+          if (response.data) {
             setPortMovement(prevCargos =>
-              prevCargos.filter(cargo => cargo.id !== optimisticCargo.id)
+              prevCargos.map(cargo =>
+                cargo.id === optimisticCargo.id ? response.data : cargo
+              )
             )
-            return { success: false, productName, error: error?.response?.data?.detail || error?.message }
           }
-        })
-
-        // Wait for all creations
-        const results = await Promise.all(creationPromises)
-        const failures = results.filter(r => !r.success)
-        
-        if (failures.length > 0) {
-          alert(`Some cargos failed to create:\n${failures.map(f => `- ${f.productName}: ${f.error}`).join('\n')}\n\nSuccessfully created: ${results.filter(r => r.success).map(r => r.productName).join(', ') || 'none'}`)
-        } else {
-          alert(isCombiCargo 
-            ? `Combi cargo created successfully! (${combiProducts.length} products: ${combiProducts.join(', ')})`
-            : 'Cargo created successfully!'
+          alert('Cargo created successfully!')
+        } catch (error: any) {
+          // Remove optimistic cargo on error
+          setPortMovement(prevCargos =>
+            prevCargos.filter(cargo => cargo.id !== optimisticCargo.id)
           )
+          const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error'
+          alert(`Error creating cargo: ${errorMessage}`)
         }
 
         // Refresh data
@@ -3017,93 +2972,22 @@ export default function HomePage() {
               return (
             <Grid container spacing={isMobile ? 1.5 : 2}>
               {!editingCargo && cargoContract && (
-                <>
-                  {/* Combi Cargo Option - only show when contract has multiple products */}
-                  {cargoContract.products && cargoContract.products.length > 1 && (
-                    <Grid item xs={12}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, bgcolor: 'rgba(37, 99, 235, 0.05)', borderRadius: 2, border: '1px solid rgba(37, 99, 235, 0.2)' }}>
-                        <Checkbox
-                          checked={isCombiCargo}
-                          onChange={(e) => {
-                            setIsCombiCargo(e.target.checked)
-                            if (e.target.checked) {
-                              // Pre-select all products for combi
-                              setCombiProducts(cargoContract.products?.map(p => p.name) || [])
-                              setCargoProductName(null)
-                            } else {
-                              setCombiProducts([])
-                              // Reset to first product
-                              setCargoProductName(cargoContract.products?.[0]?.name || null)
-                            }
-                          }}
-                        />
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            Create Combi Cargo
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            Multiple products in the same vessel with shared laycan
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </Grid>
-                  )}
-
-                  {/* Single Product Selector (when not combi) */}
-                  {!isCombiCargo && (
-                    <Grid item xs={12}>
-                      <FormControl fullWidth required>
-                        <InputLabel>Product</InputLabel>
-                        <Select
-                          value={cargoProductName || ''}
-                          label="Product"
-                          onChange={(e) => setCargoProductName(e.target.value)}
-                        >
-                          {cargoContract.products?.map((product) => (
-                            <MenuItem key={product.name} value={product.name}>
-                              {product.name} (Total: {product.total_quantity} KT, Optional: {product.optional_quantity || 0} KT)
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                  )}
-
-                  {/* Multi-Product Selector (when combi) */}
-                  {isCombiCargo && (
-                    <Grid item xs={12}>
-                      <FormControl fullWidth required>
-                        <InputLabel>Products for Combi Cargo</InputLabel>
-                        <Select
-                          multiple
-                          value={combiProducts}
-                          label="Products for Combi Cargo"
-                          onChange={(e) => setCombiProducts(e.target.value as string[])}
-                          renderValue={(selected) => (
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {(selected as string[]).map((name) => (
-                                <Chip key={name} label={name} size="small" color="info" />
-                              ))}
-                            </Box>
-                          )}
-                        >
-                          {cargoContract.products?.map((product) => (
-                            <MenuItem key={product.name} value={product.name}>
-                              <Checkbox checked={combiProducts.includes(product.name)} />
-                              <ListItemText 
-                                primary={product.name} 
-                                secondary={`Total: ${product.total_quantity} KT, Optional: ${product.optional_quantity || 0} KT`}
-                              />
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                        Select 2 or more products. Separate cargo records will be created for each product, linked together.
-                      </Typography>
-                    </Grid>
-                  )}
-                </>
+                <Grid item xs={12}>
+                  <FormControl fullWidth required>
+                    <InputLabel>Product</InputLabel>
+                    <Select
+                      value={cargoProductName || ''}
+                      label="Product"
+                      onChange={(e) => setCargoProductName(e.target.value)}
+                    >
+                      {cargoContract.products?.map((product) => (
+                        <MenuItem key={product.name} value={product.name}>
+                          {product.name} (Total: {product.total_quantity} KT, Optional: {product.optional_quantity || 0} KT)
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
               )}
               <Grid item xs={12} md={6}>
                 <TextField
