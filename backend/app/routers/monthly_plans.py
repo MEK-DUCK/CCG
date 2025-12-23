@@ -64,6 +64,7 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         delivery_month=getattr(plan, "delivery_month", None),
         delivery_window=getattr(plan, "delivery_window", None),
         delivery_window_remark=getattr(plan, "delivery_window_remark", None),
+        combi_group_id=getattr(plan, "combi_group_id", None),
         quarterly_plan_id=plan.quarterly_plan_id
     )
     db.add(db_plan)
