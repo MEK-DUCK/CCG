@@ -1771,6 +1771,7 @@ export default function HomePage() {
       return {
         cargo,
         combiCargos: null as Cargo[] | null,  // Not a combi group
+        combiMonthlyPlans: null as MonthlyPlan[] | null,
         monthlyPlan,
         contract,
         customer,
@@ -1801,6 +1802,7 @@ export default function HomePage() {
       return {
         cargo: unifiedCargo,
         combiCargos: cargos,  // Keep all cargos for editing
+        combiMonthlyPlans: null as MonthlyPlan[] | null,
         monthlyPlan,
         contract,
         customer,
@@ -1821,27 +1823,62 @@ export default function HomePage() {
       return !allCargos.some(cargo => cargo.monthly_plan_id === mp.id)
     })
     
-    const monthlyPlansWithInfo = monthlyPlansWithoutCargos.map(monthlyPlan => {
+    // Group monthly plans by combi_group_id (similar to how we group cargos)
+    const combiMonthlyPlanGroups = new Map<string, MonthlyPlan[]>()
+    const nonCombiMonthlyPlans: MonthlyPlan[] = []
+    
+    monthlyPlansWithoutCargos.forEach(mp => {
+      if (mp.combi_group_id) {
+        const existing = combiMonthlyPlanGroups.get(mp.combi_group_id) || []
+        existing.push(mp)
+        combiMonthlyPlanGroups.set(mp.combi_group_id, existing)
+      } else {
+        nonCombiMonthlyPlans.push(mp)
+      }
+    })
+    
+    // Build info for non-combi monthly plans
+    const nonCombiMonthlyPlansWithInfo = nonCombiMonthlyPlans.map(monthlyPlan => {
       const contract = getContractForMonthlyPlan(monthlyPlan)
       const customer = contract ? customers.find(c => c.id === contract.customer_id) : null
-      
-      // Get laycan from monthly plan:
-      // - FOB: laycan_2_days > laycan_5_days > TBA
-      // - CIF: loading_window (fallback TBA)
       const laycan = getLaycanDisplay(monthlyPlan, contract)
       
       return {
-        cargo: null as Cargo | null, // No cargo yet
+        cargo: null as Cargo | null,
         combiCargos: null as Cargo[] | null,
         monthlyPlan,
+        combiMonthlyPlans: null as MonthlyPlan[] | null,
         contract,
         customer,
         laycan,
         laycanSortValue: getLaycanSortValue(laycan),
-        isMonthlyPlan: true, // Flag to indicate this is a monthly plan row
+        isMonthlyPlan: true,
         isCombi: false,
       }
     })
+    
+    // Build info for combi monthly plan groups (unified rows)
+    const combiMonthlyPlansWithInfo = Array.from(combiMonthlyPlanGroups.entries()).map(([_combiGroupId, plans]) => {
+      const primaryPlan = plans[0]
+      const contract = getContractForMonthlyPlan(primaryPlan)
+      const customer = contract ? customers.find(c => c.id === contract.customer_id) : null
+      const laycan = getLaycanDisplay(primaryPlan, contract)
+      
+      return {
+        cargo: null as Cargo | null,
+        combiCargos: null as Cargo[] | null,
+        monthlyPlan: primaryPlan,  // Use first plan as reference
+        combiMonthlyPlans: plans,  // Keep all plans for display
+        contract,
+        customer,
+        laycan,
+        laycanSortValue: getLaycanSortValue(laycan),
+        isMonthlyPlan: true,
+        isCombi: true,  // Mark as combi for unified display
+      }
+    })
+    
+    const monthlyPlansWithInfo = [...nonCombiMonthlyPlansWithInfo, ...combiMonthlyPlansWithInfo]
     
     // Combine cargos and monthly plans
     const allRows = [...cargosWithInfo, ...monthlyPlansWithInfo]
@@ -2137,9 +2174,12 @@ export default function HomePage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredCargos.map(({ cargo, combiCargos, contract, customer, laycan, isMonthlyPlan, monthlyPlan, isCombi }) => (
+              {filteredCargos.map(({ cargo, combiCargos, contract, customer, laycan, isMonthlyPlan, monthlyPlan, combiMonthlyPlans, isCombi }) => (
                     <TableRow 
-                  key={cargo ? (isCombi ? `combi-${cargo.combi_group_id}` : `cargo-${cargo.id}`) : `monthly-plan-${monthlyPlan?.id}`}
+                  key={cargo 
+                    ? (isCombi ? `combi-cargo-${cargo.combi_group_id}` : `cargo-${cargo.id}`) 
+                    : (isCombi && combiMonthlyPlans ? `combi-plan-${combiMonthlyPlans[0]?.combi_group_id}` : `monthly-plan-${monthlyPlan?.id}`)
+                  }
                   onClick={() => {
                     if (isMonthlyPlan && monthlyPlan) {
                       handleCreateCargoForPlan(monthlyPlan)
@@ -2155,7 +2195,7 @@ export default function HomePage() {
                           minHeight: isMobile ? 56 : 48,
                           py: isMobile ? 1.5 : 1,
                     },
-                    bgcolor: isMonthlyPlan ? 'action.selected' : (isCombi ? '#FEF3C7' : 'inherit')
+                    bgcolor: isMonthlyPlan ? (isCombi ? '#FEF3C7' : 'action.selected') : (isCombi ? '#FEF3C7' : 'inherit')
                   }}
                 >
                       <TableCell sx={{ 
@@ -2267,6 +2307,19 @@ export default function HomePage() {
                               </Typography>
                             ))}
                           </Box>
+                        ) : isCombi && combiMonthlyPlans ? (
+                          <Box>
+                            {combiMonthlyPlans.map((mp: MonthlyPlan) => {
+                              // Get product name from quarterly plan
+                              const qp = quarterlyPlansMap.get(mp.quarterly_plan_id)
+                              const productName = qp?.product_name || 'Unknown'
+                              return (
+                                <Typography key={mp.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
+                                  {productName}: {mp.month_quantity} KT
+                                </Typography>
+                              )
+                            })}
+                          </Box>
                         ) : (
                           cargo ? cargo.product_name : (
                             contract && contract.products && contract.products.length > 0
@@ -2349,6 +2402,15 @@ export default function HomePage() {
                             (Total)
                           </Typography>
                         )}
+                      </Box>
+                    ) : isCombi && combiMonthlyPlans ? (
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          {combiMonthlyPlans.reduce((sum: number, mp: MonthlyPlan) => sum + mp.month_quantity, 0)} KT
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          (Total)
+                        </Typography>
                       </Box>
                     ) : (monthlyPlan ? `${monthlyPlan.month_quantity} KT` : '-')}
                       </TableCell>
