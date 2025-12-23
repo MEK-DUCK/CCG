@@ -371,6 +371,7 @@ export default function HomePage() {
   const [portMovementFilterStatus, setPortMovementFilterStatus] = useState<string | null>(null)
   const [portMovementSearch, setPortMovementSearch] = useState<string>('')
   const [completedCargosSearch, setCompletedCargosSearch] = useState<string>('')
+  const [inRoadCIFFilterCustomers, setInRoadCIFFilterCustomers] = useState<number[]>([])
   const [cargoDialogOpen, setCargoDialogOpen] = useState(false)
   const [editingCargo, setEditingCargo] = useState<Cargo | null>(null)
   const [cargoMonthlyPlanId, setCargoMonthlyPlanId] = useState<number | null>(null)
@@ -2797,10 +2798,52 @@ export default function HomePage() {
           {renderCompletedCargosTable()}
         </TabPanel>
         <TabPanel value={value} index={2}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B', mb: 2 }}>
-            In-Road CIF Cargos (Pending Discharge)
-          </Typography>
-          {renderCargoTable(inRoadCIF)}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B' }}>
+              In-Road CIF Cargos (Pending Discharge)
+            </Typography>
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Filter by Customer</InputLabel>
+              <Select
+                multiple
+                value={inRoadCIFFilterCustomers}
+                label="Filter by Customer"
+                onChange={(e) => {
+                  const val = e.target.value
+                  setInRoadCIFFilterCustomers(typeof val === 'string' ? [] : val as number[])
+                }}
+                renderValue={(selected) => {
+                  if ((selected as number[]).length === 0) return 'All Customers'
+                  return (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {(selected as number[]).map((customerId) => {
+                        const customer = customers.find(c => c.id === customerId)
+                        return (
+                          <Chip
+                            key={customerId}
+                            label={customer?.name || customerId}
+                            size="small"
+                          />
+                        )
+                      })}
+                    </Box>
+                  )
+                }}
+              >
+                {customers.map((customer) => (
+                  <MenuItem key={customer.id} value={customer.id}>
+                    <Checkbox checked={inRoadCIFFilterCustomers.includes(customer.id)} />
+                    <ListItemText primary={customer.name} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+          {renderCargoTable(
+            inRoadCIFFilterCustomers.length === 0
+              ? inRoadCIF
+              : inRoadCIF.filter(cargo => inRoadCIFFilterCustomers.includes(cargo.customer_id))
+          )}
         </TabPanel>
         <TabPanel value={value} index={3}>
           <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B', mb: 2 }}>
