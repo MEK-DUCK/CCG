@@ -21,8 +21,8 @@ import {
   useTheme,
 } from '@mui/material'
 import { FileDownload, PictureAsPdf } from '@mui/icons-material'
-import { customerAPI, contractAPI, quarterlyPlanAPI, monthlyPlanAPI } from '../api/client'
-import type { Customer, Contract, QuarterlyPlan, MonthlyPlan } from '../types'
+import { customerAPI, contractAPI, quarterlyPlanAPI, monthlyPlanAPI, cargoAPI } from '../api/client'
+import type { Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo } from '../types'
 
 interface MonthlyPlanEntry {
   monthlyPlanId: number
@@ -32,6 +32,8 @@ interface MonthlyPlanEntry {
   laycan2Days?: string
   loadingWindow?: string
   deliveryWindow?: string
+  isCombi?: boolean  // True if there's a cargo with combi_group_id for this monthly plan
+  combiProducts?: string[]  // List of products in the combi group
 }
 
 interface ContractQuarterlyData {
@@ -59,6 +61,7 @@ export default function LiftingPlanPage() {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
   const [monthlyPlans, setMonthlyPlans] = useState<MonthlyPlan[]>([])
+  const [cargos, setCargos] = useState<Cargo[]>([])  // To track combi cargos
   const [contractData, setContractData] = useState<Map<number, ContractQuarterlyData>>(new Map())
   const [notes, setNotes] = useState<Map<number, string>>(new Map()) // contractId -> notes
   const [loading, setLoading] = useState(true)
@@ -71,17 +74,19 @@ export default function LiftingPlanPage() {
     if (customers.length > 0 && contracts.length > 0 && quarterlyPlans.length > 0 && monthlyPlans.length > 0) {
       calculateQuarterlyData()
     }
-  }, [selectedQuarter, selectedYear, customers, contracts, quarterlyPlans, monthlyPlans, notes])
+  }, [selectedQuarter, selectedYear, customers, contracts, quarterlyPlans, monthlyPlans, cargos, notes])
 
   const loadData = async () => {
     try {
       setLoading(true)
-      const [customersRes, contractsRes] = await Promise.all([
+      const [customersRes, contractsRes, cargosRes] = await Promise.all([
         customerAPI.getAll(),
         contractAPI.getAll(),
+        cargoAPI.getAll({}),  // Load all cargos to check for combi groups
       ])
       setCustomers(customersRes.data || [])
       setContracts(contractsRes.data || [])
+      setCargos(cargosRes.data || [])
 
       // Load all quarterly plans
       const quarterlyRes = await quarterlyPlanAPI.getAll()
@@ -167,6 +172,17 @@ export default function LiftingPlanPage() {
           if (monthIndex !== -1) {
             const contractData = dataMap.get(contract.id)
             if (contractData) {
+              // Check if there's a cargo for this monthly plan that's part of a combi group
+              const cargo = cargos.find(c => c.monthly_plan_id === mp.id)
+              const isCombi = cargo?.combi_group_id ? true : false
+              
+              // If combi, find all products in the combi group
+              let combiProducts: string[] | undefined
+              if (isCombi && cargo?.combi_group_id) {
+                const combiCargos = cargos.filter(c => c.combi_group_id === cargo.combi_group_id)
+                combiProducts = combiCargos.map(c => c.product_name)
+              }
+              
               const entry: MonthlyPlanEntry = {
                 monthlyPlanId: mp.id,
                 month: mp.month,
@@ -175,6 +191,8 @@ export default function LiftingPlanPage() {
                 laycan2Days: contract.contract_type === 'FOB' ? (mp.laycan_2_days || undefined) : undefined,
                 loadingWindow: contract.contract_type === 'CIF' ? (mp.loading_window || undefined) : undefined,
                 deliveryWindow: contract.contract_type === 'CIF' ? (mp.delivery_window || undefined) : undefined,
+                isCombi,
+                combiProducts,
               }
 
               if (monthIndex === 0) {
@@ -255,8 +273,9 @@ export default function LiftingPlanPage() {
       const dataArray = getFilteredDataArray()
 
       const exportData: any[] = dataArray.map((data) => {
-        // Format month 1 entries
-        const month1Parts = data.month1Entries.map((entry) => {
+        // Helper to format entry with combi info
+        const formatEntry = (entry: MonthlyPlanEntry) => {
+          const combiText = entry.isCombi ? ' [Combi]' : ''
           let laycanText = ''
           if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
             const parts: string[] = []
@@ -264,34 +283,19 @@ export default function LiftingPlanPage() {
             if (entry.laycan2Days) parts.push(`2 Days: ${entry.laycan2Days}`)
             laycanText = parts.length > 0 ? ` (${parts.join(', ')})` : ''
           }
-          return `${entry.quantity.toLocaleString()} KT${laycanText}`
-        })
+          return `${entry.quantity.toLocaleString()} KT${combiText}${laycanText}`
+        }
+
+        // Format month 1 entries
+        const month1Parts = data.month1Entries.map(formatEntry)
         const month1Text = month1Parts.length > 0 ? month1Parts.join('\n') : '-'
         
         // Format month 2 entries
-        const month2Parts = data.month2Entries.map((entry) => {
-          let laycanText = ''
-          if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
-            const parts: string[] = []
-            if (entry.laycan5Days) parts.push(`5 Days: ${entry.laycan5Days}`)
-            if (entry.laycan2Days) parts.push(`2 Days: ${entry.laycan2Days}`)
-            laycanText = parts.length > 0 ? ` (${parts.join(', ')})` : ''
-          }
-          return `${entry.quantity.toLocaleString()} KT${laycanText}`
-        })
+        const month2Parts = data.month2Entries.map(formatEntry)
         const month2Text = month2Parts.length > 0 ? month2Parts.join('\n') : '-'
         
         // Format month 3 entries
-        const month3Parts = data.month3Entries.map((entry) => {
-          let laycanText = ''
-          if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
-            const parts: string[] = []
-            if (entry.laycan5Days) parts.push(`5 Days: ${entry.laycan5Days}`)
-            if (entry.laycan2Days) parts.push(`2 Days: ${entry.laycan2Days}`)
-            laycanText = parts.length > 0 ? ` (${parts.join(', ')})` : ''
-          }
-          return `${entry.quantity.toLocaleString()} KT${laycanText}`
-        })
+        const month3Parts = data.month3Entries.map(formatEntry)
         const month3Text = month3Parts.length > 0 ? month3Parts.join('\n') : '-'
 
         return {
@@ -356,8 +360,9 @@ export default function LiftingPlanPage() {
 
       // Prepare table data
       const tableData = dataArray.map((data) => {
-        // Format month 1 entries
-        const month1Parts = data.month1Entries.map((entry) => {
+        // Helper to format entry with combi info
+        const formatEntry = (entry: MonthlyPlanEntry) => {
+          const combiText = entry.isCombi ? ' [Combi]' : ''
           let laycanText = ''
           if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
             const parts: string[] = []
@@ -365,34 +370,19 @@ export default function LiftingPlanPage() {
             if (entry.laycan2Days) parts.push(`2 Days: ${entry.laycan2Days}`)
             laycanText = parts.length > 0 ? `\n(${parts.join('\n')})` : ''
           }
-          return `${entry.quantity.toLocaleString()} KT${laycanText}`
-        })
+          return `${entry.quantity.toLocaleString()} KT${combiText}${laycanText}`
+        }
+
+        // Format month 1 entries
+        const month1Parts = data.month1Entries.map(formatEntry)
         const month1Text = month1Parts.length > 0 ? month1Parts.join('\n\n') : '-'
         
         // Format month 2 entries
-        const month2Parts = data.month2Entries.map((entry) => {
-          let laycanText = ''
-          if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
-            const parts: string[] = []
-            if (entry.laycan5Days) parts.push(`5 Days: ${entry.laycan5Days}`)
-            if (entry.laycan2Days) parts.push(`2 Days: ${entry.laycan2Days}`)
-            laycanText = parts.length > 0 ? `\n(${parts.join('\n')})` : ''
-          }
-          return `${entry.quantity.toLocaleString()} KT${laycanText}`
-        })
+        const month2Parts = data.month2Entries.map(formatEntry)
         const month2Text = month2Parts.length > 0 ? month2Parts.join('\n\n') : '-'
         
         // Format month 3 entries
-        const month3Parts = data.month3Entries.map((entry) => {
-          let laycanText = ''
-          if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
-            const parts: string[] = []
-            if (entry.laycan5Days) parts.push(`5 Days: ${entry.laycan5Days}`)
-            if (entry.laycan2Days) parts.push(`2 Days: ${entry.laycan2Days}`)
-            laycanText = parts.length > 0 ? `\n(${parts.join('\n')})` : ''
-          }
-          return `${entry.quantity.toLocaleString()} KT${laycanText}`
-        })
+        const month3Parts = data.month3Entries.map(formatEntry)
         const month3Text = month3Parts.length > 0 ? month3Parts.join('\n\n') : '-'
 
         return [
@@ -512,9 +502,29 @@ export default function LiftingPlanPage() {
                     ) : (
                       data.month1Entries.map((entry, idx) => (
                         <Box key={entry.monthlyPlanId} sx={{ mb: idx < data.month1Entries.length - 1 ? 1.5 : 0 }}>
-                          <Typography variant="body2" sx={{ mb: (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) ? 0.5 : 0 }}>
-                            {entry.quantity.toLocaleString()} KT
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) ? 0.5 : 0 }}>
+                            <Typography variant="body2">
+                              {entry.quantity.toLocaleString()} KT
+                            </Typography>
+                            {entry.isCombi && (
+                              <Chip 
+                                label="Combi" 
+                                size="small" 
+                                sx={{ 
+                                  height: 18, 
+                                  fontSize: '0.65rem', 
+                                  bgcolor: '#F3E8FF', 
+                                  color: '#7C3AED',
+                                  fontWeight: 600,
+                                }}
+                              />
+                            )}
+                          </Box>
+                          {entry.isCombi && entry.combiProducts && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
+                              ({entry.combiProducts.join(' + ')})
+                            </Typography>
+                          )}
                           {data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days) && (
                             <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                               {entry.laycan5Days && (
@@ -555,9 +565,29 @@ export default function LiftingPlanPage() {
                     ) : (
                       data.month2Entries.map((entry, idx) => (
                         <Box key={entry.monthlyPlanId} sx={{ mb: idx < data.month2Entries.length - 1 ? 1.5 : 0 }}>
-                          <Typography variant="body2" sx={{ mb: (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) ? 0.5 : 0 }}>
-                            {entry.quantity.toLocaleString()} KT
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) ? 0.5 : 0 }}>
+                            <Typography variant="body2">
+                              {entry.quantity.toLocaleString()} KT
+                            </Typography>
+                            {entry.isCombi && (
+                              <Chip 
+                                label="Combi" 
+                                size="small" 
+                                sx={{ 
+                                  height: 18, 
+                                  fontSize: '0.65rem', 
+                                  bgcolor: '#F3E8FF', 
+                                  color: '#7C3AED',
+                                  fontWeight: 600,
+                                }}
+                              />
+                            )}
+                          </Box>
+                          {entry.isCombi && entry.combiProducts && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
+                              ({entry.combiProducts.join(' + ')})
+                            </Typography>
+                          )}
                           {data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days) && (
                             <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                               {entry.laycan5Days && (
@@ -598,9 +628,29 @@ export default function LiftingPlanPage() {
                     ) : (
                       data.month3Entries.map((entry, idx) => (
                         <Box key={entry.monthlyPlanId} sx={{ mb: idx < data.month3Entries.length - 1 ? 1.5 : 0 }}>
-                          <Typography variant="body2" sx={{ mb: (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) ? 0.5 : 0 }}>
-                            {entry.quantity.toLocaleString()} KT
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) ? 0.5 : 0 }}>
+                            <Typography variant="body2">
+                              {entry.quantity.toLocaleString()} KT
+                            </Typography>
+                            {entry.isCombi && (
+                              <Chip 
+                                label="Combi" 
+                                size="small" 
+                                sx={{ 
+                                  height: 18, 
+                                  fontSize: '0.65rem', 
+                                  bgcolor: '#F3E8FF', 
+                                  color: '#7C3AED',
+                                  fontWeight: 600,
+                                }}
+                              />
+                            )}
+                          </Box>
+                          {entry.isCombi && entry.combiProducts && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
+                              ({entry.combiProducts.join(' + ')})
+                            </Typography>
+                          )}
                           {data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days) && (
                             <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                               {entry.laycan5Days && (
