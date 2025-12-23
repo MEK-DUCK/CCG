@@ -3063,6 +3063,26 @@ export default function HomePage() {
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <TextField
+                      label="Delivery Window (from Monthly Plan)"
+                      value={(() => {
+                        const mp = monthlyPlans.find(m => m.id === cargoMonthlyPlanId)
+                        return mp?.delivery_window || '-'
+                      })()}
+                      fullWidth
+                      disabled
+                      sx={{
+                        '& .MuiInputBase-input.Mui-disabled': {
+                          WebkitTextFillColor: 'rgba(0, 0, 0, 0.6)',
+                          backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                        },
+                      }}
+                      InputProps={{
+                        readOnly: true,
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
                       label="ETA Discharge Port"
                       type="text"
                       value={cargoFormData.eta_discharge_port}
