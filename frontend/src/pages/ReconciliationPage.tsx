@@ -17,8 +17,6 @@ import {
   MenuItem,
   TextField,
   Grid,
-  Card,
-  CardContent,
   Button,
   TablePagination,
 } from '@mui/material'
@@ -247,13 +245,14 @@ export default function ReconciliationPage() {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+    <Box>
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: '#1E293B', mb: 0.5 }}>
             Plan Reconciliation
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography variant="body2" sx={{ color: '#64748B' }}>
             Track all changes to monthly and quarterly plans including quantity updates, deletions, and creations.
           </Typography>
         </Box>
@@ -262,290 +261,345 @@ export default function ReconciliationPage() {
           startIcon={<Refresh />}
           onClick={loadLogs}
           disabled={loading}
-          sx={{ minWidth: 120 }}
+          sx={{ 
+            minWidth: 110,
+            borderColor: '#E2E8F0',
+            color: '#475569',
+            '&:hover': {
+              borderColor: '#CBD5E1',
+              backgroundColor: '#F8FAFC',
+            }
+          }}
         >
           Refresh
         </Button>
       </Box>
 
       {/* Filters */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Month</InputLabel>
-                <Select
-                  value={selectedMonth || ''}
-                  label="Month"
-                  onChange={(e) => setSelectedMonth(e.target.value ? Number(e.target.value) : null)}
-                >
-                  <MenuItem value="">All Months</MenuItem>
-                  {monthNames.slice(1).map((month, index) => (
-                    <MenuItem key={index + 1} value={index + 1}>
-                      {month}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Year"
-                type="number"
-                value={selectedYear || ''}
-                onChange={(e) => setSelectedYear(e.target.value ? Number(e.target.value) : null)}
-                inputProps={{ min: 2020, max: 2100 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Action</InputLabel>
-                <Select
-                  value={selectedAction}
-                  label="Action"
-                  onChange={(e) => setSelectedAction(e.target.value)}
-                >
-                  <MenuItem value="">All Actions</MenuItem>
-                  <MenuItem value="CREATE">Create</MenuItem>
-                  <MenuItem value="UPDATE">Update</MenuItem>
-                  <MenuItem value="DELETE">Delete</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <Typography variant="body2" color="text.secondary">
+      <Paper sx={{ mb: 3, p: 2.5 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Month</InputLabel>
+              <Select
+                value={selectedMonth || ''}
+                label="Month"
+                onChange={(e) => setSelectedMonth(e.target.value ? Number(e.target.value) : null)}
+              >
+                <MenuItem value="">All Months</MenuItem>
+                {monthNames.slice(1).map((month, index) => (
+                  <MenuItem key={index + 1} value={index + 1}>
+                    {month}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Year"
+              type="number"
+              value={selectedYear || ''}
+              onChange={(e) => setSelectedYear(e.target.value ? Number(e.target.value) : null)}
+              inputProps={{ min: 2020, max: 2100 }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Action</InputLabel>
+              <Select
+                value={selectedAction}
+                label="Action"
+                onChange={(e) => setSelectedAction(e.target.value)}
+              >
+                <MenuItem value="">All Actions</MenuItem>
+                <MenuItem value="CREATE">Create</MenuItem>
+                <MenuItem value="UPDATE">Update</MenuItem>
+                <MenuItem value="DELETE">Delete</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Box sx={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              px: 1.5, 
+              py: 0.75, 
+              bgcolor: '#F1F5F9', 
+              borderRadius: 2 
+            }}>
+              <Typography variant="body2" sx={{ color: '#475569', fontWeight: 500 }}>
                 {logs.length} log{logs.length !== 1 ? 's' : ''} found
               </Typography>
-            </Grid>
+            </Box>
           </Grid>
-        </CardContent>
-      </Card>
+        </Grid>
+      </Paper>
 
       {/* Weekly quantity comparison (new) */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                Weekly Quantity Comparison (Sun–Thu)
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                Total quantities across {weeklyProduct ? weeklyProduct : 'all products'}. Remarks show which contracts changed for each month.
-              </Typography>
-              {weeklyData && (
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                  Snapshot: {format(new Date(weeklyData.previous_week_start), 'MMM dd')} →{' '}
-                  {format(new Date(weeklyData.previous_week_end), 'MMM dd, yyyy')}
+      <Paper sx={{ mb: 3, p: 2.5 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B' }}>
+              Weekly Quantity Comparison
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#64748B', mt: 0.5 }}>
+              Sun–Thu snapshot for {weeklyProduct ? weeklyProduct : 'all products'}
+            </Typography>
+            {weeklyData && (
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', mt: 1, px: 1.5, py: 0.5, bgcolor: 'rgba(71, 85, 105, 0.08)', borderRadius: 1.5 }}>
+                <Typography variant="caption" sx={{ color: '#475569', fontWeight: 500 }}>
+                  {format(new Date(weeklyData.previous_week_start), 'MMM dd')} → {format(new Date(weeklyData.previous_week_end), 'MMM dd, yyyy')}
                 </Typography>
-              )}
-            </Box>
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-              <FormControl size="small" sx={{ minWidth: 160 }}>
-                <InputLabel>Product</InputLabel>
-                <Select value={weeklyProduct} label="Product" onChange={(e) => setWeeklyProduct(String(e.target.value))}>
-                  <MenuItem value="">All Products</MenuItem>
-                  {PRODUCT_FILTERS.map((p) => (
-                    <MenuItem key={p} value={p}>
-                      {p}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <Button variant="outlined" onClick={loadWeeklyComparison} disabled={weeklyLoading} sx={{ minWidth: 120 }}>
-                Refresh
-              </Button>
-            </Box>
+              </Box>
+            )}
           </Box>
+          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel>Product</InputLabel>
+              <Select value={weeklyProduct} label="Product" onChange={(e) => setWeeklyProduct(String(e.target.value))}>
+                <MenuItem value="">All Products</MenuItem>
+                {PRODUCT_FILTERS.map((p) => (
+                  <MenuItem key={p} value={p}>
+                    {p}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button 
+              variant="outlined" 
+              size="small"
+              onClick={loadWeeklyComparison} 
+              disabled={weeklyLoading} 
+              startIcon={<Refresh />}
+              sx={{ 
+                minWidth: 100,
+                borderColor: '#E2E8F0',
+                color: '#475569',
+                '&:hover': {
+                  borderColor: '#CBD5E1',
+                  backgroundColor: '#F8FAFC',
+                }
+              }}
+            >
+              Refresh
+            </Button>
+          </Box>
+        </Box>
 
-          {weeklyLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-              <CircularProgress />
-            </Box>
-          ) : weeklyError ? (
-            <Paper sx={{ mt: 2, p: 2 }}>
-              <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
-                Couldn’t load weekly comparison
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                {weeklyError}
-              </Typography>
-            </Paper>
-          ) : !weeklyTotals ? (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+        {weeklyLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 6 }}>
+            <CircularProgress size={28} />
+          </Box>
+        ) : weeklyError ? (
+          <Box sx={{ mt: 2, p: 3, bgcolor: 'rgba(239, 68, 68, 0.06)', borderRadius: 2, border: '1px solid rgba(239, 68, 68, 0.12)' }}>
+            <Typography variant="body2" sx={{ color: '#DC2626', fontWeight: 600 }}>
+              Couldn't load weekly comparison
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#64748B', mt: 0.5 }}>
+              {weeklyError}
+            </Typography>
+          </Box>
+        ) : !weeklyTotals ? (
+          <Box sx={{ py: 4, textAlign: 'center' }}>
+            <Typography variant="body2" sx={{ color: '#94A3B8' }}>
               No comparison data found.
             </Typography>
-          ) : (
-            <TableContainer component={Paper} sx={{ mt: 2, overflowX: 'auto' }}>
-              <Table size="small" sx={{ minWidth: 1100 }}>
+          </Box>
+        ) : (
+          <TableContainer sx={{ borderRadius: 2, border: '1px solid rgba(148, 163, 184, 0.12)', mt: 2, overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 1100 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap', bgcolor: '#F8FAFC' }}>Row</TableCell>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <TableCell key={m} align="right" sx={{ fontWeight: 600, bgcolor: '#F8FAFC' }}>
+                      {monthNames[m]}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow sx={{ bgcolor: '#FAFBFC' }}>
+                  <TableCell sx={{ fontWeight: 500, whiteSpace: 'nowrap', color: '#64748B' }}>Previous week</TableCell>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <TableCell key={m} align="right" sx={{ color: '#64748B' }}>
+                      {fmtQty(weeklyTotals.prevByMonth[m] || 0)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap', color: '#1E293B' }}>Current live</TableCell>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <TableCell key={m} align="right" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                      {fmtQty(weeklyTotals.curByMonth[m] || 0)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+                <TableRow sx={{ bgcolor: '#FAFBFC' }}>
+                  <TableCell sx={{ fontWeight: 500, whiteSpace: 'nowrap', color: '#64748B' }}>Remarks</TableCell>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <TableCell key={m} sx={{ minWidth: 180, fontSize: '0.75rem', color: '#64748B' }}>
+                      {weeklyTotals.remarkByMonth[m] || '—'}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+
+      {/* Logs Table */}
+      <Box sx={{ mt: 3 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B', mb: 2 }}>
+          Audit Logs
+        </Typography>
+        
+        {loading ? (
+          <Paper sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+            <CircularProgress size={32} />
+          </Paper>
+        ) : logs.length === 0 ? (
+          <Paper sx={{ py: 8, textAlign: 'center' }}>
+            <Box sx={{ 
+              width: 56, 
+              height: 56, 
+              borderRadius: 3, 
+              bgcolor: '#F1F5F9', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              mx: 'auto',
+              mb: 2,
+            }}>
+              <Refresh sx={{ fontSize: 28, color: '#94A3B8' }} />
+            </Box>
+            <Typography variant="body1" sx={{ fontWeight: 500, color: '#475569' }}>
+              No reconciliation logs found
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
+              Logs will appear here when plan changes are made.
+            </Typography>
+          </Paper>
+        ) : (
+          <Paper>
+            <TableContainer sx={{ overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 900 }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Row</TableCell>
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                      <TableCell key={m} align="right" sx={{ fontWeight: 700 }}>
-                        {monthNames[m]}
-                      </TableCell>
-                    ))}
+                    <TableCell>Date & Time</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Action</TableCell>
+                    <TableCell>Contract</TableCell>
+                    <TableCell>Plan Period</TableCell>
+                    <TableCell>Description</TableCell>
+                    <TableCell>Field Change</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Previous week total</TableCell>
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                      <TableCell key={m} align="right">
-                        {fmtQty(weeklyTotals.prevByMonth[m] || 0)}
+                  {(logsRowsPerPage > 0
+                    ? logs.slice(logsPage * logsRowsPerPage, logsPage * logsRowsPerPage + logsRowsPerPage)
+                    : logs
+                  ).map((log) => (
+                    <TableRow key={log.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8125rem' }}>
+                          {formatDate(log.created_at)}
+                        </Typography>
                       </TableCell>
-                    ))}
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Current live total</TableCell>
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                      <TableCell key={m} align="right" sx={{ fontWeight: 700 }}>
-                        {fmtQty(weeklyTotals.curByMonth[m] || 0)}
+                      <TableCell>
+                        <Chip
+                          label={isMonthlyPlanLog(log) ? 'Monthly' : 'Quarterly'}
+                          color={isMonthlyPlanLog(log) ? 'primary' : 'secondary'}
+                          size="small"
+                          sx={{ fontWeight: 500 }}
+                        />
                       </TableCell>
-                    ))}
-                  </TableRow>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Remarks</TableCell>
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                      <TableCell key={m} sx={{ minWidth: 200 }}>
-                        {weeklyTotals.remarkByMonth[m] || ''}
+                      <TableCell>
+                        <Chip
+                          label={log.action}
+                          color={getActionColor(log.action) as any}
+                          size="small"
+                          sx={{ fontWeight: 500 }}
+                        />
                       </TableCell>
-                    ))}
-                  </TableRow>
+                      <TableCell>
+                        {(isMonthlyPlanLog(log) ? log.contract_number : (log as QuarterlyPlanAuditLog).contract_number) ? (
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500, color: '#1E293B' }}>
+                              {isMonthlyPlanLog(log) ? log.contract_number : (log as QuarterlyPlanAuditLog).contract_number}
+                            </Typography>
+                            {(isMonthlyPlanLog(log) ? log.contract_name : (log as QuarterlyPlanAuditLog).contract_name) && (
+                              <Typography variant="caption" sx={{ color: '#64748B' }}>
+                                {isMonthlyPlanLog(log) ? log.contract_name : (log as QuarterlyPlanAuditLog).contract_name}
+                              </Typography>
+                            )}
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isMonthlyPlanLog(log) ? (
+                          <Typography variant="body2" sx={{ fontWeight: 500, color: '#1E293B' }}>
+                            {formatMonthYear(log.month, log.year)}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" sx={{ color: '#64748B' }}>
+                            Quarterly
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8125rem' }}>
+                          {log.description || `${log.action} ${isMonthlyPlanLog(log) ? 'monthly plan' : 'quarterly plan'}`}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {log.field_name && log.old_value !== null && log.new_value !== null ? (
+                          <Box>
+                            <Typography variant="caption" sx={{ color: '#94A3B8', fontWeight: 500 }} display="block">
+                              {log.field_name}
+                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.25 }}>
+                              <Typography variant="body2" sx={{ color: '#EF4444', fontSize: '0.8125rem', textDecoration: 'line-through' }}>
+                                {log.old_value}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#94A3B8' }}>→</Typography>
+                              <Typography variant="body2" sx={{ color: '#10B981', fontWeight: 600, fontSize: '0.8125rem' }}>
+                                {log.new_value}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </TableContainer>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Logs Table */}
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : logs.length === 0 ? (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <Typography variant="body1" color="text.secondary">
-            No reconciliation logs found
-          </Typography>
-        </Paper>
-      ) : (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Date & Time</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Action</TableCell>
-                <TableCell>Contract</TableCell>
-                <TableCell>Plan Period</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell>Field Change</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(logsRowsPerPage > 0
-                ? logs.slice(logsPage * logsRowsPerPage, logsPage * logsRowsPerPage + logsRowsPerPage)
-                : logs
-              ).map((log) => (
-                <TableRow key={log.id} hover>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {formatDate(log.created_at)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={isMonthlyPlanLog(log) ? 'Monthly Plan' : 'Quarterly Plan'}
-                      color={isMonthlyPlanLog(log) ? 'primary' : 'secondary'}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={log.action}
-                      color={getActionColor(log.action) as any}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {(isMonthlyPlanLog(log) ? log.contract_number : (log as QuarterlyPlanAuditLog).contract_number) ? (
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {isMonthlyPlanLog(log) ? log.contract_number : (log as QuarterlyPlanAuditLog).contract_number}
-                        </Typography>
-                        {(isMonthlyPlanLog(log) ? log.contract_name : (log as QuarterlyPlanAuditLog).contract_name) && (
-                          <Typography variant="caption" color="text.secondary">
-                            {isMonthlyPlanLog(log) ? log.contract_name : (log as QuarterlyPlanAuditLog).contract_name}
-                          </Typography>
-                        )}
-                      </Box>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        -
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {isMonthlyPlanLog(log) ? (
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {formatMonthYear(log.month, log.year)}
-                      </Typography>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        Quarterly Plan
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {log.description || `${log.action} ${isMonthlyPlanLog(log) ? 'monthly plan' : 'quarterly plan'}`}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    {log.field_name && log.old_value !== null && log.new_value !== null ? (
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          {log.field_name}:
-                        </Typography>
-                        <Typography variant="body2" color="error" component="span">
-                          {log.old_value}
-                        </Typography>
-                        <Typography variant="body2" component="span" sx={{ mx: 1 }}>
-                          →
-                        </Typography>
-                        <Typography variant="body2" color="success.main" component="span" sx={{ fontWeight: 600 }}>
-                          {log.new_value}
-                        </Typography>
-                      </Box>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        -
-                      </Typography>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <TablePagination
-            rowsPerPageOptions={[25, 50, { label: 'All', value: -1 }]}
-            component="div"
-            count={logs.length}
-            rowsPerPage={logsRowsPerPage}
-            page={logsPage}
-            onPageChange={(_, newPage) => setLogsPage(newPage)}
-            onRowsPerPageChange={(e) => {
-              setLogsRowsPerPage(parseInt(e.target.value, 10))
-              setLogsPage(0)
-            }}
-          />
-        </TableContainer>
-      )}
+            {logs.length > 0 && (
+              <TablePagination
+                rowsPerPageOptions={[25, 50, { label: 'All', value: -1 }]}
+                component="div"
+                count={logs.length}
+                rowsPerPage={logsRowsPerPage}
+                page={logsPage}
+                onPageChange={(_, newPage) => setLogsPage(newPage)}
+                onRowsPerPageChange={(e) => {
+                  setLogsRowsPerPage(parseInt(e.target.value, 10))
+                  setLogsPage(0)
+                }}
+              />
+            )}
+          </Paper>
+        )}
+      </Box>
     </Box>
   )
 }

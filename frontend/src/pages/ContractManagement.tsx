@@ -26,8 +26,9 @@ import {
   Select,
   Checkbox,
   TablePagination,
+  Paper,
 } from '@mui/material'
-import { Add, Edit, Delete, Search, Dashboard } from '@mui/icons-material'
+import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan, ContractProduct } from '../types'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
@@ -436,128 +437,133 @@ export default function ContractManagement() {
 
   return (
     <Box>
-      <Typography 
-        variant="h4" 
-        gutterBottom
-        sx={{
-          fontWeight: 700,
-          color: '#000000',
-          mb: 4,
-          fontSize: { xs: '1.75rem', md: '2rem' },
-          letterSpacing: '-0.02em',
-        }}
-      >
-        Contract Management
-      </Typography>
-      
-      <Box 
-        sx={{ 
-          mb: 4, 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          gap: 0.5,
-          p: 3,
-          bgcolor: '#FFFFFF',
-          borderRadius: 3,
-          boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.05)',
-        }}
-      >
-        <TextField
-          size="small"
-          placeholder="Search customer name or contract number..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <Box sx={{ display: 'flex', alignItems: 'center', mr: 1, color: 'text.secondary' }}>
-                <Search fontSize="small" />
-              </Box>
-            ),
-          }}
-          sx={{ minWidth: 300, fontSize: '0.875rem' }}
-        />
-        <FormControl size="small" sx={{ minWidth: 200 }}>
-          <InputLabel>Customer</InputLabel>
-          <Select
-            multiple
-            value={filterCustomer}
-            label="Customer"
-            onChange={(e) => {
-              const value = e.target.value
-              setFilterCustomer(typeof value === 'string' ? [] : value as number[])
-            }}
-            renderValue={(selected) => {
-              if (selected.length === 0) return 'All Customers'
-              if (selected.length === 1) {
-                const customer = customers.find(c => c.id === selected[0])
-                return customer?.name || ''
-              }
-              return `${selected.length} selected`
-            }}
-          >
-            {customers.map((customer) => (
-              <MenuItem key={customer.id} value={customer.id}>
-                <Checkbox checked={filterCustomer.includes(customer.id)} />
-                {customer.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel>Year</InputLabel>
-          <Select
-            multiple
-            value={filterYear}
-            label="Year"
-            onChange={(e) => {
-              const value = e.target.value
-              setFilterYear(typeof value === 'string' ? [] : value as number[])
-            }}
-            renderValue={(selected) => {
-              if (selected.length === 0) return 'All Years'
-              if (selected.length === 1) return selected[0].toString()
-              return `${selected.length} selected`
-            }}
-          >
-            {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
-              <MenuItem key={year} value={year}>
-                <Checkbox checked={filterYear.includes(year)} />
-                {year}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4, flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: '#1E293B', mb: 0.5 }}>
+            Contract Management
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748B' }}>
+            Manage contracts, quarterly and monthly plans
+          </Typography>
+        </Box>
         <Button
           variant="contained"
-          sx={{
-            borderRadius: 2.5,
-          }}
           startIcon={<Add />}
           onClick={() => handleOpen()}
-          disabled={false}
+          sx={{ 
+            px: 3,
+            py: 1,
+            fontWeight: 600,
+          }}
         >
           Add Contract
         </Button>
       </Box>
+      
+      {/* Filters */}
+      <Paper sx={{ mb: 3, p: 2.5 }}>
+        <Box 
+          sx={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            gap: 2,
+            flexWrap: 'wrap',
+          }}
+        >
+          <TextField
+            size="small"
+            placeholder="Search customer or contract..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <Box sx={{ display: 'flex', alignItems: 'center', mr: 1, color: '#94A3B8' }}>
+                  <Search fontSize="small" />
+                </Box>
+              ),
+            }}
+            sx={{ minWidth: 280, flex: '1 1 auto', maxWidth: 400 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel>Customer</InputLabel>
+            <Select
+              multiple
+              value={filterCustomer}
+              label="Customer"
+              onChange={(e) => {
+                const value = e.target.value
+                setFilterCustomer(typeof value === 'string' ? [] : value as number[])
+              }}
+              renderValue={(selected) => {
+                if (selected.length === 0) return 'All Customers'
+                if (selected.length === 1) {
+                  const customer = customers.find(c => c.id === selected[0])
+                  return customer?.name || ''
+                }
+                return `${selected.length} selected`
+              }}
+            >
+              {customers.map((customer) => (
+                <MenuItem key={customer.id} value={customer.id}>
+                  <Checkbox checked={filterCustomer.includes(customer.id)} size="small" />
+                  {customer.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>Year</InputLabel>
+            <Select
+              multiple
+              value={filterYear}
+              label="Year"
+              onChange={(e) => {
+                const value = e.target.value
+                setFilterYear(typeof value === 'string' ? [] : value as number[])
+              }}
+              renderValue={(selected) => {
+                if (selected.length === 0) return 'All Years'
+                if (selected.length === 1) return selected[0].toString()
+                return `${selected.length} years`
+              }}
+            >
+              {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
+                <MenuItem key={year} value={year}>
+                  <Checkbox checked={filterYear.includes(year)} size="small" />
+                  {year}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Box sx={{ 
+            display: 'inline-flex', 
+            alignItems: 'center', 
+            px: 1.5, 
+            py: 0.75, 
+            bgcolor: '#F1F5F9', 
+            borderRadius: 2,
+            ml: 'auto'
+          }}>
+            <Typography variant="body2" sx={{ color: '#475569', fontWeight: 500 }}>
+              {filteredContracts.length} contract{filteredContracts.length !== 1 ? 's' : ''}
+            </Typography>
+          </Box>
+        </Box>
+      </Paper>
 
       {customers.length === 0 && (
-        <Typography color="text.secondary" sx={{ mb: 2 }}>
-          Please create a customer first before adding contracts.
-        </Typography>
+        <Paper sx={{ p: 4, textAlign: 'center', mb: 3 }}>
+          <Typography sx={{ color: '#64748B' }}>
+            Please create a customer first before adding contracts.
+          </Typography>
+        </Paper>
       )}
 
       <Grid container spacing={3}>
         {!selectedContract?.id && (
           <Grid item xs={12}>
-          <Box
-            sx={{
-              bgcolor: '#FFFFFF',
-              borderRadius: 3,
-              boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.05)',
-              overflow: 'hidden',
-            }}
-          >
+          <Paper sx={{ overflow: 'hidden' }}>
             <TableContainer>
               <Table>
               <TableHead>
@@ -565,14 +571,40 @@ export default function ContractManagement() {
                   <TableCell>Contract Number</TableCell>
                   <TableCell>Customer</TableCell>
                   <TableCell>Type</TableCell>
-                  <TableCell>Payment Method</TableCell>
+                  <TableCell>Payment</TableCell>
                   <TableCell>Products</TableCell>
                   <TableCell>Period</TableCell>
-                  <TableCell>Actions</TableCell>
+                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {(rowsPerPage > 0
+                {filteredContracts.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
+                      <Box sx={{ 
+                        width: 56, 
+                        height: 56, 
+                        borderRadius: 3, 
+                        bgcolor: '#F1F5F9', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        mx: 'auto',
+                        mb: 2,
+                      }}>
+                        <Description sx={{ fontSize: 28, color: '#94A3B8' }} />
+                      </Box>
+                      <Typography variant="body1" sx={{ fontWeight: 500, color: '#475569' }}>
+                        No contracts found
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
+                        {searchTerm || filterCustomer.length > 0 || filterYear.length > 0 
+                          ? 'Try adjusting your filters'
+                          : 'Click "Add Contract" to create one'}
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (rowsPerPage > 0
                   ? filteredContracts.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                   : filteredContracts
                 ).map((contract) => (
@@ -598,73 +630,88 @@ export default function ContractManagement() {
                         alert(`Error selecting contract: ${error?.message || 'Unknown error'}`)
                       }
                     }}
-                    sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
+                    sx={{ 
+                      cursor: 'pointer', 
+                      transition: 'background-color 0.15s ease',
+                      '&:hover': { bgcolor: 'rgba(71, 85, 105, 0.04)' } 
+                    }}
                   >
-                    <TableCell>{contract.contract_number}</TableCell>
-                    <TableCell>{getCustomerName(contract.customer_id)}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                        {contract.contract_number}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ color: '#475569' }}>
+                        {getCustomerName(contract.customer_id)}
+                      </Typography>
+                    </TableCell>
                     <TableCell>
                       <Chip
                         label={contract.contract_type}
                         color={contract.contract_type === 'FOB' ? 'primary' : 'secondary'}
                         size="small"
+                        sx={{ fontWeight: 500 }}
                       />
                     </TableCell>
                     <TableCell>
                       {contract.payment_method ? (
                         <Chip
                           label={contract.payment_method}
-                          color={contract.payment_method === 'T/T' ? 'success' : undefined}
-                          sx={contract.payment_method === 'LC' ? {
-                            backgroundColor: '#9c27b0',
-                            color: 'white',
-                            '&:hover': {
-                              backgroundColor: '#7b1fa2',
-                            }
-                          } : {}}
+                          color={contract.payment_method === 'T/T' ? 'success' : 'warning'}
                           size="small"
+                          sx={{ fontWeight: 500 }}
                         />
                       ) : (
-                        '-'
+                        <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
                       )}
                     </TableCell>
                     <TableCell>
-                      {contract.products && Array.isArray(contract.products) && contract.products.length > 0
-                        ? contract.products.map((p: any) => (typeof p === 'object' ? p.name : p)).join(', ')
-                        : '-'}
+                      <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8125rem' }}>
+                        {contract.products && Array.isArray(contract.products) && contract.products.length > 0
+                          ? contract.products.map((p: any) => (typeof p === 'object' ? p.name : p)).join(', ')
+                          : '—'}
+                      </Typography>
                     </TableCell>
                     <TableCell>
-                      {new Date(contract.start_period).toLocaleDateString()} - {new Date(contract.end_period).toLocaleDateString()}
+                      <Typography variant="body2" sx={{ color: '#64748B', fontSize: '0.8125rem' }}>
+                        {new Date(contract.start_period).toLocaleDateString()} – {new Date(contract.end_period).toLocaleDateString()}
+                      </Typography>
                     </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <IconButton
-                        size="small"
-                        onClick={() => navigate(`/contracts/${contract.id}/dashboard`)}
-                        color="primary"
-                        title="View Dashboard"
-                      >
-                        <Dashboard />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleOpen(contract)}
-                        color="primary"
-                        title="Edit Contract"
-                      >
-                        <Edit />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDelete(contract.id)}
-                        color="error"
-                        title="Delete Contract"
-                      >
-                        <Delete />
-                      </IconButton>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                        <IconButton
+                          size="small"
+                          onClick={() => navigate(`/contracts/${contract.id}/dashboard`)}
+                          title="View Dashboard"
+                          sx={{ color: '#475569', '&:hover': { bgcolor: 'rgba(71, 85, 105, 0.1)' } }}
+                        >
+                          <Dashboard fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpen(contract)}
+                          title="Edit Contract"
+                          sx={{ color: '#475569', '&:hover': { bgcolor: 'rgba(71, 85, 105, 0.1)' } }}
+                        >
+                          <Edit fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDelete(contract.id)}
+                          title="Delete Contract"
+                          sx={{ color: '#EF4444', '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.1)' } }}
+                        >
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
               </Table>
+            </TableContainer>
+            {filteredContracts.length > 0 && (
               <TablePagination
                 rowsPerPageOptions={[25, 50, { label: 'All', value: -1 }]}
                 component="div"
@@ -677,36 +724,39 @@ export default function ContractManagement() {
                   setPage(0)
                 }}
               />
-            </TableContainer>
-          </Box>
+            )}
+          </Paper>
         </Grid>
         )}
 
         {selectedContract && selectedContract.id ? (
           <Grid item xs={12}>
-            <Box 
-              sx={{ 
-                minHeight: '400px',
-                bgcolor: '#FFFFFF',
-                borderRadius: 3,
-                boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.05)',
-                overflow: 'hidden',
-              }}
-            >
-              <Box sx={{ p: 2, borderBottom: '1px solid rgba(0, 0, 0, 0.05)', bgcolor: '#F2F2F7' }}>
+            <Paper sx={{ minHeight: '400px', overflow: 'hidden' }}>
+              <Box sx={{ p: 2, borderBottom: '1px solid rgba(148, 163, 184, 0.12)', bgcolor: '#F8FAFC' }}>
                 <Button
                   variant="outlined"
+                  size="small"
                   onClick={() => {
                     setSelectedContract(null)
                     setTabValue(0)
                   }}
+                  sx={{ 
+                    borderColor: '#E2E8F0',
+                    color: '#475569',
+                    '&:hover': {
+                      borderColor: '#CBD5E1',
+                      backgroundColor: '#F1F5F9',
+                    }
+                  }}
                 >
-                  Back to all contracts
+                  ← Back to all contracts
                 </Button>
               </Box>
-              <Tabs value={tabValue} onChange={(_, v) => {
-                try {
-                  setTabValue(v)
+              <Tabs 
+                value={tabValue} 
+                onChange={(_, v) => {
+                  try {
+                    setTabValue(v)
                 } catch (error) {
                   console.error('Error changing tab:', error)
                 }
@@ -893,7 +943,7 @@ export default function ContractManagement() {
                   </Typography>
                 )}
               </TabPanel>
-            </Box>
+            </Paper>
           </Grid>
         ) : null}
       </Grid>

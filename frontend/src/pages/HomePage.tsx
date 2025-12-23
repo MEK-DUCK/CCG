@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, memo } from 'react'
 import {
   Box,
   Tabs,
@@ -65,6 +65,43 @@ function TabPanel(props: TabPanelProps) {
     </div>
   )
 }
+
+// Memoized inline text field to prevent lag - uses local state and syncs on blur
+interface InlineTextFieldProps {
+  value: string
+  onSave: (value: string) => void
+  fullWidth?: boolean
+}
+
+const InlineTextField = memo(function InlineTextField({ value, onSave, fullWidth }: InlineTextFieldProps) {
+  const [localValue, setLocalValue] = useState(value)
+  const lastSavedRef = useRef(value)
+
+  // Sync local value when prop changes from external source (e.g., after API save)
+  useEffect(() => {
+    if (value !== lastSavedRef.current) {
+      setLocalValue(value)
+      lastSavedRef.current = value
+    }
+  }, [value])
+
+  const handleBlur = useCallback(() => {
+    if (localValue !== lastSavedRef.current) {
+      lastSavedRef.current = localValue
+      onSave(localValue)
+    }
+  }, [localValue, onSave])
+
+  return (
+    <TextField
+      size="small"
+      value={localValue}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onBlur={handleBlur}
+      fullWidth={fullWidth}
+    />
+  )
+})
 
 export default function HomePage() {
   const theme = useTheme()
@@ -1507,11 +1544,7 @@ export default function HomePage() {
                     {contract && contract.payment_method ? (
                       <Chip
                         label={contract.payment_method}
-                        color={contract.payment_method === 'T/T' ? 'success' : 'secondary'}
-                        sx={{
-                          bgcolor: contract.payment_method === 'LC' ? '#9c27b0' : undefined,
-                          color: contract.payment_method === 'LC' ? '#fff' : undefined,
-                        }}
+                        color={contract.payment_method === 'T/T' ? 'success' : 'warning'}
                         size="small"
                       />
                     ) : (
@@ -2149,14 +2182,7 @@ export default function HomePage() {
                           {contract && contract.payment_method ? (
                             <Chip
                               label={contract.payment_method}
-                              color={contract.payment_method === 'T/T' ? 'success' : undefined}
-                              sx={contract.payment_method === 'LC' ? {
-                                backgroundColor: '#9c27b0',
-                                color: 'white',
-                                '&:hover': {
-                                  backgroundColor: '#7b1fa2',
-                                }
-                              } : {}}
+                              color={contract.payment_method === 'T/T' ? 'success' : 'warning'}
                               size="small"
                             />
                           ) : '-'}
@@ -2347,7 +2373,7 @@ export default function HomePage() {
       </Box>
       )}
       <Paper sx={{ mt: 3 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Box sx={{ borderBottom: '1px solid rgba(148, 163, 184, 0.12)' }}>
           <Tabs 
             value={value} 
             onChange={handleChange} 
@@ -2355,10 +2381,25 @@ export default function HomePage() {
             variant={isMobile ? 'scrollable' : 'standard'}
             scrollButtons={isMobile ? 'auto' : false}
             sx={{
+              px: 1,
+              '& .MuiTabs-indicator': {
+                height: 3,
+                borderRadius: '3px 3px 0 0',
+              },
               '& .MuiTab-root': {
-                minHeight: isMobile ? 48 : 48,
+                minHeight: isMobile ? 44 : 48,
                 fontSize: isMobile ? '0.75rem' : '0.875rem',
-                px: isMobile ? 1 : 2,
+                fontWeight: 500,
+                px: isMobile ? 1.5 : 2,
+                color: '#64748B',
+                transition: 'color 0.15s ease',
+                '&.Mui-selected': {
+                  color: '#475569',
+                  fontWeight: 600,
+                },
+                '&:hover': {
+                  color: '#334155',
+                },
               },
             }}
           >
@@ -2369,8 +2410,8 @@ export default function HomePage() {
           </Tabs>
         </Box>
         <TabPanel value={value} index={0}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B' }}>
               Port Movement
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -2582,16 +2623,7 @@ export default function HomePage() {
                                   {contract && contract.payment_method ? (
                                     <Chip
                                       label={contract.payment_method}
-                                      color={contract.payment_method === 'T/T' ? 'success' : undefined}
-                                      sx={
-                                        contract.payment_method === 'LC'
-                                          ? {
-                                              backgroundColor: '#9c27b0',
-                                              color: 'white',
-                                              '&:hover': { backgroundColor: '#7b1fa2' },
-                                            }
-                                          : {}
-                                      }
+                                      color={contract.payment_method === 'T/T' ? 'success' : 'warning'}
                                       size="small"
                                     />
                                   ) : (
@@ -2637,38 +2669,33 @@ export default function HomePage() {
                                   </FormControl>
                                 </TableCell>
                                 <TableCell onClick={(e) => e.stopPropagation()}>
-                                  <TextField
-                                    size="small"
+                                  <InlineTextField
                                     value={op.eta || ''}
-                                    onChange={(e) => schedulePortOpSave(cargo.id, port, { eta: e.target.value })}
+                                    onSave={(val) => schedulePortOpSave(cargo.id, port, { eta: val })}
                                   />
                                 </TableCell>
                                 <TableCell onClick={(e) => e.stopPropagation()}>
-                                  <TextField
-                                    size="small"
+                                  <InlineTextField
                                     value={op.berthed || ''}
-                                    onChange={(e) => schedulePortOpSave(cargo.id, port, { berthed: e.target.value })}
+                                    onSave={(val) => schedulePortOpSave(cargo.id, port, { berthed: val })}
                                   />
                                 </TableCell>
                                 <TableCell onClick={(e) => e.stopPropagation()}>
-                                  <TextField
-                                    size="small"
+                                  <InlineTextField
                                     value={op.commenced || ''}
-                                    onChange={(e) => schedulePortOpSave(cargo.id, port, { commenced: e.target.value })}
+                                    onSave={(val) => schedulePortOpSave(cargo.id, port, { commenced: val })}
                                   />
                                 </TableCell>
                                 <TableCell onClick={(e) => e.stopPropagation()}>
-                                  <TextField
-                                    size="small"
+                                  <InlineTextField
                                     value={op.etc || ''}
-                                    onChange={(e) => schedulePortOpSave(cargo.id, port, { etc: e.target.value })}
+                                    onSave={(val) => schedulePortOpSave(cargo.id, port, { etc: val })}
                                   />
                                 </TableCell>
                                 <TableCell onClick={(e) => e.stopPropagation()}>
-                                  <TextField
-                                    size="small"
+                                  <InlineTextField
                                     value={op.notes || ''}
-                                    onChange={(e) => schedulePortOpSave(cargo.id, port, { notes: e.target.value })}
+                                    onSave={(val) => schedulePortOpSave(cargo.id, port, { notes: val })}
                                     fullWidth
                                   />
                                 </TableCell>
@@ -2710,7 +2737,7 @@ export default function HomePage() {
         </TabPanel>
         <TabPanel value={value} index={1}>
           <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Typography variant="h6">
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B' }}>
               Completed Cargos
             </Typography>
             <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -2770,13 +2797,13 @@ export default function HomePage() {
           {renderCompletedCargosTable()}
         </TabPanel>
         <TabPanel value={value} index={2}>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B', mb: 2 }}>
             In-Road CIF Cargos (Pending Discharge)
           </Typography>
           {renderCargoTable(inRoadCIF)}
         </TabPanel>
         <TabPanel value={value} index={3}>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B', mb: 2 }}>
             Completed In-Road CIF Cargos
           </Typography>
           {renderCargoTable(completedInRoadCIF)}

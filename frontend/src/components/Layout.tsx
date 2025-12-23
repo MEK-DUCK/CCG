@@ -50,15 +50,16 @@ export default function Layout({ children }: LayoutProps) {
   }
 
   const drawer = (
-    <Box sx={{ width: 280, bgcolor: '#FFFFFF' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 3, borderBottom: '1px solid rgba(0, 0, 0, 0.05)' }}>
+    <Box sx={{ width: 280, bgcolor: '#FFFFFF', height: '100%' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2.5, borderBottom: '1px solid rgba(148, 163, 184, 0.12)' }}>
         <Box 
           sx={{ 
             display: 'flex', 
             alignItems: 'center',
             cursor: 'pointer',
+            transition: 'opacity 0.15s ease',
             '&:hover': {
-              opacity: 0.8,
+              opacity: 0.7,
             },
           }}
           onClick={() => {
@@ -66,43 +67,69 @@ export default function Layout({ children }: LayoutProps) {
             handleDrawerToggle()
           }}
         >
-          <Storage sx={{ mr: 1.5, fontSize: 24, color: '#007AFF' }} />
-          <Typography variant="h6" component="div" sx={{ fontWeight: 600, color: '#000000' }}>
+          <Box sx={{ 
+            mr: 1.5, 
+            width: 32, 
+            height: 32, 
+            borderRadius: 2, 
+            bgcolor: 'rgba(71, 85, 105, 0.1)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center' 
+          }}>
+            <Storage sx={{ fontSize: 20, color: '#475569' }} />
+          </Box>
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600, color: '#1E293B', fontSize: '1rem' }}>
             CCG-3 Program
           </Typography>
         </Box>
-        <IconButton onClick={handleDrawerToggle} sx={{ color: '#000000' }}>
-          <Close />
+        <IconButton 
+          onClick={handleDrawerToggle} 
+          sx={{ 
+            color: '#64748B',
+            '&:hover': { backgroundColor: 'rgba(71, 85, 105, 0.08)' }
+          }}
+        >
+          <Close fontSize="small" />
         </IconButton>
       </Box>
-      <List sx={{ p: 1 }}>
+      <List sx={{ p: 1.5 }}>
         {navItems.map((item) => (
-          <ListItem key={item.path} disablePadding>
+          <ListItem key={item.path} disablePadding sx={{ mb: 0.5 }}>
             <ListItemButton
               onClick={() => handleNavClick(item.path)}
               selected={location.pathname === item.path}
               sx={{
-                minHeight: 48,
+                minHeight: 44,
                 borderRadius: 2,
-                mx: 1,
-                mb: 0.5,
+                px: 1.5,
+                transition: 'all 0.15s ease',
                 '&.Mui-selected': {
-                  backgroundColor: 'rgba(0, 122, 255, 0.1)',
-                  color: '#007AFF',
-                  fontWeight: 600,
+                  backgroundColor: 'rgba(71, 85, 105, 0.1)',
+                  color: '#475569',
+                  '& .MuiListItemIcon-root': {
+                    color: '#475569',
+                  },
                   '&:hover': {
-                    backgroundColor: 'rgba(0, 122, 255, 0.15)',
+                    backgroundColor: 'rgba(71, 85, 105, 0.15)',
                   },
                 },
                 '&:hover': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                  backgroundColor: '#F1F5F9',
                 },
               }}
             >
-              <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>
+              <ListItemIcon sx={{ color: '#64748B', minWidth: 36 }}>
                 {item.icon}
               </ListItemIcon>
-              <ListItemText primary={item.label} />
+              <ListItemText 
+                primary={item.label} 
+                primaryTypographyProps={{ 
+                  fontSize: '0.875rem', 
+                  fontWeight: location.pathname === item.path ? 600 : 500,
+                  color: location.pathname === item.path ? '#475569' : '#334155'
+                }} 
+              />
             </ListItemButton>
           </ListItem>
         ))}
@@ -111,23 +138,24 @@ export default function Layout({ children }: LayoutProps) {
   )
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: '#F2F2F7' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: '#F8FAFC' }}>
       <AppBar 
         position="sticky"
         elevation={0}
         sx={{
-          backgroundColor: 'rgba(255, 255, 255, 0.8)',
-          backdropFilter: 'blur(20px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-          borderBottom: '1px solid rgba(0, 0, 0, 0.05)',
+          backgroundColor: 'rgba(255, 255, 255, 0.85)',
+          backdropFilter: 'blur(16px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+          borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
         }}
       >
         <Toolbar
           sx={{
-            py: 1,
+            py: 0.75,
             justifyContent: 'center',
             position: 'relative',
             width: '100%',
+            minHeight: '56px !important',
             px: { xs: 2, sm: 3 },
           }}
         >
@@ -138,7 +166,8 @@ export default function Layout({ children }: LayoutProps) {
                 sx={{ 
                   position: 'absolute',
                   left: 8,
-                  color: '#000000',
+                  color: '#475569',
+                  '&:hover': { backgroundColor: 'rgba(71, 85, 105, 0.08)' }
                 }}
               >
                 <Menu />
@@ -148,20 +177,32 @@ export default function Layout({ children }: LayoutProps) {
                   display: 'flex', 
                   alignItems: 'center',
                   cursor: 'pointer',
+                  transition: 'opacity 0.15s ease',
                   '&:hover': {
-                    opacity: 0.8,
+                    opacity: 0.7,
                   },
                 }}
                 onClick={() => navigate('/')}
               >
-                <Storage sx={{ mr: 1.5, fontSize: 24, color: '#007AFF' }} />
+                <Box sx={{ 
+                  mr: 1.5, 
+                  width: 28, 
+                  height: 28, 
+                  borderRadius: 1.5, 
+                  bgcolor: 'rgba(71, 85, 105, 0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center' 
+                }}>
+                  <Storage sx={{ fontSize: 18, color: '#475569' }} />
+                </Box>
                 <Typography 
                   variant="h6" 
                   component="div" 
                   sx={{ 
                     fontWeight: 600,
-                    fontSize: '1.125rem',
-                    color: '#000000',
+                    fontSize: '1rem',
+                    color: '#1E293B',
                   }}
                 >
                   CCG-3 Program
@@ -177,20 +218,32 @@ export default function Layout({ children }: LayoutProps) {
                   display: 'flex', 
                   alignItems: 'center',
                   cursor: 'pointer',
+                  transition: 'opacity 0.15s ease',
                   '&:hover': {
-                    opacity: 0.8,
+                    opacity: 0.7,
                   },
                 }}
                 onClick={() => navigate('/')}
               >
-                <Storage sx={{ mr: 1.5, fontSize: 24, color: '#007AFF' }} />
+                <Box sx={{ 
+                  mr: 1.5, 
+                  width: 32, 
+                  height: 32, 
+                  borderRadius: 2, 
+                  bgcolor: 'rgba(71, 85, 105, 0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center' 
+                }}>
+                  <Storage sx={{ fontSize: 20, color: '#475569' }} />
+                </Box>
                 <Typography 
                   variant="h6" 
                   component="div" 
                   sx={{ 
                     fontWeight: 600,
-                    fontSize: '1.125rem',
-                    color: '#000000',
+                    fontSize: '1rem',
+                    color: '#1E293B',
                   }}
                 >
                   CCG-3 Program
@@ -202,17 +255,23 @@ export default function Layout({ children }: LayoutProps) {
                     key={item.path}
                     onClick={() => navigate(item.path)}
                     startIcon={item.icon}
+                    size="small"
                     sx={{
-                      minHeight: 44,
-                      px: 2,
-                      borderRadius: 10,
-                      color: location.pathname === item.path ? '#007AFF' : '#000000',
-                      backgroundColor: location.pathname === item.path ? 'rgba(0, 122, 255, 0.1)' : 'transparent',
+                      minHeight: 36,
+                      px: 1.5,
+                      borderRadius: 2,
+                      fontSize: '0.8125rem',
+                      color: location.pathname === item.path ? '#475569' : '#475569',
+                      backgroundColor: location.pathname === item.path ? 'rgba(71, 85, 105, 0.1)' : 'transparent',
                       fontWeight: location.pathname === item.path ? 600 : 500,
                       '&:hover': {
-                        backgroundColor: location.pathname === item.path ? 'rgba(0, 122, 255, 0.15)' : 'rgba(0, 0, 0, 0.05)',
+                        backgroundColor: location.pathname === item.path ? 'rgba(71, 85, 105, 0.15)' : '#F1F5F9',
                       },
-                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      transition: 'all 0.15s ease',
+                      '& .MuiButton-startIcon': {
+                        marginRight: 0.75,
+                        '& svg': { fontSize: '1.1rem' }
+                      },
                     }}
                   >
                     {item.label}
@@ -236,7 +295,8 @@ export default function Layout({ children }: LayoutProps) {
             '& .MuiDrawer-paper': { 
               boxSizing: 'border-box', 
               width: 280,
-              boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.15)',
+              boxShadow: '0px 25px 50px -12px rgba(15, 23, 42, 0.25)',
+              border: 'none',
             },
           }}
         >
@@ -247,11 +307,11 @@ export default function Layout({ children }: LayoutProps) {
         maxWidth={false}
         disableGutters
         sx={{
-          mt: { xs: 3, sm: 4, md: 5 },
+          mt: { xs: 2, sm: 3, md: 4 },
           mb: { xs: 3, sm: 4, md: 5 },
           flex: 1,
           width: '100%',
-          px: { xs: 2, sm: 3, md: 4 },
+          px: { xs: 2, sm: 3, md: 4, lg: 5 },
         }}
       >
         {children}

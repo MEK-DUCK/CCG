@@ -37,6 +37,7 @@ const formatDateOnly = (value?: string) => {
 type ChipColor = 'warning' | 'info' | 'error' | 'default' | 'primary' | 'secondary' | 'success'
 type ChipVariant = 'filled' | 'outlined'
 
+// FOB = light blue (primary), CIF = light orange (secondary)
 const getContractTypeChipProps = (contractType: Contract['contract_type']): { color: ChipColor; variant: ChipVariant } => {
   return {
     color: contractType === 'FOB' ? 'primary' : 'secondary',
@@ -44,6 +45,7 @@ const getContractTypeChipProps = (contractType: Contract['contract_type']): { co
   }
 }
 
+// T/T = light green (success), LC = light purple (warning)
 const getPaymentMethodChipProps = (paymentMethod?: Contract['payment_method']): { color: ChipColor; variant: ChipVariant } => {
   if (paymentMethod === 'T/T') {
     return { color: 'success', variant: 'filled' }
@@ -251,8 +253,8 @@ export default function ContractSummaryPage() {
           </CardContent>
         </Card>
       ) : (
-        <TableContainer component={Paper}>
-          <Table size="small">
+        <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
+          <Table size="small" sx={{ minWidth: 1400 }}>
             <TableHead>
               <TableRow>
                 <TableCell>Customer</TableCell>
