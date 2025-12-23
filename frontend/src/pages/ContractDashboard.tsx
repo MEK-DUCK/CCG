@@ -677,7 +677,8 @@ export default function ContractDashboard() {
             <Table size={isMobile ? 'small' : 'medium'}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Quarter/Year</TableCell>
+                  <TableCell>Product</TableCell>
+                  <TableCell>Year</TableCell>
                   <TableCell>Q1</TableCell>
                   <TableCell>Q2</TableCell>
                   <TableCell>Q3</TableCell>
@@ -688,7 +689,7 @@ export default function ContractDashboard() {
               <TableBody>
                 {quarterlyPlans.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center">
+                    <TableCell colSpan={7} align="center">
                       No quarterly plans found
                     </TableCell>
                   </TableRow>
@@ -701,6 +702,10 @@ export default function ContractDashboard() {
                       return { plan, year }
                     })
                     .sort((a, b) => {
+                      // Sort by product name first, then by year
+                      const productA = a.plan.product_name || ''
+                      const productB = b.plan.product_name || ''
+                      if (productA !== productB) return productA.localeCompare(productB)
                       if (typeof a.year === 'number' && typeof b.year === 'number') {
                         return a.year - b.year
                       }
@@ -709,8 +714,13 @@ export default function ContractDashboard() {
                     .map(({ plan, year }) => (
                       <TableRow key={plan.id} hover>
                         <TableCell>
-                          Plan {plan.id} {year !== 'N/A' ? `(${year})` : ''}
+                          {plan.product_name ? (
+                            <Chip label={plan.product_name} size="small" color="info" />
+                          ) : (
+                            <Typography variant="body2" color="text.secondary">All Products</Typography>
+                          )}
                         </TableCell>
+                        <TableCell>{year !== 'N/A' ? year : '-'}</TableCell>
                         <TableCell>{plan.q1_quantity || 0} KT</TableCell>
                         <TableCell>{plan.q2_quantity || 0} KT</TableCell>
                         <TableCell>{plan.q3_quantity || 0} KT</TableCell>
