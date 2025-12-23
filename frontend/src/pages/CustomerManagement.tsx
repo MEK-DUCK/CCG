@@ -179,6 +179,10 @@ export default function CustomerManagement() {
             px: 3,
             py: 1,
             fontWeight: 600,
+            bgcolor: '#2563EB',
+            '&:hover': {
+              bgcolor: '#1D4ED8',
+            },
           }}
         >
           Add Customer
