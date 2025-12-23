@@ -128,6 +128,7 @@ class MonthlyPlanBase(BaseModel):
     delivery_month: Optional[str] = None  # For CIF contracts only (planning)
     delivery_window: Optional[str] = None  # For CIF contracts only
     delivery_window_remark: Optional[str] = Field(None, max_length=10000)
+    combi_group_id: Optional[str] = None  # UUID to link combi monthly plans (multiple products, same vessel/laycan)
 
 class MonthlyPlanCreate(MonthlyPlanBase):
     quarterly_plan_id: int
@@ -146,6 +147,7 @@ class MonthlyPlanUpdate(BaseModel):
     delivery_month: Optional[str] = None
     delivery_window: Optional[str] = None
     delivery_window_remark: Optional[str] = Field(None, max_length=10000)
+    combi_group_id: Optional[str] = None
 
 class MonthlyPlan(MonthlyPlanBase):
     id: int

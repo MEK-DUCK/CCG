@@ -104,6 +104,25 @@ def ensure_schema():
                     else:
                         conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN product_name VARCHAR'))
 
+        # Monthly plans migrations - add combi_group_id for combi monthly plans
+        if insp.has_table("monthly_plans"):
+            cols = [c.get("name") for c in insp.get_columns("monthly_plans")]
+            if "combi_group_id" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS combi_group_id VARCHAR'))
+                    else:
+                        conn.execute(text('ALTER TABLE monthly_plans ADD COLUMN combi_group_id VARCHAR'))
+                # Add index for combi_group_id
+                try:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text('CREATE INDEX IF NOT EXISTS ix_monthly_plans_combi_group_id ON monthly_plans (combi_group_id)'))
+                        else:
+                            conn.execute(text('CREATE INDEX IF NOT EXISTS ix_monthly_plans_combi_group_id ON monthly_plans (combi_group_id)'))
+                except Exception:
+                    pass  # Index may already exist
+
         # Cargos migrations - add combi_group_id for combi cargos
         if insp.has_table("cargos"):
             cols = [c.get("name") for c in insp.get_columns("cargos")]

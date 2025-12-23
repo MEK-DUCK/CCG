@@ -14,10 +14,23 @@ import {
   Select,
   MenuItem,
   Chip,
+  Checkbox,
+  FormControlLabel,
+  ListItemText,
+  OutlinedInput,
 } from '@mui/material'
 import { Save, Add, Delete, Lock } from '@mui/icons-material'
 import { monthlyPlanAPI, contractAPI } from '../api/client'
 import { MonthlyPlanStatus } from '../types'
+
+// Simple UUID generator
+const generateUUID = (): string => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
 
 interface MonthlyPlanFormProps {
   contractId: number
@@ -84,6 +97,10 @@ interface MonthlyPlanEntry {
   delivery_month: string
   delivery_window: string
   delivery_window_remark: string
+  // Combi cargo fields
+  is_combi: boolean
+  combi_group_id?: string
+  combi_products: string[]  // For new combi entries - list of products to create
 }
 
 export default function MonthlyPlanForm({ contractId, contract: propContract, quarterlyPlans, onPlanCreated }: MonthlyPlanFormProps) {
@@ -225,6 +242,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             delivery_month: plan.delivery_month || '',
             delivery_window: plan.delivery_window || '',
             delivery_window_remark: plan.delivery_window_remark || '',
+            is_combi: !!plan.combi_group_id,
+            combi_group_id: plan.combi_group_id || undefined,
+            combi_products: [],
           })
         })
         
@@ -304,19 +324,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     })
   }
 
-  const handleAddEntry = (month: number, year: number) => {
+  const handleAddEntry = (month: number, year: number, isCombi: boolean = false) => {
     const key = `${month}-${year}`
     const entries = monthEntries[key] || []
     
-    // Default to first product
+    // Default to first product (or all products if combi)
     const defaultProduct = products[0]?.name || ''
     const defaultQp = productQuarterlyPlanMap.get(defaultProduct)
     
     setMonthEntries({
       ...monthEntries,
       [key]: [...entries, {
-        quarterly_plan_id: defaultQp?.id || 0,
-        product_name: defaultProduct,
+        quarterly_plan_id: isCombi ? 0 : (defaultQp?.id || 0),  // Will be set per-product for combi
+        product_name: isCombi ? '' : defaultProduct,
         quantity: '',
         laycan_5_days: '',
         laycan_2_days: '',
@@ -325,8 +345,62 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         loading_window: '',
         delivery_month: '',
         delivery_window: '',
-        delivery_window_remark: ''
+        delivery_window_remark: '',
+        is_combi: isCombi,
+        combi_group_id: isCombi ? generateUUID() : undefined,
+        combi_products: isCombi ? products.map((p: any) => p.name) : [],  // Default to all products for combi
       }],
+    })
+  }
+
+  const handleCombiChange = (month: number, year: number, entryIndex: number, isCombi: boolean) => {
+    const key = `${month}-${year}`
+    const entries = monthEntries[key] || []
+    const updatedEntries = [...entries]
+    
+    if (isCombi) {
+      // Switching to combi mode
+      updatedEntries[entryIndex] = {
+        ...updatedEntries[entryIndex],
+        is_combi: true,
+        combi_group_id: generateUUID(),
+        combi_products: products.map((p: any) => p.name),
+        product_name: '',  // Clear single product selection
+        quarterly_plan_id: 0,
+      }
+    } else {
+      // Switching to single product mode
+      const defaultProduct = products[0]?.name || ''
+      const defaultQp = productQuarterlyPlanMap.get(defaultProduct)
+      updatedEntries[entryIndex] = {
+        ...updatedEntries[entryIndex],
+        is_combi: false,
+        combi_group_id: undefined,
+        combi_products: [],
+        product_name: defaultProduct,
+        quarterly_plan_id: defaultQp?.id || 0,
+      }
+    }
+    
+    setMonthEntries({
+      ...monthEntries,
+      [key]: updatedEntries,
+    })
+  }
+
+  const handleCombiProductsChange = (month: number, year: number, entryIndex: number, selectedProducts: string[]) => {
+    const key = `${month}-${year}`
+    const entries = monthEntries[key] || []
+    const updatedEntries = [...entries]
+    
+    updatedEntries[entryIndex] = {
+      ...updatedEntries[entryIndex],
+      combi_products: selectedProducts,
+    }
+    
+    setMonthEntries({
+      ...monthEntries,
+      [key]: updatedEntries,
     })
   }
 
@@ -366,9 +440,17 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     return quarterMonths.reduce((sum, { month, year }) => {
       const key = `${month}-${year}`
       const entries = monthEntries[key] || []
-      return sum + entries
-        .filter(e => e.product_name === productName)
-        .reduce((entrySum, entry) => entrySum + (parseFloat(entry.quantity || '0') || 0), 0)
+      return sum + entries.reduce((entrySum, entry) => {
+        const qty = parseFloat(entry.quantity || '0') || 0
+        if (entry.is_combi && entry.combi_products.includes(productName)) {
+          // For combi entries, split quantity among selected products
+          const numProducts = entry.combi_products.length || 1
+          return entrySum + (qty / numProducts)
+        } else if (!entry.is_combi && entry.product_name === productName) {
+          return entrySum + qty
+        }
+        return entrySum
+      }, 0)
     }, 0)
   }
 
@@ -405,8 +487,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         entries.forEach(entry => {
           if (entry.id) {
             plansToKeep.add(entry.id)
-          } else if (entry.quarterly_plan_id && parseFloat(entry.quantity || '0') > 0) {
-            plansToCreate.push({ month, year, entry })
+          } else if (parseFloat(entry.quantity || '0') > 0) {
+            if (entry.is_combi && entry.combi_products.length > 0) {
+              // For combi entries, we'll create multiple plans (one per product)
+              plansToCreate.push({ month, year, entry })
+            } else if (!entry.is_combi && entry.quarterly_plan_id) {
+              // Single product entry
+              plansToCreate.push({ month, year, entry })
+            }
           }
         })
       })
@@ -458,24 +546,56 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       }
 
       // Create new plans
-      const createPromises = plansToCreate.map(async ({ month, year, entry }) => {
-        const quantity = parseFloat(entry.quantity || '0')
-        return monthlyPlanAPI.create({
-          quarterly_plan_id: entry.quarterly_plan_id,
-          month: month,
-          year: year,
-          month_quantity: quantity,
-          number_of_liftings: 1,
-          laycan_5_days: contractType === 'FOB' && quantity > 0 ? (entry.laycan_5_days || undefined) : undefined,
-          laycan_2_days: contractType === 'FOB' && quantity > 0 ? (entry.laycan_2_days || undefined) : undefined,
-          laycan_2_days_remark: contractType === 'FOB' && quantity > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
-          loading_month: contractType === 'CIF' && quantity > 0 ? (entry.loading_month || undefined) : undefined,
-          loading_window: contractType === 'CIF' && quantity > 0 ? (entry.loading_window || undefined) : undefined,
-          delivery_month: contractType === 'CIF' && quantity > 0 ? (entry.delivery_month || undefined) : undefined,
-          delivery_window: contractType === 'CIF' && quantity > 0 ? (entry.delivery_window || undefined) : undefined,
-          delivery_window_remark: contractType === 'CIF' && quantity > 0 ? (entry.delivery_window_remark || undefined) : undefined,
-        })
-      })
+      const createPromises: Promise<any>[] = []
+      
+      for (const { month, year, entry } of plansToCreate) {
+        const totalQuantity = parseFloat(entry.quantity || '0')
+        
+        if (entry.is_combi && entry.combi_products.length > 0) {
+          // Combi entry: create one plan per selected product
+          const quantityPerProduct = totalQuantity / entry.combi_products.length
+          const combiGroupId = entry.combi_group_id || generateUUID()
+          
+          for (const productName of entry.combi_products) {
+            const qp = productQuarterlyPlanMap.get(productName)
+            if (!qp) continue
+            
+            createPromises.push(monthlyPlanAPI.create({
+              quarterly_plan_id: qp.id,
+              month: month,
+              year: year,
+              month_quantity: quantityPerProduct,
+              number_of_liftings: 1,
+              laycan_5_days: contractType === 'FOB' && totalQuantity > 0 ? (entry.laycan_5_days || undefined) : undefined,
+              laycan_2_days: contractType === 'FOB' && totalQuantity > 0 ? (entry.laycan_2_days || undefined) : undefined,
+              laycan_2_days_remark: contractType === 'FOB' && totalQuantity > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
+              loading_month: contractType === 'CIF' && totalQuantity > 0 ? (entry.loading_month || undefined) : undefined,
+              loading_window: contractType === 'CIF' && totalQuantity > 0 ? (entry.loading_window || undefined) : undefined,
+              delivery_month: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_month || undefined) : undefined,
+              delivery_window: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window || undefined) : undefined,
+              delivery_window_remark: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window_remark || undefined) : undefined,
+              combi_group_id: combiGroupId,
+            }))
+          }
+        } else {
+          // Single product entry
+          createPromises.push(monthlyPlanAPI.create({
+            quarterly_plan_id: entry.quarterly_plan_id,
+            month: month,
+            year: year,
+            month_quantity: totalQuantity,
+            number_of_liftings: 1,
+            laycan_5_days: contractType === 'FOB' && totalQuantity > 0 ? (entry.laycan_5_days || undefined) : undefined,
+            laycan_2_days: contractType === 'FOB' && totalQuantity > 0 ? (entry.laycan_2_days || undefined) : undefined,
+            laycan_2_days_remark: contractType === 'FOB' && totalQuantity > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
+            loading_month: contractType === 'CIF' && totalQuantity > 0 ? (entry.loading_month || undefined) : undefined,
+            loading_window: contractType === 'CIF' && totalQuantity > 0 ? (entry.loading_window || undefined) : undefined,
+            delivery_month: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_month || undefined) : undefined,
+            delivery_window: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window || undefined) : undefined,
+            delivery_window_remark: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window_remark || undefined) : undefined,
+          }))
+        }
+      }
 
       await Promise.all(createPromises)
       
@@ -649,13 +769,42 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               sx={{ 
                                 mb: entries.length > 1 ? 2 : 0,
                                 p: isMultiProduct ? 1.5 : 0,
-                                bgcolor: isMultiProduct ? '#FAFBFC' : 'transparent',
-                                border: isMultiProduct ? '1px solid #E5E7EB' : 'none',
+                                bgcolor: entry.is_combi ? '#FEF3C7' : (isMultiProduct ? '#FAFBFC' : 'transparent'),
+                                border: entry.is_combi ? '2px solid #F59E0B' : (isMultiProduct ? '1px solid #E5E7EB' : 'none'),
                                 borderRadius: 1,
                               }}
                             >
-                              {/* Product Selector for multi-product contracts */}
-                              {isMultiProduct && (
+                              {/* Combi Cargo option for multi-product contracts */}
+                              {isMultiProduct && !entry.id && (
+                                <FormControlLabel
+                                  control={
+                                    <Checkbox
+                                      checked={entry.is_combi}
+                                      onChange={(e) => handleCombiChange(month, year, entryIndex, e.target.checked)}
+                                      disabled={isLocked}
+                                      size="small"
+                                    />
+                                  }
+                                  label={
+                                    <Typography variant="body2" sx={{ fontWeight: entry.is_combi ? 600 : 400, color: entry.is_combi ? '#B45309' : 'inherit' }}>
+                                      Combi Cargo (multiple products)
+                                    </Typography>
+                                  }
+                                  sx={{ mb: 1 }}
+                                />
+                              )}
+                              
+                              {/* Show combi badge for existing combi entries */}
+                              {entry.is_combi && entry.id && (
+                                <Chip 
+                                  label="Combi Cargo" 
+                                  size="small" 
+                                  sx={{ mb: 1, bgcolor: '#F59E0B', color: 'white' }} 
+                                />
+                              )}
+                              
+                              {/* Product selection */}
+                              {isMultiProduct && !entry.is_combi && (
                                 <FormControl fullWidth size="small" sx={{ mb: 1 }} disabled={isLocked}>
                                   <InputLabel>Product</InputLabel>
                                   <Select
@@ -666,6 +815,33 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                     {products.map((p: any) => (
                                       <MenuItem key={p.name} value={p.name}>
                                         {p.name}
+                                      </MenuItem>
+                                    ))}
+                                  </Select>
+                                </FormControl>
+                              )}
+                              
+                              {/* Multi-product selection for combi cargo */}
+                              {isMultiProduct && entry.is_combi && !entry.id && (
+                                <FormControl fullWidth size="small" sx={{ mb: 1 }} disabled={isLocked}>
+                                  <InputLabel>Products</InputLabel>
+                                  <Select
+                                    multiple
+                                    value={entry.combi_products}
+                                    onChange={(e) => handleCombiProductsChange(month, year, entryIndex, e.target.value as string[])}
+                                    input={<OutlinedInput label="Products" />}
+                                    renderValue={(selected) => (
+                                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                        {selected.map((value) => (
+                                          <Chip key={value} label={value} size="small" />
+                                        ))}
+                                      </Box>
+                                    )}
+                                  >
+                                    {products.map((p: any) => (
+                                      <MenuItem key={p.name} value={p.name}>
+                                        <Checkbox checked={entry.combi_products.includes(p.name)} size="small" />
+                                        <ListItemText primary={p.name} />
                                       </MenuItem>
                                     ))}
                                   </Select>

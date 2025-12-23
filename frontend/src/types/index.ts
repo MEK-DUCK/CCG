@@ -73,6 +73,7 @@ export interface MonthlyPlan {
   delivery_month?: string  // For CIF contracts only (planning)
   delivery_window?: string  // For CIF contracts only
   delivery_window_remark?: string
+  combi_group_id?: string  // UUID to link combi monthly plans (multiple products, same vessel/laycan)
   quarterly_plan_id: number
   created_at: string
   updated_at?: string
