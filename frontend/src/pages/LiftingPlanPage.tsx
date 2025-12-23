@@ -741,7 +741,7 @@ export default function LiftingPlanPage() {
         
         <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
           <Button
-            variant="contained"
+            variant="outlined"
             size="small"
             startIcon={<FileDownload />}
             onClick={handleExportToExcel}
@@ -749,13 +749,18 @@ export default function LiftingPlanPage() {
               fontSize: isMobile ? '0.75rem' : '0.875rem',
               minHeight: isMobile ? 40 : 36,
               px: isMobile ? 1.5 : 2,
+              borderColor: '#2563EB',
+              color: '#2563EB',
+              '&:hover': {
+                borderColor: '#1D4ED8',
+                bgcolor: 'rgba(37, 99, 235, 0.04)',
+              },
             }}
           >
-            Export to Excel
+            Export Excel
           </Button>
           <Button
-            variant="contained"
-            color="secondary"
+            variant="outlined"
             size="small"
             startIcon={<PictureAsPdf />}
             onClick={handleExportToPDF}
@@ -763,9 +768,15 @@ export default function LiftingPlanPage() {
               fontSize: isMobile ? '0.75rem' : '0.875rem',
               minHeight: isMobile ? 40 : 36,
               px: isMobile ? 1.5 : 2,
+              borderColor: '#DC2626',
+              color: '#DC2626',
+              '&:hover': {
+                borderColor: '#B91C1C',
+                bgcolor: 'rgba(220, 38, 38, 0.04)',
+              },
             }}
           >
-            Save as PDF
+            Save PDF
           </Button>
         </Box>
       </Box>
