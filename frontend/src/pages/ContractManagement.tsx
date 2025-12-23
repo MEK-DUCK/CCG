@@ -63,7 +63,6 @@ export default function ContractManagement() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
-  const [selectedQuarterlyPlanIndex, setSelectedQuarterlyPlanIndex] = useState(0)  // For multi-product contracts
   const [open, setOpen] = useState(false)
   const [tabValue, setTabValue] = useState(0)
   const [editingContract, setEditingContract] = useState<Contract | null>(null)
@@ -616,7 +615,6 @@ export default function ContractManagement() {
                           return
                         }
                         setSelectedContract(contract)
-                        setSelectedQuarterlyPlanIndex(0)  // Reset product selection
                         setTabValue(0)
                       } catch (error: any) {
                         console.error('ERROR selecting contract:', error)
@@ -774,52 +772,14 @@ export default function ContractManagement() {
                 )}
               </TabPanel>
               <TabPanel value={tabValue} index={1}>
-                {quarterlyPlans && quarterlyPlans.length > 0 ? (
-                  <Box>
-                    {/* Product/Quarterly Plan selector for multi-product contracts */}
-                    {(() => {
-                      const products = Array.isArray(selectedContract?.products) ? selectedContract.products : []
-                      const isMultiProduct = products.length > 1
-                      const hasMultipleQuarterlyPlans = quarterlyPlans.length > 1
-                      
-                      if (isMultiProduct && hasMultipleQuarterlyPlans) {
-                        return (
-                          <Box sx={{ mb: 3, p: 2, bgcolor: '#F8FAFC', borderRadius: 2 }}>
-                            <Typography variant="subtitle2" gutterBottom sx={{ color: '#475569' }}>
-                              Select Product Quarterly Plan:
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                              {quarterlyPlans.map((qp: QuarterlyPlan, idx: number) => (
-                                <Button
-                                  key={qp.id}
-                                  variant={selectedQuarterlyPlanIndex === idx ? 'contained' : 'outlined'}
-                                  size="small"
-                                  onClick={() => setSelectedQuarterlyPlanIndex(idx)}
-                                  sx={{
-                                    bgcolor: selectedQuarterlyPlanIndex === idx ? '#1D4ED8' : 'transparent',
-                                    color: selectedQuarterlyPlanIndex === idx ? '#FFFFFF' : '#1D4ED8',
-                                    borderColor: '#1D4ED8',
-                                    '&:hover': {
-                                      bgcolor: selectedQuarterlyPlanIndex === idx ? '#1E40AF' : '#EFF6FF',
-                                    },
-                                  }}
-                                >
-                                  {qp.product_name || `Plan ${idx + 1}`}
-                                </Button>
-                              ))}
-                            </Box>
-                          </Box>
-                        )
-                      }
-                      return null
-                    })()}
-                    <MonthlyPlanForm
-                      key={quarterlyPlans[Math.min(selectedQuarterlyPlanIndex, quarterlyPlans.length - 1)]?.id}
-                      quarterlyPlanId={quarterlyPlans[Math.min(selectedQuarterlyPlanIndex, quarterlyPlans.length - 1)]?.id}
-                      quarterlyPlan={quarterlyPlans[Math.min(selectedQuarterlyPlanIndex, quarterlyPlans.length - 1)]}
-                      onPlanCreated={handlePlanCreated}
-                    />
-                  </Box>
+                {quarterlyPlans && quarterlyPlans.length > 0 && selectedContract ? (
+                  <MonthlyPlanForm
+                    key={`monthly-${selectedContract.id}`}
+                    contractId={selectedContract.id}
+                    contract={selectedContract}
+                    quarterlyPlans={quarterlyPlans}
+                    onPlanCreated={handlePlanCreated}
+                  />
                 ) : (
                   <Typography color="text.secondary" sx={{ p: 2 }}>
                     Please create a quarterly plan first
