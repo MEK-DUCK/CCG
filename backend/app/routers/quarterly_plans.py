@@ -15,28 +15,57 @@ def create_quarterly_plan(plan: schemas.QuarterlyPlanCreate, db: Session = Depen
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
     
-    # Check if a quarterly plan already exists for this contract
-    existing_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.contract_id == plan.contract_id).first()
-    if existing_plan:
-        raise HTTPException(
-            status_code=400,
-            detail="A quarterly plan already exists for this contract. Please edit the existing plan or delete it first."
-        )
+    # Parse contract products
+    contract_products = json.loads(contract.products) if contract.products else []
+    is_multi_product = len(contract_products) > 1
+    
+    # For multi-product contracts with product_name, check if plan exists for this specific product
+    # For single-product contracts, check if any plan exists
+    if plan.product_name and is_multi_product:
+        existing_plan = db.query(models.QuarterlyPlan).filter(
+            models.QuarterlyPlan.contract_id == plan.contract_id,
+            models.QuarterlyPlan.product_name == plan.product_name
+        ).first()
+        if existing_plan:
+            raise HTTPException(
+                status_code=400,
+                detail=f"A quarterly plan already exists for {plan.product_name}. Please edit the existing plan or delete it first."
+            )
+    else:
+        existing_plan = db.query(models.QuarterlyPlan).filter(
+            models.QuarterlyPlan.contract_id == plan.contract_id,
+            models.QuarterlyPlan.product_name == None  # Single product plans have no product_name
+        ).first()
+        if existing_plan:
+            raise HTTPException(
+                status_code=400,
+                detail="A quarterly plan already exists for this contract. Please edit the existing plan or delete it first."
+            )
     
     # Calculate total quarterly quantity
     total_quarterly = plan.q1_quantity + plan.q2_quantity + plan.q3_quantity + plan.q4_quantity
     
-    # Calculate contract total and optional quantities
-    contract_products = json.loads(contract.products) if contract.products else []
-    total_contract_quantity = sum(p.get('total_quantity', 0) for p in contract_products)
-    total_optional_quantity = sum(p.get('optional_quantity', 0) for p in contract_products)
+    # Calculate target quantities based on whether this is a product-specific plan or contract-wide
+    if plan.product_name and is_multi_product:
+        # Product-specific plan: validate against that product's quantities
+        product = next((p for p in contract_products if p.get('name') == plan.product_name), None)
+        if not product:
+            raise HTTPException(status_code=400, detail=f"Product '{plan.product_name}' not found in contract")
+        total_contract_quantity = product.get('total_quantity', 0)
+        total_optional_quantity = product.get('optional_quantity', 0)
+    else:
+        # Contract-wide plan: validate against total of all products
+        total_contract_quantity = sum(p.get('total_quantity', 0) for p in contract_products)
+        total_optional_quantity = sum(p.get('optional_quantity', 0) for p in contract_products)
+    
     max_allowed = total_contract_quantity + total_optional_quantity
     
-    # Validate total must equal contract total (or total + optional if using optional)
+    # Validate total must equal contract/product total (or total + optional if using optional)
+    target_label = plan.product_name if (plan.product_name and is_multi_product) else "contract"
     if total_quarterly < total_contract_quantity:
         raise HTTPException(
             status_code=400,
-            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) is less than the contract total quantity ({total_contract_quantity:,.0f} KT). The quarterly plan total must equal the contract total."
+            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) is less than the {target_label} total quantity ({total_contract_quantity:,.0f} KT). The quarterly plan total must equal the {target_label} total."
         )
     elif total_quarterly > max_allowed:
         raise HTTPException(
@@ -46,7 +75,7 @@ def create_quarterly_plan(plan: schemas.QuarterlyPlanCreate, db: Session = Depen
     elif total_quarterly != total_contract_quantity and total_quarterly != max_allowed:
         raise HTTPException(
             status_code=400,
-            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) must equal either the contract total ({total_contract_quantity:,.0f} KT) or the maximum allowed ({max_allowed:,.0f} KT = total + optional)"
+            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) must equal either the {target_label} total ({total_contract_quantity:,.0f} KT) or the maximum allowed ({max_allowed:,.0f} KT = total + optional)"
         )
     
     db_plan = models.QuarterlyPlan(
@@ -54,7 +83,8 @@ def create_quarterly_plan(plan: schemas.QuarterlyPlanCreate, db: Session = Depen
         q2_quantity=plan.q2_quantity,
         q3_quantity=plan.q3_quantity,
         q4_quantity=plan.q4_quantity,
-        contract_id=plan.contract_id
+        contract_id=plan.contract_id,
+        product_name=plan.product_name if (plan.product_name and is_multi_product) else None
     )
     db.add(db_plan)
     db.flush()  # Flush to get the ID
@@ -114,17 +144,32 @@ def update_quarterly_plan(plan_id: int, plan: schemas.QuarterlyPlanUpdate, db: S
     q4 = plan.q4_quantity if plan.q4_quantity is not None else db_plan.q4_quantity
     total_quarterly = q1 + q2 + q3 + q4
     
-    # Calculate contract total and optional quantities
+    # Parse contract products
     contract_products = json.loads(contract.products) if contract.products else []
-    total_contract_quantity = sum(p.get('total_quantity', 0) for p in contract_products)
-    total_optional_quantity = sum(p.get('optional_quantity', 0) for p in contract_products)
+    is_multi_product = len(contract_products) > 1
+    
+    # Calculate target quantities based on whether this is a product-specific plan
+    if db_plan.product_name and is_multi_product:
+        # Product-specific plan: validate against that product's quantities
+        product = next((p for p in contract_products if p.get('name') == db_plan.product_name), None)
+        if not product:
+            raise HTTPException(status_code=400, detail=f"Product '{db_plan.product_name}' not found in contract")
+        total_contract_quantity = product.get('total_quantity', 0)
+        total_optional_quantity = product.get('optional_quantity', 0)
+        target_label = db_plan.product_name
+    else:
+        # Contract-wide plan: validate against total of all products
+        total_contract_quantity = sum(p.get('total_quantity', 0) for p in contract_products)
+        total_optional_quantity = sum(p.get('optional_quantity', 0) for p in contract_products)
+        target_label = "contract"
+    
     max_allowed = total_contract_quantity + total_optional_quantity
     
-    # Validate total must equal contract total (or total + optional if using optional)
+    # Validate total must equal contract/product total (or total + optional if using optional)
     if total_quarterly < total_contract_quantity:
         raise HTTPException(
             status_code=400,
-            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) is less than the contract total quantity ({total_contract_quantity:,.0f} KT). The quarterly plan total must equal the contract total."
+            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) is less than the {target_label} total quantity ({total_contract_quantity:,.0f} KT). The quarterly plan total must equal the {target_label} total."
         )
     elif total_quarterly > max_allowed:
         raise HTTPException(
@@ -134,7 +179,7 @@ def update_quarterly_plan(plan_id: int, plan: schemas.QuarterlyPlanUpdate, db: S
     elif total_quarterly != total_contract_quantity and total_quarterly != max_allowed:
         raise HTTPException(
             status_code=400,
-            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) must equal either the contract total ({total_contract_quantity:,.0f} KT) or the maximum allowed ({max_allowed:,.0f} KT = total + optional)"
+            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) must equal either the {target_label} total ({total_contract_quantity:,.0f} KT) or the maximum allowed ({max_allowed:,.0f} KT = total + optional)"
         )
     
     # Store old values for audit logging
