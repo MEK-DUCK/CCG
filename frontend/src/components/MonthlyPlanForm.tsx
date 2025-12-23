@@ -532,11 +532,33 @@ export default function MonthlyPlanForm({ quarterlyPlanId, quarterlyPlan, onPlan
 
   return (
     <Paper sx={{ p: 2 }}>
-      <Typography variant="h6" gutterBottom>
-        Monthly Plan
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <Typography variant="h6">
+          Monthly Plan
+        </Typography>
+        {quarterlyPlan?.product_name && (
+          <Box sx={{ 
+            display: 'inline-flex', 
+            alignItems: 'center', 
+            px: 1.5, 
+            py: 0.5, 
+            bgcolor: '#DBEAFE', 
+            color: '#1D4ED8', 
+            borderRadius: 1,
+            fontWeight: 600,
+            fontSize: '0.875rem',
+          }}>
+            {quarterlyPlan.product_name}
+          </Box>
+        )}
+      </Box>
       {quarterlyPlan && (
         <Box sx={{ mb: 2, p: 1.5, bgcolor: 'info.light', borderRadius: 1 }}>
+          {quarterlyPlan.product_name && (
+            <Typography variant="body2" fontWeight="bold" gutterBottom sx={{ color: '#1D4ED8' }}>
+              Product: {quarterlyPlan.product_name}
+            </Typography>
+          )}
           <Typography variant="body2" fontWeight="bold" gutterBottom sx={{ color: '#000000' }}>Contract Period:</Typography>
           <Typography variant="body2" sx={{ mb: 1, color: '#000000' }}>
             {new Date(contract.start_period).toLocaleDateString()} - {new Date(contract.end_period).toLocaleDateString()}

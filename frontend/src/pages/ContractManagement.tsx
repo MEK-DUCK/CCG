@@ -63,6 +63,7 @@ export default function ContractManagement() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
+  const [selectedQuarterlyPlanIndex, setSelectedQuarterlyPlanIndex] = useState(0)  // For multi-product contracts
   const [open, setOpen] = useState(false)
   const [tabValue, setTabValue] = useState(0)
   const [editingContract, setEditingContract] = useState<Contract | null>(null)
@@ -627,6 +628,7 @@ export default function ContractManagement() {
                           return
                         }
                         setSelectedContract(contract)
+                        setSelectedQuarterlyPlanIndex(0)  // Reset product selection
                         setTabValue(0)
                       } catch (error: any) {
                         console.error('ERROR selecting contract:', error)
@@ -771,13 +773,28 @@ export default function ContractManagement() {
               <TabPanel value={tabValue} index={0}>
                 {selectedContract && selectedContract.id ? (
                   <Box>
-                    {quarterlyPlans && quarterlyPlans.length === 0 ? (
-                      (() => {
+                    {(() => {
+                      // Check if this is a multi-product contract
+                      const products = Array.isArray(selectedContract.products) ? selectedContract.products : []
+                      const isMultiProduct = products.length > 1
+                      
+                      // For multi-product contracts, check which products already have quarterly plans
+                      const productsWithPlans = (quarterlyPlans || [])
+                        .filter((p: QuarterlyPlan) => p.product_name)
+                        .map((p: QuarterlyPlan) => p.product_name)
+                      
+                      // Determine if we need to show the create form
+                      const needsMorePlans = isMultiProduct 
+                        ? products.some((p: any) => !productsWithPlans.includes(p.name))
+                        : (quarterlyPlans || []).length === 0
+                      
+                      if (needsMorePlans) {
                         try {
                           return (
                             <QuarterlyPlanForm
                               contractId={selectedContract.id}
                               contract={selectedContract}
+                              existingPlans={quarterlyPlans || []}
                               onPlanCreated={handlePlanCreated}
                             />
                           )
@@ -793,22 +810,34 @@ export default function ContractManagement() {
                             </Box>
                           )
                         }
-                      })()
-                    ) : (
-                      <Box sx={{ p: 2 }}>
-                        <Typography color="text.secondary" variant="body1">
-                          A quarterly plan already exists for this contract. You can edit it using the edit button below.
-                        </Typography>
-                      </Box>
-                    )}
+                      } else {
+                        return (
+                          <Box sx={{ p: 2 }}>
+                            <Typography color="text.secondary" variant="body1">
+                              {isMultiProduct 
+                                ? 'Quarterly plans have been created for all products. You can edit them using the edit buttons below.'
+                                : 'A quarterly plan already exists for this contract. You can edit it using the edit button below.'}
+                            </Typography>
+                          </Box>
+                        )
+                      }
+                    })()}
                     {quarterlyPlanDialogOpen && editingQuarterlyPlan && (
                       <Dialog open={quarterlyPlanDialogOpen} onClose={handleCloseQuarterlyPlanDialog} maxWidth="sm" fullWidth>
-                        <DialogTitle>Edit Quarterly Plan</DialogTitle>
+                        <DialogTitle>
+                          Edit Quarterly Plan
+                          {editingQuarterlyPlan.product_name && (
+                            <Box component="span" sx={{ ml: 1, px: 1, py: 0.25, bgcolor: '#DBEAFE', color: '#1D4ED8', borderRadius: 1, fontSize: '0.875rem' }}>
+                              {editingQuarterlyPlan.product_name}
+                            </Box>
+                          )}
+                        </DialogTitle>
                         <DialogContent>
                           <QuarterlyPlanForm
                             contractId={selectedContract.id}
                             contract={selectedContract}
                             editingPlan={editingQuarterlyPlan}
+                            existingPlans={quarterlyPlans || []}
                             onPlanCreated={handlePlanCreated}
                             onCancel={handleCloseQuarterlyPlanDialog}
                           />
@@ -883,6 +912,18 @@ export default function ContractManagement() {
                         : 1
                       const quarterOrder = getQuarterOrder(startMonth)
                       
+                      // Get product-specific target quantity for multi-product contracts
+                      const products = Array.isArray(selectedContract?.products) ? selectedContract.products : []
+                      const isMultiProduct = products.length > 1
+                      let targetQuantity: number
+                      
+                      if (isMultiProduct && plan.product_name) {
+                        const product = products.find((p: any) => p.name === plan.product_name)
+                        targetQuantity = product?.total_quantity || 0
+                      } else {
+                        targetQuantity = products.reduce((sum: number, p: any) => sum + (p?.total_quantity || 0), 0)
+                      }
+                      
                       return (
                         <Box 
                           key={plan.id} 
@@ -892,8 +933,27 @@ export default function ContractManagement() {
                             bgcolor: '#FFFFFF',
                             borderRadius: 2,
                             boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.05)',
+                            border: plan.product_name ? '2px solid #DBEAFE' : undefined,
                           }}
                         >
+                          {/* Product name header for multi-product contracts */}
+                          {plan.product_name && (
+                            <Box sx={{ mb: 2, pb: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                              <Box sx={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                px: 1.5, 
+                                py: 0.5, 
+                                bgcolor: '#DBEAFE', 
+                                color: '#1D4ED8', 
+                                borderRadius: 1,
+                                fontWeight: 600,
+                                fontSize: '0.875rem',
+                              }}>
+                                {plan.product_name}
+                              </Box>
+                            </Box>
+                          )}
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                             <Box sx={{ flex: 1 }}>
                               {quarterOrder.map((quarter, index) => (
@@ -903,9 +963,6 @@ export default function ContractManagement() {
                               ))}
                               {(() => {
                                 const quarterlyTotal = (plan.q1_quantity || 0) + (plan.q2_quantity || 0) + (plan.q3_quantity || 0) + (plan.q4_quantity || 0)
-                                const contractTotal = selectedContract && selectedContract.products && Array.isArray(selectedContract.products)
-                                  ? selectedContract.products.reduce((sum: number, p: any) => sum + (p?.total_quantity || 0), 0)
-                                  : 0
                                 
                                 return (
                                   <>
@@ -913,7 +970,7 @@ export default function ContractManagement() {
                                       Total: {quarterlyTotal.toLocaleString()} KT
                                     </Typography>
                                     <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic', color: '#000000' }}>
-                                      Note: Quarterly plan total (Q1+Q2+Q3+Q4) must equal the contract total ({contractTotal.toLocaleString()} KT)
+                                      Note: Quarterly plan total must equal {plan.product_name ? `the ${plan.product_name} total` : 'the contract total'} ({targetQuantity.toLocaleString()} KT)
                                     </Typography>
                                   </>
                                 )
@@ -936,11 +993,51 @@ export default function ContractManagement() {
               </TabPanel>
               <TabPanel value={tabValue} index={1}>
                 {quarterlyPlans && quarterlyPlans.length > 0 ? (
-                  <MonthlyPlanForm
-                    quarterlyPlanId={quarterlyPlans[0]?.id}
-                    quarterlyPlan={quarterlyPlans[0]}
-                    onPlanCreated={handlePlanCreated}
-                  />
+                  <Box>
+                    {/* Product/Quarterly Plan selector for multi-product contracts */}
+                    {(() => {
+                      const products = Array.isArray(selectedContract?.products) ? selectedContract.products : []
+                      const isMultiProduct = products.length > 1
+                      const hasMultipleQuarterlyPlans = quarterlyPlans.length > 1
+                      
+                      if (isMultiProduct && hasMultipleQuarterlyPlans) {
+                        return (
+                          <Box sx={{ mb: 3, p: 2, bgcolor: '#F8FAFC', borderRadius: 2 }}>
+                            <Typography variant="subtitle2" gutterBottom sx={{ color: '#475569' }}>
+                              Select Product Quarterly Plan:
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              {quarterlyPlans.map((qp: QuarterlyPlan, idx: number) => (
+                                <Button
+                                  key={qp.id}
+                                  variant={selectedQuarterlyPlanIndex === idx ? 'contained' : 'outlined'}
+                                  size="small"
+                                  onClick={() => setSelectedQuarterlyPlanIndex(idx)}
+                                  sx={{
+                                    bgcolor: selectedQuarterlyPlanIndex === idx ? '#1D4ED8' : 'transparent',
+                                    color: selectedQuarterlyPlanIndex === idx ? '#FFFFFF' : '#1D4ED8',
+                                    borderColor: '#1D4ED8',
+                                    '&:hover': {
+                                      bgcolor: selectedQuarterlyPlanIndex === idx ? '#1E40AF' : '#EFF6FF',
+                                    },
+                                  }}
+                                >
+                                  {qp.product_name || `Plan ${idx + 1}`}
+                                </Button>
+                              ))}
+                            </Box>
+                          </Box>
+                        )
+                      }
+                      return null
+                    })()}
+                    <MonthlyPlanForm
+                      key={quarterlyPlans[Math.min(selectedQuarterlyPlanIndex, quarterlyPlans.length - 1)]?.id}
+                      quarterlyPlanId={quarterlyPlans[Math.min(selectedQuarterlyPlanIndex, quarterlyPlans.length - 1)]?.id}
+                      quarterlyPlan={quarterlyPlans[Math.min(selectedQuarterlyPlanIndex, quarterlyPlans.length - 1)]}
+                      onPlanCreated={handlePlanCreated}
+                    />
+                  </Box>
                 ) : (
                   <Typography color="text.secondary" sx={{ p: 2 }}>
                     Please create a quarterly plan first
