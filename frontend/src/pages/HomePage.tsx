@@ -168,9 +168,9 @@ export default function HomePage() {
             'LC Status':
               contract && contract.payment_method === 'LC' && cargo && cargo.lc_status ? cargo.lc_status : '-',
             Product:
-              contract && contract.products && contract.products.length > 0
-                ? contract.products.map((p: ContractProduct) => p.name).join(', ')
-                : '-',
+              cargo ? cargo.product_name : (
+                monthlyPlan ? (quarterlyPlansMap.get(monthlyPlan.quarterly_plan_id)?.product_name || '-') : '-'
+              ),
             Quantity: cargo ? cargo.cargo_quantity : monthlyPlan ? monthlyPlan.month_quantity : '-',
             'Load Port': cargo ? cargo.load_ports || '-' : contract ? contract.allowed_load_ports || '-' : '-',
             Status: cargo ? cargo.status : 'Not Created',
@@ -440,7 +440,7 @@ export default function HomePage() {
 
   useEffect(() => {
     // Reload completed cargos when month/year filter changes
-    if (value === 2 && !isInitialLoad) { // Completed Cargos tab is index 2
+    if (value === 1 && !isInitialLoad) { // Completed Cargos tab is index 1
       loadData()
       loadMonthlyPlansForPortMovement()
     }
@@ -1242,7 +1242,7 @@ export default function HomePage() {
   const handleChange = (_event: React.SyntheticEvent, newValue: number) => {
     setValue(newValue)
     // When switching to Completed Cargos tab, ensure data is loaded
-    if (newValue === 2) {
+    if (newValue === 1) {
       loadData()
       loadMonthlyPlansForPortMovement()
     }
@@ -1656,11 +1656,11 @@ export default function HomePage() {
             <TableRow>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Vessel Name</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Customer</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>FOB/CIF</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Payment Method</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>LC Status</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Laycan</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Sailing Fax Entry</TableCell>
@@ -1720,6 +1720,7 @@ export default function HomePage() {
                     </Box>
                   </TableCell>
                   <TableCell>{getCustomerName(cargo.customer_id)}</TableCell>
+                  <TableCell>{contractNumber || '-'}</TableCell>
                   <TableCell>
                     {cargo.combi_group_id ? (
                       <Box>
@@ -1767,7 +1768,6 @@ export default function HomePage() {
                       <Chip label="-" color="default" size="small" />
                     )}
                   </TableCell>
-                  <TableCell>{contractNumber || '-'}</TableCell>
                   <TableCell>
                     {cargo.combi_group_id ? (
                       <Box>
@@ -2557,9 +2557,10 @@ export default function HomePage() {
                           </Box>
                         ) : (
                           cargo ? cargo.product_name : (
-                            contract && contract.products && contract.products.length > 0
-                            ? contract.products.map((p: ContractProduct) => p.name).join(', ')
-                              : '-'
+                            // For non-combi monthly plans, get product from quarterly plan
+                            monthlyPlan ? (
+                              quarterlyPlansMap.get(monthlyPlan.quarterly_plan_id)?.product_name || '-'
+                            ) : '-'
                           )
                         )}
                       </TableCell>
