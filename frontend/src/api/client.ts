@@ -99,6 +99,8 @@ export const monthlyPlanAPI = {
   create: (data: any) => client.post('/api/monthly-plans/', data),
   update: (id: number, data: any) => client.put(`/api/monthly-plans/${id}`, data),
   delete: (id: number) => client.delete(`/api/monthly-plans/${id}`),
+  move: (id: number, data: { action: 'DEFER' | 'ADVANCE'; target_month: number; target_year: number; reason?: string }) =>
+    client.put(`/api/monthly-plans/${id}/move`, data),
 }
 
 // Cargo API

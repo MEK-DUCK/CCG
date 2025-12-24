@@ -250,6 +250,83 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
     db.refresh(db_plan)
     return db_plan
 
+@router.put("/{plan_id}/move", response_model=schemas.MonthlyPlan)
+def move_monthly_plan(plan_id: int, move_request: schemas.MonthlyPlanMoveRequest, db: Session = Depends(get_db)):
+    """
+    Move a monthly plan to a different month (defer or advance).
+    - DEFER: Move to a later month
+    - ADVANCE: Move to an earlier month
+    
+    Blocked if the plan has any associated cargos.
+    """
+    db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
+    if db_plan is None:
+        raise HTTPException(status_code=404, detail="Monthly plan not found")
+    
+    # Check if plan has any cargos - block move if yes
+    cargo_info = get_cargo_info(plan_id, db)
+    if cargo_info['total_cargos'] > 0:
+        cargo_ids = ', '.join(cargo_info['cargo_ids'])
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot move monthly plan. It has {cargo_info['total_cargos']} cargo(s): {cargo_ids}. Please delete or reassign the cargos first."
+        )
+    
+    # Validate move direction matches action
+    old_date = db_plan.year * 12 + db_plan.month
+    new_date = move_request.target_year * 12 + move_request.target_month
+    
+    if move_request.action == "DEFER" and new_date <= old_date:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot defer to an earlier or same month. Use ADVANCE action instead."
+        )
+    elif move_request.action == "ADVANCE" and new_date >= old_date:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot advance to a later or same month. Use DEFER action instead."
+        )
+    
+    # Store old values for audit
+    old_month = db_plan.month
+    old_year = db_plan.year
+    
+    # Update the plan
+    db_plan.month = move_request.target_month
+    db_plan.year = move_request.target_year
+    
+    # Get contract info for logging
+    quarterly_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == db_plan.quarterly_plan_id).first()
+    contract = db.query(models.Contract).filter(models.Contract.id == quarterly_plan.contract_id).first() if quarterly_plan else None
+    customer = db.query(models.Customer).filter(models.Customer.id == contract.customer_id).first() if contract else None
+    
+    # Build description
+    from calendar import month_name
+    old_month_name = month_name[old_month]
+    new_month_name = month_name[move_request.target_month]
+    action_verb = "Deferred" if move_request.action == "DEFER" else "Advanced"
+    description = f"{action_verb} {db_plan.month_quantity:,.0f} KT from {old_month_name} {old_year} to {new_month_name} {move_request.target_year}"
+    if move_request.reason:
+        description += f" - Reason: {move_request.reason}"
+    
+    # Log the move action
+    log_monthly_plan_action(
+        db=db,
+        action=move_request.action,  # DEFER or ADVANCE
+        monthly_plan=db_plan,
+        field_name='month',
+        old_value=f"{old_month}/{old_year}",
+        new_value=f"{move_request.target_month}/{move_request.target_year}",
+        description=description
+    )
+    
+    db.commit()
+    db.refresh(db_plan)
+    
+    print(f"[MONTHLY_PLAN] {action_verb} plan {plan_id}: {old_month_name} {old_year} -> {new_month_name} {move_request.target_year}")
+    
+    return db_plan
+
 @router.delete("/{plan_id}")
 def delete_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
     db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()

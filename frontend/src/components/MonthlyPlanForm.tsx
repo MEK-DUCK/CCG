@@ -16,8 +16,15 @@ import {
   Chip,
   Checkbox,
   FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Menu,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material'
-import { Save, Add, Delete, Lock } from '@mui/icons-material'
+import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack } from '@mui/icons-material'
 import { monthlyPlanAPI, contractAPI } from '../api/client'
 import { MonthlyPlanStatus } from '../types'
 
@@ -112,6 +119,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const [contractMonths, setContractMonths] = useState<Array<{ month: number, year: number }>>([])
   const [planStatuses, setPlanStatuses] = useState<Record<number, MonthlyPlanStatus>>({})
   const autosaveTimersRef = useRef<Record<string, number>>({})
+  
+  // Move dialog state
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false)
+  const [moveAction, setMoveAction] = useState<'DEFER' | 'ADVANCE' | null>(null)
+  const [moveEntryData, setMoveEntryData] = useState<{ month: number; year: number; entryIndex: number; entry: MonthlyPlanEntry } | null>(null)
+  const [moveTargetMonth, setMoveTargetMonth] = useState<number>(1)
+  const [moveTargetYear, setMoveTargetYear] = useState<number>(new Date().getFullYear())
+  const [moveReason, setMoveReason] = useState('')
+  const [isMoving, setIsMoving] = useState(false)
+  
+  // Action menu state
+  const [actionMenuAnchor, setActionMenuAnchor] = useState<null | HTMLElement>(null)
+  const [actionMenuEntry, setActionMenuEntry] = useState<{ month: number; year: number; entryIndex: number; entry: MonthlyPlanEntry } | null>(null)
 
   // Get product list from contract
   const products = contract?.products ? (Array.isArray(contract.products) ? contract.products : JSON.parse(contract.products)) : []
@@ -495,6 +515,74 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       ...monthEntries,
       [key]: updatedEntries,
     })
+  }
+
+  // Action menu handlers
+  const handleActionMenuOpen = (event: React.MouseEvent<HTMLElement>, month: number, year: number, entryIndex: number, entry: MonthlyPlanEntry) => {
+    setActionMenuAnchor(event.currentTarget)
+    setActionMenuEntry({ month, year, entryIndex, entry })
+  }
+
+  const handleActionMenuClose = () => {
+    setActionMenuAnchor(null)
+    setActionMenuEntry(null)
+  }
+
+  // Move dialog handlers
+  const handleOpenMoveDialog = (action: 'DEFER' | 'ADVANCE') => {
+    if (!actionMenuEntry) return
+    setMoveAction(action)
+    setMoveEntryData(actionMenuEntry)
+    // Set default target month to current + 1 for defer, current - 1 for advance
+    const currentDate = actionMenuEntry.month + actionMenuEntry.year * 12
+    if (action === 'DEFER') {
+      const nextMonth = actionMenuEntry.month === 12 ? 1 : actionMenuEntry.month + 1
+      const nextYear = actionMenuEntry.month === 12 ? actionMenuEntry.year + 1 : actionMenuEntry.year
+      setMoveTargetMonth(nextMonth)
+      setMoveTargetYear(nextYear)
+    } else {
+      const prevMonth = actionMenuEntry.month === 1 ? 12 : actionMenuEntry.month - 1
+      const prevYear = actionMenuEntry.month === 1 ? actionMenuEntry.year - 1 : actionMenuEntry.year
+      setMoveTargetMonth(prevMonth)
+      setMoveTargetYear(prevYear)
+    }
+    setMoveReason('')
+    setMoveDialogOpen(true)
+    handleActionMenuClose()
+  }
+
+  const handleCloseMoveDialog = () => {
+    setMoveDialogOpen(false)
+    setMoveAction(null)
+    setMoveEntryData(null)
+    setMoveReason('')
+  }
+
+  const handleExecuteMove = async () => {
+    if (!moveEntryData || !moveAction || !moveEntryData.entry.id) return
+    
+    setIsMoving(true)
+    try {
+      // For combi entries, we need to move all plans in the group
+      const planIds = moveEntryData.entry._combi_plan_ids || [moveEntryData.entry.id]
+      
+      for (const planId of planIds) {
+        await monthlyPlanAPI.move(planId, {
+          action: moveAction,
+          target_month: moveTargetMonth,
+          target_year: moveTargetYear,
+          reason: moveReason || undefined,
+        })
+      }
+      
+      handleCloseMoveDialog()
+      onPlanCreated() // Refresh the data
+    } catch (error: any) {
+      console.error('Error moving monthly plan:', error)
+      alert(error.response?.data?.detail || 'Failed to move cargo. Please try again.')
+    } finally {
+      setIsMoving(false)
+    }
   }
 
   const getQuarterMonths = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): Array<{ month: number, year: number }> => {
@@ -955,6 +1043,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                 borderRadius: 1,
                               }}
                             >
+                              {/* Action buttons for existing entries - Defer/Advance/Delete */}
+                              {entry.id && !hasCargos && (
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => handleActionMenuOpen(e, month, year, entryIndex, entry)}
+                                    sx={{ color: '#64748B' }}
+                                  >
+                                    <MoreVert fontSize="small" />
+                                  </IconButton>
+                                </Box>
+                              )}
+                              
                               {/* Combi Cargo option - only for multi-product contracts and new entries */}
                               {isMultiProduct && !entry.id && (
                                 <FormControlLabel
@@ -1220,6 +1321,113 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           </Button>
         </Box>
       </Box>
+      
+      {/* Action Menu for existing entries */}
+      <Menu
+        anchorEl={actionMenuAnchor}
+        open={Boolean(actionMenuAnchor)}
+        onClose={handleActionMenuClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem onClick={() => handleOpenMoveDialog('DEFER')}>
+          <ListItemIcon>
+            <ArrowForward fontSize="small" sx={{ color: '#2563EB' }} />
+          </ListItemIcon>
+          <ListItemText primary="Defer to Later Month" />
+        </MenuItem>
+        <MenuItem onClick={() => handleOpenMoveDialog('ADVANCE')}>
+          <ListItemIcon>
+            <ArrowBack fontSize="small" sx={{ color: '#7C3AED' }} />
+          </ListItemIcon>
+          <ListItemText primary="Advance to Earlier Month" />
+        </MenuItem>
+        <Divider />
+        <MenuItem 
+          onClick={() => {
+            if (actionMenuEntry) {
+              handleRemoveEntry(actionMenuEntry.month, actionMenuEntry.year, actionMenuEntry.entryIndex)
+            }
+            handleActionMenuClose()
+          }}
+          sx={{ color: 'error.main' }}
+        >
+          <ListItemIcon>
+            <Delete fontSize="small" sx={{ color: 'error.main' }} />
+          </ListItemIcon>
+          <ListItemText primary="Delete Entry" />
+        </MenuItem>
+      </Menu>
+      
+      {/* Move Dialog */}
+      <Dialog open={moveDialogOpen} onClose={handleCloseMoveDialog} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>
+          {moveAction === 'DEFER' ? 'Defer Cargo to Later Month' : 'Advance Cargo to Earlier Month'}
+        </DialogTitle>
+        <DialogContent>
+          {moveEntryData && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
+                Moving {moveEntryData.entry.is_combi ? 'combi cargo' : 'cargo'} from{' '}
+                <strong>{getMonthName(moveEntryData.month)} {moveEntryData.year}</strong>
+              </Typography>
+              
+              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                <FormControl size="small" sx={{ flex: 1 }}>
+                  <InputLabel>Target Month</InputLabel>
+                  <Select
+                    value={moveTargetMonth}
+                    label="Target Month"
+                    onChange={(e) => setMoveTargetMonth(Number(e.target.value))}
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
+                      <MenuItem key={m} value={m}>
+                        {getMonthName(m)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  size="small"
+                  label="Year"
+                  type="number"
+                  value={moveTargetYear}
+                  onChange={(e) => setMoveTargetYear(Number(e.target.value))}
+                  sx={{ width: 100 }}
+                  inputProps={{ min: 2020, max: 2100 }}
+                />
+              </Box>
+              
+              <TextField
+                size="small"
+                label="Reason (optional)"
+                value={moveReason}
+                onChange={(e) => setMoveReason(e.target.value)}
+                fullWidth
+                multiline
+                rows={2}
+                placeholder="e.g., Customer request, Authority approval"
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseMoveDialog} disabled={isMoving}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleExecuteMove}
+            disabled={isMoving}
+            sx={{
+              bgcolor: moveAction === 'DEFER' ? '#2563EB' : '#7C3AED',
+              '&:hover': { bgcolor: moveAction === 'DEFER' ? '#1D4ED8' : '#6D28D9' },
+            }}
+          >
+            {isMoving ? 'Moving...' : moveAction === 'DEFER' ? 'Defer Cargo' : 'Advance Cargo'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   )
 }

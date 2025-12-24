@@ -285,6 +285,7 @@ def get_weekly_quantity_comparison(
 
         # Net deltas since snapshot_at from audit logs (previous = current - delta_since_snapshot)
         # We need to get product_name for each log entry via quarterly_plan
+        # Also include DEFER/ADVANCE actions for move tracking
         logs = (
             db.query(
                 models.MonthlyPlanAuditLog,
@@ -292,12 +293,11 @@ def get_weekly_quantity_comparison(
             )
             .outerjoin(models.QuarterlyPlan, models.QuarterlyPlan.id == models.MonthlyPlanAuditLog.quarterly_plan_id)
             .filter(models.MonthlyPlanAuditLog.created_at > snapshot_at)
-            .filter(models.MonthlyPlanAuditLog.year == target_year)
             .filter(models.MonthlyPlanAuditLog.contract_id.isnot(None))
-            .filter(models.MonthlyPlanAuditLog.month.isnot(None))
             .filter(
                 (models.MonthlyPlanAuditLog.field_name == "month_quantity")
                 | (models.MonthlyPlanAuditLog.action == "DELETE")
+                | (models.MonthlyPlanAuditLog.action.in_(["DEFER", "ADVANCE"]))
             )
             .order_by(models.MonthlyPlanAuditLog.created_at.asc())
             .all()
@@ -313,7 +313,6 @@ def get_weekly_quantity_comparison(
                 product_name_from_qp = "Unknown"
             
             cid = int(log.contract_id)
-            m = int(log.month)
             contract_product_info.setdefault((cid, product_name_from_qp), {
                 "contract_number": log.contract_number, 
                 "contract_name": log.contract_name,
@@ -321,6 +320,53 @@ def get_weekly_quantity_comparison(
             })
 
             delta = 0.0
+            
+            # Handle DEFER/ADVANCE actions - cargo moved between months
+            if log.action in ("DEFER", "ADVANCE"):
+                # Parse old_value "month/year" to get source month
+                try:
+                    old_parts = log.old_value.split("/") if log.old_value else []
+                    new_parts = log.new_value.split("/") if log.new_value else []
+                    
+                    if len(old_parts) == 2 and len(new_parts) == 2:
+                        old_month = int(old_parts[0])
+                        old_year = int(old_parts[1])
+                        new_month = int(new_parts[0])
+                        new_year = int(new_parts[1])
+                        
+                        # Only process if within target year
+                        # Get quantity from monthly plan
+                        qty = 0.0
+                        if log.monthly_plan_id:
+                            mp = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == log.monthly_plan_id).first()
+                            if mp:
+                                qty = float(mp.month_quantity or 0.0)
+                        
+                        # Also try to extract from description if monthly plan not found
+                        if qty == 0.0 and log.description:
+                            import re
+                            match = re.search(r'([\d,]+(?:\.\d+)?)\s*KT', log.description)
+                            if match:
+                                qty = float(match.group(1).replace(',', ''))
+                        
+                        if qty > 0:
+                            # -qty from old month (if within target year)
+                            if old_year == target_year:
+                                key_old = (cid, product_name_from_qp, old_month)
+                                delta_by_key[key_old] = float(delta_by_key.get(key_old, 0.0) - qty)
+                            
+                            # +qty to new month (if within target year)
+                            if new_year == target_year:
+                                key_new = (cid, product_name_from_qp, new_month)
+                                delta_by_key[key_new] = float(delta_by_key.get(key_new, 0.0) + qty)
+                except Exception as e:
+                    print(f"[WARN] Failed to parse DEFER/ADVANCE log {log.id}: {e}")
+                continue  # Skip normal delta processing for DEFER/ADVANCE
+            
+            m = int(log.month) if log.month else None
+            if m is None:
+                continue
+                
             if log.action in ("UPDATE", "CREATE") and log.field_name == "month_quantity":
                 delta = _parse_float(log.new_value) - _parse_float(log.old_value)
             elif log.action == "DELETE":

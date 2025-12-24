@@ -206,7 +206,7 @@ export default function ReconciliationPage() {
     return { prevByMonth, curByMonth, remarkByMonth, previousTotal, currentTotal }
   }, [weeklyData, weeklyProduct])
 
-  const getActionColor = (action: string) => {
+  const getActionColor = (action: string): 'success' | 'info' | 'error' | 'warning' | 'secondary' | 'default' => {
     switch (action) {
       case 'CREATE':
         return 'success'
@@ -214,6 +214,10 @@ export default function ReconciliationPage() {
         return 'info'
       case 'DELETE':
         return 'error'
+      case 'DEFER':
+        return 'warning'
+      case 'ADVANCE':
+        return 'secondary'
       default:
         return 'default'
     }

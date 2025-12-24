@@ -158,6 +158,13 @@ class MonthlyPlan(MonthlyPlanBase):
     class Config:
         from_attributes = True
 
+# Monthly Plan Move Schema (for defer/advance actions)
+class MonthlyPlanMoveRequest(BaseModel):
+    action: str = Field(..., pattern="^(DEFER|ADVANCE)$")  # DEFER or ADVANCE
+    target_month: int = Field(..., ge=1, le=12)
+    target_year: int = Field(..., ge=2020, le=2100)
+    reason: Optional[str] = Field(None, max_length=500)  # Optional reason for the move
+
 # Cargo Schemas
 class CargoBase(BaseModel):
     vessel_name: str
