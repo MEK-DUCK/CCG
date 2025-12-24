@@ -508,6 +508,7 @@ export default function ReconciliationPage() {
                     <TableCell>Date & Time</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell>Action</TableCell>
+                    <TableCell>Customer</TableCell>
                     <TableCell>Contract</TableCell>
                     <TableCell>Product</TableCell>
                     <TableCell>Plan Period</TableCell>
@@ -543,17 +544,19 @@ export default function ReconciliationPage() {
                         />
                       </TableCell>
                       <TableCell>
+                        {(isMonthlyPlanLog(log) ? log.contract_name : (log as QuarterlyPlanAuditLog).contract_name) ? (
+                          <Typography variant="body2" sx={{ fontWeight: 500, color: '#1E293B' }}>
+                            {isMonthlyPlanLog(log) ? log.contract_name : (log as QuarterlyPlanAuditLog).contract_name}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         {(isMonthlyPlanLog(log) ? log.contract_number : (log as QuarterlyPlanAuditLog).contract_number) ? (
-                          <Box>
-                            <Typography variant="body2" sx={{ fontWeight: 500, color: '#1E293B' }}>
-                              {isMonthlyPlanLog(log) ? log.contract_number : (log as QuarterlyPlanAuditLog).contract_number}
-                            </Typography>
-                            {(isMonthlyPlanLog(log) ? log.contract_name : (log as QuarterlyPlanAuditLog).contract_name) && (
-                              <Typography variant="caption" sx={{ color: '#64748B' }}>
-                                {isMonthlyPlanLog(log) ? log.contract_name : (log as QuarterlyPlanAuditLog).contract_name}
-                              </Typography>
-                            )}
-                          </Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500, color: '#1E293B' }}>
+                            {isMonthlyPlanLog(log) ? log.contract_number : (log as QuarterlyPlanAuditLog).contract_number}
+                          </Typography>
                         ) : (
                           <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
                         )}
