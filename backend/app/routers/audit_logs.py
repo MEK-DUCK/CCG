@@ -409,6 +409,10 @@ def get_weekly_quantity_comparison(
 
         # Key is now (contract_id, product_name, month)
         delta_by_key: Dict[Tuple[int, str, int], float] = {}
+        # Track move actions for remarks: key = (contract_id, product_name, month), value = list of move descriptions
+        move_remarks: Dict[Tuple[int, str, int], List[str]] = {}
+        month_names_short = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        
         for log_row in logs:
             # log_row is a Row object with MonthlyPlanAuditLog and product_name
             log = log_row[0]  # MonthlyPlanAuditLog object
@@ -454,15 +458,27 @@ def get_weekly_quantity_comparison(
                                 qty = float(match.group(1).replace(',', ''))
                         
                         if qty > 0:
+                            contract_num = log.contract_number or str(cid)
+                            action_verb = "deferred" if log.action == "DEFER" else "advanced"
+                            from_month_str = month_names_short[old_month]
+                            to_month_str = month_names_short[new_month]
+                            qty_str = f"{qty:g}" if qty == int(qty) else f"{qty:.1f}"
+                            
                             # -qty from old month (if within target year)
                             if old_year == target_year:
                                 key_old = (cid, product_name_from_qp, old_month)
                                 delta_by_key[key_old] = float(delta_by_key.get(key_old, 0.0) - qty)
+                                # Add remark for source month
+                                remark_old = f"{contract_num}: {qty_str} KT {action_verb} to {to_month_str}"
+                                move_remarks.setdefault(key_old, []).append(remark_old)
                             
                             # +qty to new month (if within target year)
                             if new_year == target_year:
                                 key_new = (cid, product_name_from_qp, new_month)
                                 delta_by_key[key_new] = float(delta_by_key.get(key_new, 0.0) + qty)
+                                # Add remark for target month
+                                remark_new = f"{contract_num}: {qty_str} KT {action_verb} from {from_month_str}"
+                                move_remarks.setdefault(key_new, []).append(remark_new)
                 except Exception as e:
                     print(f"[WARN] Failed to parse DEFER/ADVANCE log {log.id}: {e}")
                 continue  # Skip normal delta processing for DEFER/ADVANCE
@@ -520,6 +536,21 @@ def get_weekly_quantity_comparison(
                 )
 
             remarks_by_month = _build_remarks_by_month(month_deltas)
+            
+            # Merge move remarks with regular remarks
+            for m in range(1, 13):
+                key = (cid, product_name, m)
+                move_remark_list = move_remarks.get(key, [])
+                regular_remark = remarks_by_month.get(m)
+                
+                # Combine move remarks and regular remarks
+                all_remarks = move_remark_list.copy()
+                if regular_remark:
+                    all_remarks.append(regular_remark)
+                
+                if all_remarks:
+                    remarks_by_month[m] = "\n".join(all_remarks)
+            
             months_out = [
                 schemas.WeeklyQuantityMonth(
                     month=mm.month,
