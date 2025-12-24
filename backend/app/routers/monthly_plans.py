@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict
 from app.database import get_db
 from app import models, schemas
@@ -114,6 +114,67 @@ def read_monthly_plans(
         import traceback
         print(f"[ERROR] Error reading monthly plans: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error loading monthly plans: {str(e)}")
+
+@router.get("/bulk", response_model=List[schemas.MonthlyPlanEnriched])
+def get_monthly_plans_bulk(
+    months: str = Query(..., description="Comma-separated months, e.g., '1,2,3'"),
+    year: int = Query(..., description="Year to filter by"),
+    include_zero_quantity: bool = Query(False, description="Include plans with 0 quantity"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all monthly plans for given months/year across ALL contracts in a single query.
+    Returns monthly plans with their quarterly plan, contract, and customer info embedded.
+    
+    This replaces the need for multiple API calls:
+    - 1 call per contract for quarterly plans
+    - 1 call per quarterly plan for monthly plans
+    
+    Now it's just 1 call total.
+    """
+    try:
+        # Parse months
+        month_list = [int(m.strip()) for m in months.split(",") if m.strip()]
+        if not month_list:
+            raise HTTPException(status_code=400, detail="At least one month is required")
+        
+        # Validate months
+        for m in month_list:
+            if m < 1 or m > 12:
+                raise HTTPException(status_code=400, detail=f"Invalid month: {m}")
+        
+        # Build query with eager loading of all related data
+        query = db.query(models.MonthlyPlan).options(
+            joinedload(models.MonthlyPlan.quarterly_plan)
+            .joinedload(models.QuarterlyPlan.contract)
+            .joinedload(models.Contract.customer)
+        ).filter(
+            models.MonthlyPlan.month.in_(month_list),
+            models.MonthlyPlan.year == year
+        )
+        
+        # Optionally exclude zero-quantity plans (deferred/cancelled)
+        if not include_zero_quantity:
+            query = query.filter(models.MonthlyPlan.month_quantity > 0)
+        
+        # Order by contract, then month for consistent display
+        query = query.order_by(
+            models.MonthlyPlan.quarterly_plan_id,
+            models.MonthlyPlan.month
+        )
+        
+        plans = query.all()
+        return plans
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid month format: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] get_monthly_plans_bulk: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error loading monthly plans: {str(e)}")
+
 
 @router.get("/{plan_id}", response_model=schemas.MonthlyPlan)
 def read_monthly_plan(plan_id: int, db: Session = Depends(get_db)):

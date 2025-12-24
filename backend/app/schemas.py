@@ -165,6 +165,97 @@ class MonthlyPlanMoveRequest(BaseModel):
     target_year: int = Field(..., ge=2020, le=2100)
     reason: Optional[str] = Field(None, max_length=500)  # Optional reason for the move
 
+
+# Enriched schemas for bulk queries (with embedded related data)
+class CustomerEmbedded(BaseModel):
+    """Minimal customer info for embedding in other schemas"""
+    id: int
+    customer_id: str
+    name: str
+    
+    class Config:
+        from_attributes = True
+
+
+class ContractEmbedded(BaseModel):
+    """Contract with embedded customer info for bulk queries"""
+    id: int
+    contract_id: str
+    contract_number: str
+    contract_type: ContractType
+    payment_method: Optional[PaymentMethod] = None
+    start_period: date
+    end_period: date
+    products: List[ContractProduct]
+    customer_id: int
+    customer: Optional[CustomerEmbedded] = None
+    
+    @model_validator(mode="before")
+    @classmethod
+    def parse_products_json(cls, data):
+        """Parse products from JSON string if needed (database stores as JSON string)"""
+        import json
+        if isinstance(data, dict):
+            products = data.get("products")
+            if isinstance(products, str):
+                try:
+                    data["products"] = json.loads(products)
+                except (json.JSONDecodeError, TypeError):
+                    data["products"] = []
+        elif hasattr(data, "products"):
+            # Handle SQLAlchemy model object
+            products = getattr(data, "products", None)
+            if isinstance(products, str):
+                try:
+                    # Create a dict from the model and parse products
+                    obj_dict = {
+                        "id": data.id,
+                        "contract_id": data.contract_id,
+                        "contract_number": data.contract_number,
+                        "contract_type": data.contract_type,
+                        "payment_method": data.payment_method,
+                        "start_period": data.start_period,
+                        "end_period": data.end_period,
+                        "products": json.loads(products),
+                        "customer_id": data.customer_id,
+                        "customer": data.customer if hasattr(data, "customer") else None,
+                    }
+                    return obj_dict
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return data
+    
+    class Config:
+        from_attributes = True
+
+
+class QuarterlyPlanEmbedded(BaseModel):
+    """Quarterly plan with embedded contract info for bulk queries"""
+    id: int
+    product_name: Optional[str] = None
+    q1_quantity: float = 0
+    q2_quantity: float = 0
+    q3_quantity: float = 0
+    q4_quantity: float = 0
+    contract_id: int
+    contract: Optional[ContractEmbedded] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class MonthlyPlanEnriched(MonthlyPlanBase):
+    """Monthly plan with embedded quarterly plan and contract info for bulk queries"""
+    id: int
+    quarterly_plan_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    quarterly_plan: Optional[QuarterlyPlanEmbedded] = None
+    
+    class Config:
+        from_attributes = True
+
+
 # Cargo Schemas
 class CargoBase(BaseModel):
     vessel_name: str

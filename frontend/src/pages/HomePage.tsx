@@ -511,49 +511,66 @@ export default function HomePage() {
 
   const loadMonthlyPlansForPortMovement = async () => {
     try {
-      // Get all contracts (use cached if available)
-      let allContracts = contracts
-      if (allContracts.length === 0) {
-        const contractsRes = await contractAPI.getAll()
-        allContracts = contractsRes.data || []
-        if (allContracts.length > 0) {
-          setContracts(allContracts)
-        }
-      }
-
-      if (allContracts.length === 0) {
-        return // No contracts to load plans for
-      }
-
-      // Get quarterly plans for all contracts and create a map
-      const quarterlyPlanPromises = allContracts.map((contract: Contract) => 
-        quarterlyPlanAPI.getAll(contract.id).then(res => ({ contract, quarterlyPlans: res.data || [] })).catch(() => ({ contract, quarterlyPlans: [] }))
-      )
-      const quarterlyPlanResults = await Promise.all(quarterlyPlanPromises)
+      // OPTIMIZED: Single API call instead of ~100+ calls
+      // The bulk endpoint returns monthly plans with embedded quarterly plan, contract, and customer data
+      const res = await monthlyPlanAPI.getBulk(selectedMonths, selectedYear, false)
+      const plans = res.data || []
       
+      // Build quarterlyPlansMap from the embedded data
       const qpMap = new Map<number, any>()
-      quarterlyPlanResults.forEach(({ contract, quarterlyPlans }) => {
-        quarterlyPlans.forEach((qp: any) => {
-          qpMap.set(qp.id, { ...qp, contract })
-        })
-      })
-      setQuarterlyPlansMap(qpMap)
-
-      // Get monthly plans for all quarterly plans
-      const allQuarterlyPlans = quarterlyPlanResults.flatMap((r: any) => r.quarterlyPlans)
-      const monthlyPlanPromises = allQuarterlyPlans.map((qp: any) => 
-        monthlyPlanAPI.getAll(qp.id).then(res => ({ quarterlyPlanId: qp.id, monthlyPlans: res.data || [] })).catch(() => ({ quarterlyPlanId: qp.id, monthlyPlans: [] }))
-      )
-      const monthlyPlanResults = await Promise.all(monthlyPlanPromises)
-      const allMonthlyPlans = monthlyPlanResults.flatMap((r: any) => 
-        r.monthlyPlans.map((mp: MonthlyPlan) => ({ ...mp, quarterlyPlanId: r.quarterlyPlanId }))
-      )
+      const contractsMap = new Map<number, any>()
+      const customersMap = new Map<number, any>()
       
-      // Filter by selected month(s) and year, and exclude plans with 0 quantity (deferred/cancelled)
-      const filtered = allMonthlyPlans.filter((mp: MonthlyPlan & { quarterlyPlanId: number }) => 
-        mp.year === selectedYear && selectedMonths.includes(mp.month) && mp.month_quantity > 0
-      )
-      setMonthlyPlans(filtered)
+      plans.forEach((mp: any) => {
+        // Extract and cache quarterly plan with its contract
+        if (mp.quarterly_plan && !qpMap.has(mp.quarterly_plan.id)) {
+          qpMap.set(mp.quarterly_plan.id, {
+            ...mp.quarterly_plan,
+            contract: mp.quarterly_plan.contract
+          })
+          
+          // Extract and cache contract with its customer
+          if (mp.quarterly_plan.contract && !contractsMap.has(mp.quarterly_plan.contract.id)) {
+            contractsMap.set(mp.quarterly_plan.contract.id, mp.quarterly_plan.contract)
+            
+            // Extract and cache customer
+            if (mp.quarterly_plan.contract.customer) {
+              const customer = mp.quarterly_plan.contract.customer
+              if (!customersMap.has(customer.id)) {
+                customersMap.set(customer.id, customer)
+              }
+            }
+          }
+        }
+      })
+      
+      setQuarterlyPlansMap(qpMap)
+      
+      // Update contracts if we got new ones (merge with existing to avoid losing any)
+      if (contractsMap.size > 0) {
+        setContracts(prev => {
+          const merged = new Map(prev.map((c: Contract) => [c.id, c]))
+          contractsMap.forEach((c, id) => merged.set(id, c))
+          return Array.from(merged.values())
+        })
+      }
+      
+      // Update customers if we got new ones (merge with existing to avoid losing any)
+      if (customersMap.size > 0) {
+        setCustomers(prev => {
+          const merged = new Map(prev.map((c: Customer) => [c.id, c]))
+          customersMap.forEach((c, id) => merged.set(id, c))
+          return Array.from(merged.values())
+        })
+      }
+      
+      // Transform plans to include quarterlyPlanId for compatibility with existing code
+      const transformedPlans = plans.map((mp: any) => ({
+        ...mp,
+        quarterlyPlanId: mp.quarterly_plan_id
+      }))
+      
+      setMonthlyPlans(transformedPlans)
     } catch (error) {
       console.error('Error loading monthly plans:', error)
       setMonthlyPlans([])
