@@ -103,6 +103,37 @@ def ensure_schema():
                         conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN IF NOT EXISTS product_name VARCHAR'))
                     else:
                         conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN product_name VARCHAR'))
+            
+            # Data migration: populate product_name for single-product contracts where it's NULL
+            try:
+                with engine.begin() as conn:
+                    # Get quarterly plans with NULL product_name
+                    result = conn.execute(text('''
+                        SELECT qp.id, c.products 
+                        FROM quarterly_plans qp 
+                        JOIN contracts c ON c.id = qp.contract_id 
+                        WHERE qp.product_name IS NULL
+                    '''))
+                    rows = result.fetchall()
+                    
+                    import json
+                    for row in rows:
+                        qp_id = row[0]
+                        products_json = row[1]
+                        if products_json:
+                            try:
+                                products = json.loads(products_json) if isinstance(products_json, str) else products_json
+                                if products and len(products) == 1:
+                                    product_name = products[0].get('name')
+                                    if product_name:
+                                        conn.execute(
+                                            text('UPDATE quarterly_plans SET product_name = :pn WHERE id = :id'),
+                                            {"pn": product_name, "id": qp_id}
+                                        )
+                            except Exception:
+                                pass
+            except Exception as e:
+                print(f"[MIGRATION] Failed to populate product_name for quarterly plans: {e}")
 
         # Monthly plans migrations - add combi_group_id for combi monthly plans
         if insp.has_table("monthly_plans"):
