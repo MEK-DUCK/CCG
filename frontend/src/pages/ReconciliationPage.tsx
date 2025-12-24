@@ -171,7 +171,7 @@ export default function ReconciliationPage() {
     const remarkByMonth = Array(13).fill('') as string[]
 
     for (let m = 1; m <= 12; m++) {
-      const changes: Array<{ label: string; delta: number }> = []
+      const allRemarks: string[] = []
       weeklyData.contracts.forEach((c) => {
         // Filter by product_name from API response
         if (!productMatchesCategory(c.product_name)) return
@@ -179,25 +179,22 @@ export default function ReconciliationPage() {
         if (!mm) return
         prevByMonth[m] += mm.previous_quantity || 0
         curByMonth[m] += mm.current_quantity || 0
-        const d = mm.delta || 0
-        if (Math.abs(d) > 1e-6) {
-          const label = c.contract_number || `Contract ${c.contract_id}`
-          changes.push({ label, delta: d })
+        
+        // Use remarks from API (includes defer/advance info)
+        if (mm.remark) {
+          // Split multi-line remarks and prefix with contract if not already included
+          const remarkLines = mm.remark.split('\n').filter((r: string) => r.trim())
+          allRemarks.push(...remarkLines)
         }
       })
 
-      if (changes.length) {
-        changes.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-        remarkByMonth[m] = changes
-          .slice(0, 4)
-          .map((x) => {
-            const qtyNum = Math.abs(x.delta)
-            const qtyStr = qtyNum % 1 === 0 ? `${qtyNum}` : qtyNum.toFixed(1)
-            const action = x.delta > 0 ? 'added' : 'removed'
-            return `Contract ${x.label}: ${qtyStr} KT ${action}`
-          })
-          .join('\n')
-        if (changes.length > 4) remarkByMonth[m] += `\n+${changes.length - 4} more`
+      if (allRemarks.length) {
+        // Limit to 6 remarks and show "+N more" if needed
+        const displayRemarks = allRemarks.slice(0, 6)
+        remarkByMonth[m] = displayRemarks.join('\n')
+        if (allRemarks.length > 6) {
+          remarkByMonth[m] += `\n+${allRemarks.length - 6} more`
+        }
       }
     }
 
