@@ -272,6 +272,8 @@ def read_cargos(
                 query = query.filter(models.MonthlyPlan.month == month)
             if year:
                 query = query.filter(models.MonthlyPlan.year == year)
+            # Exclude cargos where the monthly plan has quantity 0 (deferred/cancelled)
+            query = query.filter(models.MonthlyPlan.month_quantity > 0)
         
         cargos = query.offset(skip).limit(limit).all()
         return cargos
@@ -296,9 +298,11 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
         # - Completed Loading (all types) -> goes to Completed Cargos tab
         # - In-Road (Pending Discharge) -> goes to In-Road CIF tab
         # (CIF Pending Nomination remains in Port Movement)
+        # Also exclude cargos where the monthly plan has quantity 0 (deferred/cancelled)
         query = db.query(models.Cargo).join(models.MonthlyPlan).filter(
             models.MonthlyPlan.month == month,
-            models.MonthlyPlan.year == year
+            models.MonthlyPlan.year == year,
+            models.MonthlyPlan.month_quantity > 0  # Exclude deferred/cancelled plans with 0 quantity
         ).filter(
             not_(
                 or_(

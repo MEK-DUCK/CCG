@@ -549,9 +549,9 @@ export default function HomePage() {
         r.monthlyPlans.map((mp: MonthlyPlan) => ({ ...mp, quarterlyPlanId: r.quarterlyPlanId }))
       )
       
-      // Filter by selected month(s) and year
+      // Filter by selected month(s) and year, and exclude plans with 0 quantity (deferred/cancelled)
       const filtered = allMonthlyPlans.filter((mp: MonthlyPlan & { quarterlyPlanId: number }) => 
-        mp.year === selectedYear && selectedMonths.includes(mp.month)
+        mp.year === selectedYear && selectedMonths.includes(mp.month) && mp.month_quantity > 0
       )
       setMonthlyPlans(filtered)
     } catch (error) {
