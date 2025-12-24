@@ -219,6 +219,7 @@ export interface WeeklyQuantityContract {
   contract_id: number
   contract_number?: string | null
   contract_name?: string | null
+  product_name?: string | null  // Product name for filtering
   months: WeeklyQuantityMonth[]
   previous_total: number
   current_total: number

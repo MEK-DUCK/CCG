@@ -365,6 +365,7 @@ class WeeklyQuantityContract(BaseModel):
     contract_id: int
     contract_number: Optional[str] = None
     contract_name: Optional[str] = None
+    product_name: Optional[str] = None  # Product name for per-product filtering
     months: List[WeeklyQuantityMonth]
     previous_total: float
     current_total: float

@@ -19,6 +19,8 @@ import {
   Grid,
   Button,
   TablePagination,
+  Tabs,
+  Tab,
 } from '@mui/material'
 import { format } from 'date-fns'
 import { Refresh } from '@mui/icons-material'
@@ -29,7 +31,6 @@ import type {
   QuarterlyPlanAuditLog,
   WeeklyQuantityComparisonResponse,
   Contract,
-  ContractProduct,
 } from '../types'
 
 const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -46,7 +47,7 @@ export default function ReconciliationPage() {
   const [weeklyLoading, setWeeklyLoading] = useState(false)
   const [weeklyData, setWeeklyData] = useState<WeeklyQuantityComparisonResponse | null>(null)
   const [weeklyError, setWeeklyError] = useState<string | null>(null)
-  const [weeklyProduct, setWeeklyProduct] = useState<string>('') // '' = all
+  const [weeklyProduct, setWeeklyProduct] = useState<string>('GASOIL') // Default to first tab
   const [contracts, setContracts] = useState<Contract[]>([])
 
   // Pagination for logs table
@@ -155,26 +156,11 @@ export default function ReconciliationPage() {
     return null
   }
 
-  const contractIdToCategories = useMemo(() => {
-    const map = new Map<number, Set<string>>()
-    contracts.forEach((c) => {
-      const cats = new Set<string>()
-      if (Array.isArray(c.products)) {
-        c.products.forEach((p: ContractProduct) => {
-          const cat = normalizeProductCategory(p?.name)
-          if (cat) cats.add(cat)
-        })
-      }
-      map.set(c.id, cats)
-    })
-    return map
-  }, [contracts])
-
-  const isContractIncludedByProduct = (contractId: number): boolean => {
-    if (!weeklyProduct) return true
-    const cats = contractIdToCategories.get(contractId)
-    if (!cats) return false
-    return cats.has(weeklyProduct)
+  // Helper to check if a product name matches the selected product category
+  const productMatchesCategory = (productName: string | null | undefined): boolean => {
+    if (!productName) return false
+    const normalized = normalizeProductCategory(productName)
+    return normalized === weeklyProduct
   }
 
   const weeklyTotals = useMemo(() => {
@@ -187,7 +173,8 @@ export default function ReconciliationPage() {
     for (let m = 1; m <= 12; m++) {
       const changes: Array<{ label: string; delta: number }> = []
       weeklyData.contracts.forEach((c) => {
-        if (!isContractIncludedByProduct(c.contract_id)) return
+        // Filter by product_name from API response
+        if (!productMatchesCategory(c.product_name)) return
         const mm = c.months?.find((x) => x.month === m)
         if (!mm) return
         prevByMonth[m] += mm.previous_quantity || 0
@@ -202,17 +189,22 @@ export default function ReconciliationPage() {
       if (changes.length) {
         changes.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
         remarkByMonth[m] = changes
-          .slice(0, 6)
-          .map((x) => `${x.label} ${x.delta > 0 ? '+' : ''}${fmtQty(x.delta)}`)
-          .join('; ')
-        if (changes.length > 6) remarkByMonth[m] += `; +${changes.length - 6} more`
+          .slice(0, 4)
+          .map((x) => {
+            const qtyNum = Math.abs(x.delta)
+            const qtyStr = qtyNum % 1 === 0 ? `${qtyNum}` : qtyNum.toFixed(1)
+            const action = x.delta > 0 ? 'added' : 'removed'
+            return `Contract ${x.label}: ${qtyStr} KT ${action}`
+          })
+          .join('\n')
+        if (changes.length > 4) remarkByMonth[m] += `\n+${changes.length - 4} more`
       }
     }
 
     const previousTotal = prevByMonth.slice(1).reduce((a, b) => a + b, 0)
     const currentTotal = curByMonth.slice(1).reduce((a, b) => a + b, 0)
     return { prevByMonth, curByMonth, remarkByMonth, previousTotal, currentTotal }
-  }, [weeklyData, weeklyProduct, contractIdToCategories])
+  }, [weeklyData, weeklyProduct])
 
   const getActionColor = (action: string) => {
     switch (action) {
@@ -346,7 +338,7 @@ export default function ReconciliationPage() {
               Weekly Quantity Comparison
             </Typography>
             <Typography variant="body2" sx={{ color: '#64748B', mt: 0.5 }}>
-              Sun–Thu snapshot for {weeklyProduct ? weeklyProduct : 'all products'}
+              Sun–Thu snapshot for {weeklyProduct}
             </Typography>
             {weeklyData && (
               <Box sx={{ display: 'inline-flex', alignItems: 'center', mt: 1, px: 1.5, py: 0.5, bgcolor: 'rgba(71, 85, 105, 0.08)', borderRadius: 1.5 }}>
@@ -357,17 +349,6 @@ export default function ReconciliationPage() {
             )}
           </Box>
           <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <InputLabel>Product</InputLabel>
-              <Select value={weeklyProduct} label="Product" onChange={(e) => setWeeklyProduct(String(e.target.value))}>
-                <MenuItem value="">All Products</MenuItem>
-                {PRODUCT_FILTERS.map((p) => (
-                  <MenuItem key={p} value={p}>
-                    {p}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
             <Button 
               variant="outlined" 
               size="small"
@@ -387,6 +368,34 @@ export default function ReconciliationPage() {
               Refresh
             </Button>
           </Box>
+        </Box>
+
+        {/* Product Tabs */}
+        <Box sx={{ mb: 2 }}>
+          <Tabs
+            value={PRODUCT_FILTERS.indexOf(weeklyProduct as typeof PRODUCT_FILTERS[number])}
+            onChange={(_, newValue) => setWeeklyProduct(PRODUCT_FILTERS[newValue])}
+            sx={{
+              '& .MuiTabs-indicator': {
+                backgroundColor: '#2563EB',
+                height: 3,
+              },
+              '& .MuiTab-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '1rem',
+                color: '#64748B',
+                minWidth: 120,
+                '&.Mui-selected': {
+                  color: '#2563EB',
+                },
+              },
+            }}
+          >
+            <Tab label="GASOIL" />
+            <Tab label="JET A-1" />
+            <Tab label="FUEL OIL" />
+          </Tabs>
         </Box>
 
         {weeklyLoading ? (
@@ -439,9 +448,9 @@ export default function ReconciliationPage() {
                   ))}
                 </TableRow>
                 <TableRow sx={{ bgcolor: '#FAFBFC' }}>
-                  <TableCell sx={{ fontWeight: 500, whiteSpace: 'nowrap', color: '#64748B' }}>Remarks</TableCell>
+                  <TableCell sx={{ fontWeight: 500, whiteSpace: 'nowrap', color: '#64748B', verticalAlign: 'top' }}>Remarks</TableCell>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                    <TableCell key={m} sx={{ minWidth: 180, fontSize: '0.75rem', color: '#64748B' }}>
+                    <TableCell key={m} align="right" sx={{ minWidth: 140, fontSize: '0.75rem', color: '#64748B', whiteSpace: 'pre-line', verticalAlign: 'top' }}>
                       {weeklyTotals.remarkByMonth[m] || '—'}
                     </TableCell>
                   ))}

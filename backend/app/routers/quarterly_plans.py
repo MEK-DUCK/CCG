@@ -78,13 +78,24 @@ def create_quarterly_plan(plan: schemas.QuarterlyPlanCreate, db: Session = Depen
             detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) must equal either the {target_label} total ({total_contract_quantity:,.0f} KT) or the maximum allowed ({max_allowed:,.0f} KT = total + optional)"
         )
     
+    # Determine the product_name to use
+    # For multi-product contracts: use the specified product_name
+    # For single-product contracts: use the contract's only product name
+    if plan.product_name and is_multi_product:
+        product_name_to_use = plan.product_name
+    elif len(contract_products) == 1:
+        # Single product contract - use the product name from the contract
+        product_name_to_use = contract_products[0].get('name')
+    else:
+        product_name_to_use = None
+    
     db_plan = models.QuarterlyPlan(
         q1_quantity=plan.q1_quantity,
         q2_quantity=plan.q2_quantity,
         q3_quantity=plan.q3_quantity,
         q4_quantity=plan.q4_quantity,
         contract_id=plan.contract_id,
-        product_name=plan.product_name if (plan.product_name and is_multi_product) else None
+        product_name=product_name_to_use
     )
     db.add(db_plan)
     db.flush()  # Flush to get the ID

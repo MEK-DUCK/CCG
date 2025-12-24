@@ -253,12 +253,13 @@ def get_weekly_quantity_comparison(
         week_start = snapshot_at - timedelta(days=4)
         target_year = year or now.year
 
-        # Current live totals by contract/month for the year
+        # Current live totals by contract/product/month for the year
         current_rows = (
             db.query(
                 models.Contract.id.label("contract_id"),
                 models.Contract.contract_number.label("contract_number"),
                 models.Customer.name.label("contract_name"),
+                models.QuarterlyPlan.product_name.label("product_name"),
                 models.MonthlyPlan.month.label("month"),
                 func.coalesce(func.sum(models.MonthlyPlan.month_quantity), 0.0).label("qty"),
             )
@@ -266,19 +267,30 @@ def get_weekly_quantity_comparison(
             .join(models.Contract, models.Contract.id == models.QuarterlyPlan.contract_id)
             .join(models.Customer, models.Customer.id == models.Contract.customer_id)
             .filter(models.MonthlyPlan.year == target_year)
-            .group_by(models.Contract.id, models.Contract.contract_number, models.Customer.name, models.MonthlyPlan.month)
+            .group_by(models.Contract.id, models.Contract.contract_number, models.Customer.name, models.QuarterlyPlan.product_name, models.MonthlyPlan.month)
             .all()
         )
 
-        current_by_key: Dict[Tuple[int, int], float] = {}
-        contract_info: Dict[int, Dict[str, Optional[str]]] = {}
+        # Key is now (contract_id, product_name, month)
+        current_by_key: Dict[Tuple[int, str, int], float] = {}
+        contract_product_info: Dict[Tuple[int, str], Dict[str, Optional[str]]] = {}
         for r in current_rows:
-            contract_info[int(r.contract_id)] = {"contract_number": r.contract_number, "contract_name": r.contract_name}
-            current_by_key[(int(r.contract_id), int(r.month))] = float(r.qty or 0.0)
+            product_name = r.product_name or "Unknown"
+            contract_product_info[(int(r.contract_id), product_name)] = {
+                "contract_number": r.contract_number, 
+                "contract_name": r.contract_name,
+                "product_name": product_name
+            }
+            current_by_key[(int(r.contract_id), product_name, int(r.month))] = float(r.qty or 0.0)
 
         # Net deltas since snapshot_at from audit logs (previous = current - delta_since_snapshot)
+        # We need to get product_name for each log entry via quarterly_plan
         logs = (
-            db.query(models.MonthlyPlanAuditLog)
+            db.query(
+                models.MonthlyPlanAuditLog,
+                models.QuarterlyPlan.product_name.label("product_name")
+            )
+            .outerjoin(models.QuarterlyPlan, models.QuarterlyPlan.id == models.MonthlyPlanAuditLog.quarterly_plan_id)
             .filter(models.MonthlyPlanAuditLog.created_at > snapshot_at)
             .filter(models.MonthlyPlanAuditLog.year == target_year)
             .filter(models.MonthlyPlanAuditLog.contract_id.isnot(None))
@@ -291,11 +303,22 @@ def get_weekly_quantity_comparison(
             .all()
         )
 
-        delta_by_key: Dict[Tuple[int, int], float] = {}
-        for log in logs:
+        # Key is now (contract_id, product_name, month)
+        delta_by_key: Dict[Tuple[int, str, int], float] = {}
+        for log_row in logs:
+            # log_row is a Row object with MonthlyPlanAuditLog and product_name
+            log = log_row[0]  # MonthlyPlanAuditLog object
+            product_name_from_qp = log_row[1]  # product_name from QuarterlyPlan
+            if not product_name_from_qp:
+                product_name_from_qp = "Unknown"
+            
             cid = int(log.contract_id)
             m = int(log.month)
-            contract_info.setdefault(cid, {"contract_number": log.contract_number, "contract_name": log.contract_name})
+            contract_product_info.setdefault((cid, product_name_from_qp), {
+                "contract_number": log.contract_number, 
+                "contract_name": log.contract_name,
+                "product_name": product_name_from_qp
+            })
 
             delta = 0.0
             if log.action in ("UPDATE", "CREATE") and log.field_name == "month_quantity":
@@ -314,19 +337,20 @@ def get_weekly_quantity_comparison(
                     delta = -qty_removed
 
             if abs(delta) > 1e-9:
-                key = (cid, m)
+                key = (cid, product_name_from_qp, m)
                 delta_by_key[key] = float(delta_by_key.get(key, 0.0) + delta)
 
         contracts_out: List[schemas.WeeklyQuantityContract] = []
-        for cid in sorted(contract_info.keys(), key=lambda x: (contract_info[x].get("contract_number") or "", x)):
+        # Sort by (contract_number, product_name)
+        for (cid, product_name) in sorted(contract_product_info.keys(), key=lambda x: (contract_product_info[x].get("contract_number") or "", x[1] or "", x[0])):
             month_deltas: Dict[int, float] = {}
             months_out: List[schemas.WeeklyQuantityMonth] = []
             prev_total = 0.0
             cur_total = 0.0
 
             for m in range(1, 13):
-                cur = float(current_by_key.get((cid, m), 0.0))
-                delta_since = float(delta_by_key.get((cid, m), 0.0))
+                cur = float(current_by_key.get((cid, product_name, m), 0.0))
+                delta_since = float(delta_by_key.get((cid, product_name, m), 0.0))
                 prev = cur - delta_since
                 if prev < 0 and abs(prev) < 1e-6:
                     prev = 0.0
@@ -360,8 +384,9 @@ def get_weekly_quantity_comparison(
             contracts_out.append(
                 schemas.WeeklyQuantityContract(
                     contract_id=cid,
-                    contract_number=contract_info[cid].get("contract_number"),
-                    contract_name=contract_info[cid].get("contract_name"),
+                    contract_number=contract_product_info[(cid, product_name)].get("contract_number"),
+                    contract_name=contract_product_info[(cid, product_name)].get("contract_name"),
+                    product_name=product_name,
                     months=months_out,
                     previous_total=prev_total,
                     current_total=cur_total,
