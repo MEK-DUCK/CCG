@@ -143,14 +143,18 @@ def get_monthly_plan_audit_logs(
     limit: int = Query(100, ge=1, le=1000, description="Limit number of results"),
     db: Session = Depends(get_db)
 ):
-    """Get monthly plan audit logs with optional filters, including product_name from quarterly plan"""
-    # Join with QuarterlyPlan to get product_name
+    """Get monthly plan audit logs with optional filters, including product_name from quarterly plan or contract"""
+    # Join with QuarterlyPlan and Contract to get product_name
     query = db.query(
         models.MonthlyPlanAuditLog,
-        models.QuarterlyPlan.product_name.label("product_name")
+        models.QuarterlyPlan.product_name.label("qp_product_name"),
+        models.Contract.products.label("contract_products")
     ).outerjoin(
         models.QuarterlyPlan,
         models.QuarterlyPlan.id == models.MonthlyPlanAuditLog.quarterly_plan_id
+    ).outerjoin(
+        models.Contract,
+        models.Contract.id == models.MonthlyPlanAuditLog.contract_id
     )
     
     if monthly_plan_id:
@@ -176,7 +180,19 @@ def get_monthly_plan_audit_logs(
     logs = []
     for row in rows:
         log = row[0]  # MonthlyPlanAuditLog object
-        product_name = row[1]  # product_name from QuarterlyPlan
+        qp_product_name = row[1]  # product_name from QuarterlyPlan
+        contract_products = row[2]  # products JSON from Contract
+        
+        # Determine product_name: use quarterly plan's product_name first,
+        # fallback to first product from contract if single-product contract
+        product_name = qp_product_name
+        if not product_name and contract_products:
+            try:
+                products = json.loads(contract_products) if isinstance(contract_products, str) else contract_products
+                if products and len(products) == 1:
+                    product_name = products[0].get('name')
+            except Exception:
+                pass
         
         # Create a dict from the log and add product_name
         log_dict = {
