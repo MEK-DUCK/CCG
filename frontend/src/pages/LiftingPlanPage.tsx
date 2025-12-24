@@ -19,6 +19,8 @@ import {
   Button,
   useMediaQuery,
   useTheme,
+  Tabs,
+  Tab,
 } from '@mui/material'
 import { FileDownload, PictureAsPdf } from '@mui/icons-material'
 import { customerAPI, contractAPI, quarterlyPlanAPI, monthlyPlanAPI, cargoAPI } from '../api/client'
@@ -57,7 +59,7 @@ export default function LiftingPlanPage() {
   const PRODUCT_FILTERS = ['GASOIL', 'JET A-1', 'FUEL OIL'] as const
   const [selectedQuarter, setSelectedQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>('Q1')
   const [selectedYear, setSelectedYear] = useState(2024) // Default to 2024 to match test data
-  const [selectedProduct, setSelectedProduct] = useState<string>('') // Product filter
+  const [selectedProduct, setSelectedProduct] = useState<string>('GASOIL') // Product filter - defaults to first tab
   const [customers, setCustomers] = useState<Customer[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
@@ -75,7 +77,7 @@ export default function LiftingPlanPage() {
     if (customers.length > 0 && contracts.length > 0 && quarterlyPlans.length > 0 && monthlyPlans.length > 0) {
       calculateQuarterlyData()
     }
-  }, [selectedQuarter, selectedYear, customers, contracts, quarterlyPlans, monthlyPlans, cargos, notes])
+  }, [selectedQuarter, selectedYear, selectedProduct, customers, contracts, quarterlyPlans, monthlyPlans, cargos, notes])
 
   const loadData = async () => {
     try {
@@ -103,6 +105,25 @@ export default function LiftingPlanPage() {
     }
   }
 
+  // Helper function to normalize product names to categories
+  const normalizeProductCategory = (raw: unknown): string | null => {
+    if (typeof raw !== 'string') return null
+    const v = raw.trim()
+    if (!v) return null
+    const u = v.toUpperCase()
+    if (u === 'GASOIL' || u === 'GASOIL 10PPM') return 'GASOIL'
+    if (u === 'HFO' || u === 'LSFO') return 'FUEL OIL'
+    if (u === 'JET A-1' || u === 'JET A1') return 'JET A-1'
+    return v
+  }
+
+  // Helper to check if a product name matches a category filter
+  const productMatchesCategory = (productName: string | undefined, category: string): boolean => {
+    if (!productName) return false
+    const normalizedProduct = normalizeProductCategory(productName)
+    return normalizedProduct === category
+  }
+
   const calculateQuarterlyData = () => {
     const dataMap = new Map<number, ContractQuarterlyData>()
     
@@ -120,17 +141,6 @@ export default function LiftingPlanPage() {
       const customer = customers.find(c => c.id === contract.customer_id)
       if (!customer) return
 
-      const normalizeProductCategory = (raw: unknown): string | null => {
-        if (typeof raw !== 'string') return null
-        const v = raw.trim()
-        if (!v) return null
-        const u = v.toUpperCase()
-        if (u === 'GASOIL' || u === 'GASOIL 10PPM') return 'GASOIL'
-        if (u === 'HFO' || u === 'LSFO') return 'FUEL OIL'
-        if (u === 'JET A-1' || u === 'JET A1') return 'JET A-1'
-        return v
-      }
-
       const productCategories = new Set<string>()
       if (Array.isArray(contract.products)) {
         contract.products.forEach((p) => {
@@ -138,7 +148,15 @@ export default function LiftingPlanPage() {
           if (cat) productCategories.add(cat)
         })
       }
-      const productsText = productCategories.size > 0 ? Array.from(productCategories).join(', ') : '-'
+      
+      // When a product filter is selected, only show that product in the productsText
+      let productsText: string
+      if (selectedProduct) {
+        // Only show the selected product if the contract has it
+        productsText = productCategories.has(selectedProduct) ? selectedProduct : '-'
+      } else {
+        productsText = productCategories.size > 0 ? Array.from(productCategories).join(', ') : '-'
+      }
 
       dataMap.set(contract.id, {
         customerId: contract.customer_id,
@@ -201,37 +219,70 @@ export default function LiftingPlanPage() {
         const monthIndex = months.indexOf(firstPlan.month)
         if (monthIndex === -1) return
 
-        // Calculate total quantity and collect product quantities
-        const totalQuantity = combiPlans.reduce((sum, mp) => sum + mp.month_quantity, 0)
-        const combiProducts = combiPlans.map(mp => ({
+        // Collect all product quantities in the combi group
+        const allCombiProducts = combiPlans.map(mp => ({
           productName: mp.productName || 'Unknown',
           quantity: mp.month_quantity
         }))
 
-        const entry: MonthlyPlanEntry = {
-          monthlyPlanId: firstPlan.id,  // Use first plan's ID as reference
-          month: firstPlan.month,
-          quantity: totalQuantity,
-          laycan5Days: contract.contract_type === 'FOB' ? (firstPlan.laycan_5_days || undefined) : undefined,
-          laycan2Days: contract.contract_type === 'FOB' ? (firstPlan.laycan_2_days || undefined) : undefined,
-          loadingWindow: contract.contract_type === 'CIF' ? (firstPlan.loading_window || undefined) : undefined,
-          deliveryWindow: contract.contract_type === 'CIF' ? (firstPlan.delivery_window || undefined) : undefined,
-          isCombi: true,
-          combiGroupId,
-          combiProducts,
-        }
+        // If a product filter is selected, check if this combi contains the filtered product
+        if (selectedProduct) {
+          const matchingProduct = allCombiProducts.find(cp => productMatchesCategory(cp.productName, selectedProduct))
+          if (!matchingProduct) return // Skip this combi if it doesn't contain the filtered product
+          
+          // Only show the filtered product's quantity, but indicate it's part of a combi
+          const entry: MonthlyPlanEntry = {
+            monthlyPlanId: firstPlan.id,
+            month: firstPlan.month,
+            quantity: matchingProduct.quantity,  // Only the filtered product's quantity
+            laycan5Days: contract.contract_type === 'FOB' ? (firstPlan.laycan_5_days || undefined) : undefined,
+            laycan2Days: contract.contract_type === 'FOB' ? (firstPlan.laycan_2_days || undefined) : undefined,
+            loadingWindow: contract.contract_type === 'CIF' ? (firstPlan.loading_window || undefined) : undefined,
+            deliveryWindow: contract.contract_type === 'CIF' ? (firstPlan.delivery_window || undefined) : undefined,
+            isCombi: true,
+            combiGroupId,
+            combiProducts: undefined,  // Don't show other products when filtered
+          }
 
-        if (monthIndex === 0) {
-          contractData.month1Entries.push(entry)
-        } else if (monthIndex === 1) {
-          contractData.month2Entries.push(entry)
-        } else if (monthIndex === 2) {
-          contractData.month3Entries.push(entry)
+          if (monthIndex === 0) {
+            contractData.month1Entries.push(entry)
+          } else if (monthIndex === 1) {
+            contractData.month2Entries.push(entry)
+          } else if (monthIndex === 2) {
+            contractData.month3Entries.push(entry)
+          }
+        } else {
+          // No filter - show all products in the combi
+          const totalQuantity = combiPlans.reduce((sum, mp) => sum + mp.month_quantity, 0)
+
+          const entry: MonthlyPlanEntry = {
+            monthlyPlanId: firstPlan.id,  // Use first plan's ID as reference
+            month: firstPlan.month,
+            quantity: totalQuantity,
+            laycan5Days: contract.contract_type === 'FOB' ? (firstPlan.laycan_5_days || undefined) : undefined,
+            laycan2Days: contract.contract_type === 'FOB' ? (firstPlan.laycan_2_days || undefined) : undefined,
+            loadingWindow: contract.contract_type === 'CIF' ? (firstPlan.loading_window || undefined) : undefined,
+            deliveryWindow: contract.contract_type === 'CIF' ? (firstPlan.delivery_window || undefined) : undefined,
+            isCombi: true,
+            combiGroupId,
+            combiProducts: allCombiProducts,
+          }
+
+          if (monthIndex === 0) {
+            contractData.month1Entries.push(entry)
+          } else if (monthIndex === 1) {
+            contractData.month2Entries.push(entry)
+          } else if (monthIndex === 2) {
+            contractData.month3Entries.push(entry)
+          }
         }
       })
 
       // Process non-combi plans individually
       nonCombiPlans.forEach(mp => {
+        // If a product filter is selected, skip plans that don't match the category
+        if (selectedProduct && !productMatchesCategory(mp.productName, selectedProduct)) return
+        
         const monthIndex = months.indexOf(mp.month)
         if (monthIndex === -1) return
 
@@ -291,23 +342,10 @@ export default function LiftingPlanPage() {
     return monthNames[quarter][index]
   }
 
-  const getProductOptions = (): string[] => {
-    // Explicit 3 filters as requested
-    return Array.from(PRODUCT_FILTERS)
-  }
-
-  const matchesSelectedProduct = (productsText: string, product: string): boolean => {
-    if (!product) return true
-    const parts = (productsText || '')
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean)
-    return parts.includes(product)
-  }
-
   const getFilteredDataArray = (): ContractQuarterlyData[] => {
     return Array.from(contractData.values())
-      .filter((d) => matchesSelectedProduct(d.productsText || '', selectedProduct))
+      // Only show contracts that have entries for the selected product
+      .filter((d) => d.month1Entries.length > 0 || d.month2Entries.length > 0 || d.month3Entries.length > 0 || d.total > 0)
       .sort((a, b) => {
         const customerCompare = a.customerName.localeCompare(b.customerName)
         if (customerCompare !== 0) return customerCompare
@@ -860,21 +898,6 @@ export default function LiftingPlanPage() {
             </Select>
           </FormControl>
 
-          <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel>Product</InputLabel>
-            <Select
-              value={selectedProduct}
-              label="Product"
-              onChange={(e) => setSelectedProduct(String(e.target.value))}
-            >
-              <MenuItem value="">All Products</MenuItem>
-              {getProductOptions().map((p) => (
-                <MenuItem key={p} value={p}>
-                  {p}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
         </Box>
         
         <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
@@ -919,9 +942,37 @@ export default function LiftingPlanPage() {
         </Box>
       </Box>
 
+      {/* Product Tabs */}
+      <Box sx={{ mt: 3 }}>
+        <Tabs
+          value={PRODUCT_FILTERS.indexOf(selectedProduct as typeof PRODUCT_FILTERS[number])}
+          onChange={(_, newValue) => setSelectedProduct(PRODUCT_FILTERS[newValue])}
+          sx={{
+            '& .MuiTabs-indicator': {
+              backgroundColor: '#2563EB',
+              height: 3,
+            },
+            '& .MuiTab-root': {
+              textTransform: 'none',
+              fontWeight: 600,
+              fontSize: '1rem',
+              color: '#64748B',
+              minWidth: 120,
+              '&.Mui-selected': {
+                color: '#2563EB',
+              },
+            },
+          }}
+        >
+          <Tab label="GASOIL" />
+          <Tab label="JET A-1" />
+          <Tab label="FUEL OIL" />
+        </Tabs>
+      </Box>
+
       <Box 
         sx={{ 
-          mt: 4,
+          mt: 2,
           bgcolor: '#FFFFFF',
           borderRadius: 3,
           boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.05)',

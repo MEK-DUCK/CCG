@@ -221,34 +221,9 @@ export default function HomePage() {
   }
 
   const applyLocalPortOpPatch = (cargoId: number, portCode: string, patch: Partial<CargoPortOperation>) => {
-    setPortMovement((prev) =>
-      prev.map((c) => {
-        if (c.id !== cargoId) return c
-        const existing = Array.isArray(c.port_operations) ? c.port_operations : []
-        const found = existing.find((op) => op.port_code === portCode)
-        const base: CargoPortOperation = found || {
-          id: -1,
-          cargo_id: cargoId,
-          port_code: portCode as any,
-          status: 'Loading',
-          eta: undefined,
-          berthed: undefined,
-          commenced: undefined,
-          etc: undefined,
-          notes: undefined,
-          created_at: new Date().toISOString(),
-          updated_at: undefined,
-        }
-        const nextOp = { ...base, ...patch, port_code: base.port_code, cargo_id: cargoId }
-        const nextOps = found
-          ? existing.map((op) => (op.port_code === portCode ? (nextOp as CargoPortOperation) : op))
-          : [...existing, nextOp as CargoPortOperation]
-        return { ...c, port_operations: nextOps }
-      })
-    )
-    setEditingCargo((prev) => {
-      if (!prev || prev.id !== cargoId) return prev
-      const existing = Array.isArray(prev.port_operations) ? prev.port_operations : []
+    const patchCargoPortOps = (c: Cargo): Cargo => {
+      if (c.id !== cargoId) return c
+      const existing = Array.isArray(c.port_operations) ? c.port_operations : []
       const found = existing.find((op) => op.port_code === portCode)
       const base: CargoPortOperation = found || {
         id: -1,
@@ -267,7 +242,16 @@ export default function HomePage() {
       const nextOps = found
         ? existing.map((op) => (op.port_code === portCode ? (nextOp as CargoPortOperation) : op))
         : [...existing, nextOp as CargoPortOperation]
-      return { ...prev, port_operations: nextOps }
+      return { ...c, port_operations: nextOps }
+    }
+    
+    setPortMovement((prev) => prev.map(patchCargoPortOps))
+    setActiveLoadings((prev) => prev.map(patchCargoPortOps))
+    setCompletedCargos((prev) => prev.map(patchCargoPortOps))
+    setInRoadCIF((prev) => prev.map(patchCargoPortOps))
+    setEditingCargo((prev) => {
+      if (!prev || prev.id !== cargoId) return prev
+      return patchCargoPortOps(prev)
     })
   }
 
@@ -303,11 +287,33 @@ export default function HomePage() {
   const schedulePortOpSave = (cargoId: number, portCode: string, patch: Partial<CargoPortOperation>) => {
     // Optimistic UI update so typing is instant; server save happens in the background.
     applyLocalPortOpPatch(cargoId, portCode, patch)
+    
+    // Find the cargo to check if it's part of a combie group
+    const cargo = [...portMovement, ...activeLoadings, ...completedCargos, ...inRoadCIF].find(c => c.id === cargoId)
+    
+    // For combie cargos, also update port operations for other cargos in the group
+    const combieCargosToUpdate = cargo?.combi_group_id
+      ? [...portMovement, ...activeLoadings, ...completedCargos, ...inRoadCIF]
+          .filter(c => c.combi_group_id === cargo.combi_group_id && c.id !== cargoId)
+          .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i) // dedupe
+      : []
+    
+    // Apply optimistic update to combie cargos as well
+    combieCargosToUpdate.forEach(c => {
+      applyLocalPortOpPatch(c.id, portCode, patch)
+    })
+    
     const key = `${cargoId}:${portCode}`
     const existing = portOpTimersRef.current[key]
     if (existing) window.clearTimeout(existing)
     portOpTimersRef.current[key] = window.setTimeout(() => {
+      // Save for the main cargo
       upsertPortOp(cargoId, portCode, patch).catch((e) => console.error('Error saving port operation:', e))
+      
+      // Also save for combie cargos
+      combieCargosToUpdate.forEach(c => {
+        upsertPortOp(c.id, portCode, patch).catch((e) => console.error('Error saving port operation for combie cargo:', e))
+      })
     }, 500)
   }
 
@@ -897,6 +903,20 @@ export default function HomePage() {
               })
             }
             return [...prev, updatedCargo]
+          })
+        }
+        
+        // OPTIMISTIC: If status changed to COMPLETED_LOADING, remove from activeLoadings
+        // For combie cargos, remove ALL cargos in the group from activeLoadings
+        if (cargoFormData.status === 'COMPLETED_LOADING') {
+          setActiveLoadings(prev => {
+            if (editingCargo.combi_group_id) {
+              // Remove all cargos in the combie group
+              return prev.filter(c => c.combi_group_id !== editingCargo.combi_group_id)
+            } else {
+              // Remove just this cargo
+              return prev.filter(c => c.id !== editingCargo.id)
+            }
           })
         }
         
