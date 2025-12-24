@@ -314,6 +314,8 @@ export default function ReconciliationPage() {
                 <MenuItem value="CREATE">Create</MenuItem>
                 <MenuItem value="UPDATE">Update</MenuItem>
                 <MenuItem value="DELETE">Delete</MenuItem>
+                <MenuItem value="DEFER">Defer</MenuItem>
+                <MenuItem value="ADVANCE">Advance</MenuItem>
               </Select>
             </FormControl>
           </Grid>
@@ -507,6 +509,7 @@ export default function ReconciliationPage() {
                     <TableCell>Type</TableCell>
                     <TableCell>Action</TableCell>
                     <TableCell>Contract</TableCell>
+                    <TableCell>Product</TableCell>
                     <TableCell>Plan Period</TableCell>
                     <TableCell>Description</TableCell>
                     <TableCell>Field Change</TableCell>
@@ -551,6 +554,26 @@ export default function ReconciliationPage() {
                               </Typography>
                             )}
                           </Box>
+                        ) : (
+                          <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isMonthlyPlanLog(log) && log.product_name ? (
+                          <Chip
+                            label={log.product_name}
+                            size="small"
+                            sx={{ 
+                              fontWeight: 500, 
+                              fontSize: '0.75rem',
+                              bgcolor: log.product_name.includes('GASOIL') ? '#FEF3C7' : 
+                                       log.product_name.includes('JET') ? '#DBEAFE' : 
+                                       log.product_name.includes('FUEL') ? '#F3E8FF' : '#F1F5F9',
+                              color: log.product_name.includes('GASOIL') ? '#92400E' : 
+                                     log.product_name.includes('JET') ? '#1E40AF' : 
+                                     log.product_name.includes('FUEL') ? '#6B21A8' : '#475569',
+                            }}
+                          />
                         ) : (
                           <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
                         )}

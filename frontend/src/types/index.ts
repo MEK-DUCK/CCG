@@ -185,6 +185,7 @@ export interface MonthlyPlanAuditLog {
   contract_number?: string
   contract_name?: string
   quarterly_plan_id?: number
+  product_name?: string  // Product name from quarterly plan
   description?: string
   created_at: string
   monthly_plan_snapshot?: string

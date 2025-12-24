@@ -143,8 +143,15 @@ def get_monthly_plan_audit_logs(
     limit: int = Query(100, ge=1, le=1000, description="Limit number of results"),
     db: Session = Depends(get_db)
 ):
-    """Get monthly plan audit logs with optional filters"""
-    query = db.query(models.MonthlyPlanAuditLog)
+    """Get monthly plan audit logs with optional filters, including product_name from quarterly plan"""
+    # Join with QuarterlyPlan to get product_name
+    query = db.query(
+        models.MonthlyPlanAuditLog,
+        models.QuarterlyPlan.product_name.label("product_name")
+    ).outerjoin(
+        models.QuarterlyPlan,
+        models.QuarterlyPlan.id == models.MonthlyPlanAuditLog.quarterly_plan_id
+    )
     
     if monthly_plan_id:
         query = query.filter(
@@ -163,7 +170,36 @@ def get_monthly_plan_audit_logs(
     
     query = query.order_by(desc(models.MonthlyPlanAuditLog.created_at)).limit(limit)
     
-    logs = query.all()
+    rows = query.all()
+    
+    # Transform rows to include product_name
+    logs = []
+    for row in rows:
+        log = row[0]  # MonthlyPlanAuditLog object
+        product_name = row[1]  # product_name from QuarterlyPlan
+        
+        # Create a dict from the log and add product_name
+        log_dict = {
+            "id": log.id,
+            "monthly_plan_id": log.monthly_plan_id,
+            "monthly_plan_db_id": log.monthly_plan_db_id,
+            "action": log.action,
+            "field_name": log.field_name,
+            "old_value": log.old_value,
+            "new_value": log.new_value,
+            "month": log.month,
+            "year": log.year,
+            "contract_id": log.contract_id,
+            "contract_number": log.contract_number,
+            "contract_name": log.contract_name,
+            "quarterly_plan_id": log.quarterly_plan_id,
+            "product_name": product_name,
+            "description": log.description,
+            "created_at": log.created_at,
+            "monthly_plan_snapshot": log.monthly_plan_snapshot,
+        }
+        logs.append(schemas.MonthlyPlanAuditLog(**log_dict))
+    
     return logs
 
 @router.get("/quarterly-plan", response_model=List[schemas.QuarterlyPlanAuditLog])

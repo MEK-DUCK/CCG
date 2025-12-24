@@ -322,7 +322,7 @@ class MonthlyPlanAuditLog(BaseModel):
     id: int
     monthly_plan_id: Optional[int] = None
     monthly_plan_db_id: Optional[int] = None
-    action: str  # 'CREATE', 'UPDATE', 'DELETE'
+    action: str  # 'CREATE', 'UPDATE', 'DELETE', 'DEFER', 'ADVANCE'
     field_name: Optional[str] = None
     old_value: Optional[str] = None
     new_value: Optional[str] = None
@@ -332,6 +332,7 @@ class MonthlyPlanAuditLog(BaseModel):
     contract_number: Optional[str] = None
     contract_name: Optional[str] = None
     quarterly_plan_id: Optional[int] = None
+    product_name: Optional[str] = None  # Product name from quarterly plan
     description: Optional[str] = None
     created_at: datetime
     monthly_plan_snapshot: Optional[str] = None

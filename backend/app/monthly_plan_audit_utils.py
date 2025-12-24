@@ -24,11 +24,7 @@ def log_monthly_plan_action(
     field_name: str = None,
     old_value=None,
     new_value=None,
-    description: str = None,
-    old_month: int = None,
-    old_year: int = None,
-    new_month: int = None,
-    new_year: int = None
+    description: str = None
 ):
     """Log a monthly plan action to the audit log"""
     
