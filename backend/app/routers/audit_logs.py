@@ -254,8 +254,20 @@ def get_reconciliation_logs(
     limit: int = Query(100, ge=1, le=1000, description="Limit number of results"),
     db: Session = Depends(get_db)
 ):
-    """Get reconciliation logs - shows monthly and quarterly plan changes only"""
-    monthly_query = db.query(models.MonthlyPlanAuditLog)
+    """Get reconciliation logs - shows monthly and quarterly plan changes only, with product_name"""
+    # Join monthly plan logs with QuarterlyPlan and Contract to get product_name
+    monthly_query = db.query(
+        models.MonthlyPlanAuditLog,
+        models.QuarterlyPlan.product_name.label("qp_product_name"),
+        models.Contract.products.label("contract_products")
+    ).outerjoin(
+        models.QuarterlyPlan,
+        models.QuarterlyPlan.id == models.MonthlyPlanAuditLog.quarterly_plan_id
+    ).outerjoin(
+        models.Contract,
+        models.Contract.id == models.MonthlyPlanAuditLog.contract_id
+    )
+    
     quarterly_query = db.query(models.QuarterlyPlanAuditLog)
     
     # Apply filters to monthly plan logs
@@ -271,12 +283,52 @@ def get_reconciliation_logs(
         quarterly_query = quarterly_query.filter(models.QuarterlyPlanAuditLog.action == action.upper())
     
     # Get results
-    monthly_logs = monthly_query.all()
+    monthly_rows = monthly_query.all()
     quarterly_logs = quarterly_query.all()
+    
+    # Transform monthly logs to include product_name
+    monthly_logs_with_product = []
+    for row in monthly_rows:
+        log = row[0]  # MonthlyPlanAuditLog object
+        qp_product_name = row[1]  # product_name from QuarterlyPlan
+        contract_products = row[2]  # products JSON from Contract
+        
+        # Determine product_name: use quarterly plan's product_name first,
+        # fallback to first product from contract if single-product contract
+        product_name = qp_product_name
+        if not product_name and contract_products:
+            try:
+                products = json.loads(contract_products) if isinstance(contract_products, str) else contract_products
+                if products and len(products) == 1:
+                    product_name = products[0].get('name')
+            except Exception:
+                pass
+        
+        # Create a dict-like object with product_name
+        log_dict = {
+            "id": log.id,
+            "monthly_plan_id": log.monthly_plan_id,
+            "monthly_plan_db_id": log.monthly_plan_db_id,
+            "action": log.action,
+            "field_name": log.field_name,
+            "old_value": log.old_value,
+            "new_value": log.new_value,
+            "month": log.month,
+            "year": log.year,
+            "contract_id": log.contract_id,
+            "contract_number": log.contract_number,
+            "contract_name": log.contract_name,
+            "quarterly_plan_id": log.quarterly_plan_id,
+            "product_name": product_name,
+            "description": log.description,
+            "created_at": log.created_at,
+            "monthly_plan_snapshot": log.monthly_plan_snapshot,
+        }
+        monthly_logs_with_product.append(schemas.MonthlyPlanAuditLog(**log_dict))
     
     # Combine and sort by created_at
     all_logs = []
-    for log in monthly_logs:
+    for log in monthly_logs_with_product:
         all_logs.append(('monthly', log))
     for log in quarterly_logs:
         all_logs.append(('quarterly', log))
