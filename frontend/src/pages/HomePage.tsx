@@ -923,21 +923,12 @@ export default function HomePage() {
         // Close dialog immediately
         setCargoDialogOpen(false)
         
-        // For combie cargos, update ALL cargos in the group with the same shared fields
-        // (status, vessel_name, load_ports, inspector_name, laycan_window, notes, lc_status)
-        const combieCargosToUpdate = editingCargo.combi_group_id
-          ? [...portMovement, ...completedCargos, ...inRoadCIF, ...activeLoadings]
-              .filter(c => c.combi_group_id === editingCargo.combi_group_id && c.id !== editingCargo.id)
-              .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i) // dedupe
-          : []
+        // For combie cargos, use the atomic sync endpoint to update ALL cargos in the group
+        // This ensures consistency and validates status transitions for all cargos at once
+        let updatePromise: Promise<any>
         
-        // Send API call in background.
-        // IMPORTANT: Only revert the optimistic update if the UPDATE request itself fails.
-        // Follow-up refresh failures should not revert a successful save.
-        const updatePromises = [cargoAPI.update(editingCargo.id, updatePayload)]
-        
-        // Also update other cargos in the combie group with shared fields (not cargo_quantity)
-        if (combieCargosToUpdate.length > 0) {
+        if (editingCargo.combi_group_id) {
+          // Use combi sync endpoint - it will update all cargos in the group atomically
           const sharedUpdatePayload = {
             vessel_name: cargoFormData.vessel_name,
             load_ports: formatLoadPorts(cargoFormData.load_ports),
@@ -947,13 +938,13 @@ export default function HomePage() {
             status: cargoFormData.status,
             lc_status: cargoFormData.lc_status || undefined,
           }
-          
-          combieCargosToUpdate.forEach(c => {
-            updatePromises.push(cargoAPI.update(c.id, sharedUpdatePayload))
-          })
+          updatePromise = cargoAPI.syncCombiGroup(editingCargo.combi_group_id, sharedUpdatePayload)
+        } else {
+          // Single cargo update
+          updatePromise = cargoAPI.update(editingCargo.id, updatePayload)
         }
         
-        Promise.all(updatePromises)
+        updatePromise
           .then(() => {
             // Refresh in background (best-effort)
             loadData().catch((e) => console.error('Error refreshing data after cargo update:', e))

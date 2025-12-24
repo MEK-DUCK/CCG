@@ -128,6 +128,9 @@ export const cargoAPI = {
   create: (data: any) => client.post('/api/cargos/', data),
   update: (id: number, data: any) => client.put(`/api/cargos/${id}`, data),
   delete: (id: number) => client.delete(`/api/cargos/${id}`),
+  // Sync all cargos in a combi group with shared fields (status, vessel, load ports, etc.)
+  syncCombiGroup: (combiGroupId: string, data: any) =>
+    client.put(`/api/cargos/combi-group/${combiGroupId}/sync`, data),
 }
 
 // Audit Log API

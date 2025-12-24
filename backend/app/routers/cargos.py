@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 from app.database import get_db
 from app import models, schemas
-from app.models import ContractType, CargoStatus, LCStatus
+from app.models import ContractType, CargoStatus, LCStatus, is_valid_status_transition, get_valid_next_statuses
 from app.audit_utils import log_cargo_action
 import uuid
 import json
@@ -563,6 +563,17 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
                     print(f"[ERROR] Invalid status value: {status_value}")
                     print(f"[DEBUG] Available statuses: {[e.value for e in CargoStatus]}")
                     raise HTTPException(status_code=400, detail=f"Invalid status value: {status_value}. Valid values: {', '.join([e.value for e in CargoStatus])}")
+        
+        # Validate status transition using state machine
+        new_status = update_data['status']
+        current_status = db_cargo.status
+        if not is_valid_status_transition(current_status, new_status):
+            valid_next = get_valid_next_statuses(current_status)
+            valid_next_values = [s.value for s in valid_next]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status transition from '{current_status.value}' to '{new_status.value}'. Valid next statuses: {', '.join(valid_next_values) if valid_next_values else 'None'}"
+            )
     
     # Convert lc_status to string VALUE (database stores enum VALUE, not enum NAME)
     if 'lc_status' in update_data and update_data['lc_status'] is not None:
@@ -786,6 +797,127 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
         import traceback
         print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error committing cargo update: {str(e)}")
+
+@router.put("/combi-group/{combi_group_id}/sync")
+def sync_combi_cargo_group(
+    combi_group_id: str,
+    update: schemas.CargoUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Atomically update all cargos in a combi group with shared fields.
+    This ensures combi cargos stay in sync for vessel name, load ports, status, etc.
+    
+    Only updates fields that are set in the request - individual cargo quantities are preserved.
+    """
+    # Find all cargos in the combi group
+    cargos = db.query(models.Cargo).filter(
+        models.Cargo.combi_group_id == combi_group_id
+    ).all()
+    
+    if not cargos:
+        raise HTTPException(status_code=404, detail=f"No cargos found with combi_group_id: {combi_group_id}")
+    
+    # Get update data, excluding fields that should remain individual per cargo
+    update_data = update.model_dump(exclude_unset=True) if hasattr(update, 'model_dump') else update.dict(exclude_unset=True)
+    
+    # Fields that should NOT be synced (they're individual per cargo in a combi)
+    individual_fields = {'cargo_quantity', 'product_name', 'monthly_plan_id'}
+    
+    # Remove individual fields from update
+    for field in individual_fields:
+        update_data.pop(field, None)
+    
+    if not update_data:
+        return {"message": "No shared fields to update", "updated_count": 0, "cargos": []}
+    
+    # Convert status string to enum if present
+    if 'status' in update_data and update_data['status'] is not None:
+        status_value = update_data['status']
+        if isinstance(status_value, str):
+            status_enum = None
+            for enum_item in CargoStatus:
+                if enum_item.value == status_value:
+                    status_enum = enum_item
+                    break
+            if status_enum:
+                update_data['status'] = status_enum
+            else:
+                try:
+                    update_data['status'] = CargoStatus(status_value)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail=f"Invalid status value: {status_value}")
+        
+        # Validate status transition for all cargos in the group
+        new_status = update_data['status']
+        for cargo in cargos:
+            current_status = cargo.status
+            if not is_valid_status_transition(current_status, new_status):
+                valid_next = get_valid_next_statuses(current_status)
+                valid_next_values = [s.value for s in valid_next]
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid status transition for cargo {cargo.cargo_id} from '{current_status.value}' to '{new_status.value}'. Valid next statuses: {', '.join(valid_next_values) if valid_next_values else 'None'}"
+                )
+    
+    # Convert lc_status if present
+    if 'lc_status' in update_data and update_data['lc_status'] is not None:
+        lc_status_value = update_data['lc_status']
+        if lc_status_value == '':
+            update_data['lc_status'] = None
+        elif isinstance(lc_status_value, LCStatus):
+            update_data['lc_status'] = lc_status_value.value
+        elif isinstance(lc_status_value, str):
+            valid_values = [e.value for e in LCStatus]
+            if lc_status_value not in valid_values:
+                raise HTTPException(status_code=400, detail=f"Invalid lc_status value: {lc_status_value}")
+    
+    # Update all cargos in the group
+    updated_cargos = []
+    for cargo in cargos:
+        # Log the update for audit
+        old_values = {}
+        for field in update_data.keys():
+            if hasattr(cargo, field):
+                old_values[field] = getattr(cargo, field)
+        
+        # Apply updates
+        for field, value in update_data.items():
+            if hasattr(cargo, field):
+                setattr(cargo, field, value)
+        
+        # Sync port operations if load_ports changed
+        if 'load_ports' in update_data:
+            selected_ports = _parse_load_ports(update_data['load_ports'])
+            _sync_port_operations(db, cargo, selected_ports)
+            
+            # Recompute status from port ops if in loading lifecycle
+            if cargo.status in {CargoStatus.PLANNED, CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING}:
+                _recompute_cargo_status_from_port_ops(db, cargo)
+        
+        updated_cargos.append({
+            "id": cargo.id,
+            "cargo_id": cargo.cargo_id,
+            "product_name": cargo.product_name,
+            "status": cargo.status.value if cargo.status else None,
+        })
+    
+    db.commit()
+    
+    # Refresh all cargos
+    for cargo in cargos:
+        db.refresh(cargo)
+    
+    print(f"[COMBI_SYNC] Updated {len(cargos)} cargos in combi group {combi_group_id}")
+    
+    return {
+        "message": f"Successfully synced {len(cargos)} cargos in combi group",
+        "updated_count": len(cargos),
+        "combi_group_id": combi_group_id,
+        "updated_fields": list(update_data.keys()),
+        "cargos": updated_cargos
+    }
+
 
 @router.delete("/{cargo_id}")
 def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
