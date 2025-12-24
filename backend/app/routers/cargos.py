@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 from app.database import get_db
 from app import models, schemas
-from app.models import ContractType, CargoStatus, LCStatus, is_valid_status_transition, get_valid_next_statuses
+from app.models import ContractType, CargoStatus, LCStatus
 from app.audit_utils import log_cargo_action
 import uuid
 import json
@@ -563,17 +563,6 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
                     print(f"[ERROR] Invalid status value: {status_value}")
                     print(f"[DEBUG] Available statuses: {[e.value for e in CargoStatus]}")
                     raise HTTPException(status_code=400, detail=f"Invalid status value: {status_value}. Valid values: {', '.join([e.value for e in CargoStatus])}")
-        
-        # Validate status transition using state machine
-        new_status = update_data['status']
-        current_status = db_cargo.status
-        if not is_valid_status_transition(current_status, new_status):
-            valid_next = get_valid_next_statuses(current_status)
-            valid_next_values = [s.value for s in valid_next]
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid status transition from '{current_status.value}' to '{new_status.value}'. Valid next statuses: {', '.join(valid_next_values) if valid_next_values else 'None'}"
-            )
     
     # Convert lc_status to string VALUE (database stores enum VALUE, not enum NAME)
     if 'lc_status' in update_data and update_data['lc_status'] is not None:
@@ -847,18 +836,6 @@ def sync_combi_cargo_group(
                     update_data['status'] = CargoStatus(status_value)
                 except ValueError:
                     raise HTTPException(status_code=400, detail=f"Invalid status value: {status_value}")
-        
-        # Validate status transition for all cargos in the group
-        new_status = update_data['status']
-        for cargo in cargos:
-            current_status = cargo.status
-            if not is_valid_status_transition(current_status, new_status):
-                valid_next = get_valid_next_statuses(current_status)
-                valid_next_values = [s.value for s in valid_next]
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid status transition for cargo {cargo.cargo_id} from '{current_status.value}' to '{new_status.value}'. Valid next statuses: {', '.join(valid_next_values) if valid_next_values else 'None'}"
-                )
     
     # Convert lc_status if present
     if 'lc_status' in update_data and update_data['lc_status'] is not None:

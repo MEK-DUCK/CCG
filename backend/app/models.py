@@ -31,54 +31,6 @@ class CargoStatus(str, enum.Enum):
     NOMINATION_RELEASED = "Nomination Released"
 
 
-# Cargo Status State Machine - defines valid transitions
-# Key: current status, Value: list of valid next statuses
-CARGO_STATUS_TRANSITIONS = {
-    CargoStatus.PLANNED: [
-        CargoStatus.LOADING,
-        CargoStatus.PENDING_NOMINATION,  # Can skip to nomination flow
-    ],
-    CargoStatus.LOADING: [
-        CargoStatus.PLANNED,  # Can go back if loading cancelled
-        CargoStatus.COMPLETED_LOADING,
-    ],
-    CargoStatus.COMPLETED_LOADING: [
-        CargoStatus.LOADING,  # Can go back if error
-        CargoStatus.IN_ROAD,  # For CIF cargos
-    ],
-    CargoStatus.IN_ROAD: [
-        CargoStatus.COMPLETED_LOADING,  # Can go back if error
-        CargoStatus.PENDING_NOMINATION,
-    ],
-    CargoStatus.PENDING_NOMINATION: [
-        CargoStatus.PLANNED,  # Can go back
-        CargoStatus.IN_ROAD,  # Can go back
-        CargoStatus.PENDING_TL_APPROVAL,
-    ],
-    CargoStatus.PENDING_TL_APPROVAL: [
-        CargoStatus.PENDING_NOMINATION,  # Can go back
-        CargoStatus.NOMINATION_RELEASED,
-    ],
-    CargoStatus.NOMINATION_RELEASED: [
-        CargoStatus.PENDING_TL_APPROVAL,  # Can go back if error
-    ],
-}
-
-
-def is_valid_status_transition(current_status: CargoStatus, new_status: CargoStatus) -> bool:
-    """Check if a status transition is valid according to the state machine."""
-    if current_status == new_status:
-        return True  # No change is always valid
-    
-    valid_next_statuses = CARGO_STATUS_TRANSITIONS.get(current_status, [])
-    return new_status in valid_next_statuses
-
-
-def get_valid_next_statuses(current_status: CargoStatus) -> list:
-    """Get list of valid next statuses from current status."""
-    return CARGO_STATUS_TRANSITIONS.get(current_status, [])
-
-
 class Customer(Base):
     __tablename__ = "customers"
     
