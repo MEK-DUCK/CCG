@@ -777,35 +777,87 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         )}
       </Box>
       
-      {/* Quarterly Plan Summary */}
-      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'info.light', borderRadius: 1 }}>
-        <Typography variant="body2" fontWeight="bold" gutterBottom sx={{ color: '#000000' }}>
-          Quarterly Plan Quantities:
+      {/* Quarterly Plan Summary - Modern Card Design */}
+      <Box sx={{ 
+        mb: 3, 
+        p: 2, 
+        bgcolor: '#F8FAFC', 
+        borderRadius: 2,
+        border: '1px solid #E2E8F0',
+      }}>
+        <Typography variant="subtitle2" sx={{ color: '#64748B', fontWeight: 600, mb: 2, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.75rem' }}>
+          Quarterly Plan Progress
         </Typography>
-        {products.map((product: any) => (
-          <Box key={product.name} sx={{ mb: 1 }}>
-            {isMultiProduct && (
-              <Typography variant="body2" fontWeight="bold" sx={{ color: '#1D4ED8' }}>
-                {product.name}:
-              </Typography>
-            )}
-            <Typography variant="body2" sx={{ color: '#000000', pl: isMultiProduct ? 1 : 0 }}>
-              {quarterOrder.map((q, idx) => {
-                const quarterLabel = QUARTER_MONTHS[q].labels.join('-')
-                const qty = getQuarterlyQuantity(product.name, idx)
-                const entered = getTotalEntered(q, product.name)
-                const isComplete = entered === qty
-                return (
-                  <span key={q} style={{ color: isComplete ? '#16a34a' : undefined }}>
-                    {q} ({quarterLabel}): {entered.toLocaleString()}/{qty.toLocaleString()} KT
-                    {isComplete && ' ✓'}
-                    {idx < quarterOrder.length - 1 ? ' | ' : ''}
-                  </span>
-                )
-              })}
-            </Typography>
-          </Box>
-        ))}
+        
+        <Grid container spacing={2}>
+          {products.map((product: any) => (
+            <Grid item xs={12} key={product.name}>
+              {isMultiProduct && (
+                <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B', mb: 1.5 }}>
+                  {product.name}
+                </Typography>
+              )}
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+                {quarterOrder.map((q, idx) => {
+                  const quarterLabel = QUARTER_MONTHS[q].labels.join(', ')
+                  const qty = getQuarterlyQuantity(product.name, idx)
+                  const entered = getTotalEntered(q, product.name)
+                  const isComplete = entered === qty
+                  const percentage = qty > 0 ? Math.round((entered / qty) * 100) : 0
+                  
+                  return (
+                    <Box 
+                      key={q} 
+                      sx={{ 
+                        flex: '1 1 200px',
+                        p: 1.5,
+                        bgcolor: isComplete ? 'rgba(34, 197, 94, 0.08)' : '#FFFFFF',
+                        borderRadius: 1.5,
+                        border: isComplete ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid #E2E8F0',
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                        <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                          {q}
+                        </Typography>
+                        {isComplete && qty > 0 && (
+                          <Chip 
+                            label="Allocated" 
+                            size="small" 
+                            sx={{ 
+                              height: 20, 
+                              fontSize: '0.65rem', 
+                              bgcolor: 'rgba(34, 197, 94, 0.15)', 
+                              color: '#16A34A',
+                              fontWeight: 600,
+                            }} 
+                          />
+                        )}
+                      </Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B', mb: 0.5 }}>
+                        {entered.toLocaleString()} / {qty.toLocaleString()} KT
+                      </Typography>
+                      <Box sx={{ width: '100%', height: 4, bgcolor: '#E2E8F0', borderRadius: 2, overflow: 'hidden' }}>
+                        <Box 
+                          sx={{ 
+                            width: `${percentage}%`, 
+                            height: '100%', 
+                            bgcolor: isComplete ? '#22C55E' : '#3B82F6',
+                            borderRadius: 2,
+                            transition: 'width 0.3s ease',
+                          }} 
+                        />
+                      </Box>
+                      <Typography variant="caption" sx={{ color: '#94A3B8', fontSize: '0.65rem', mt: 0.5, display: 'block' }}>
+                        {quarterLabel}
+                      </Typography>
+                    </Box>
+                  )
+                })}
+              </Box>
+            </Grid>
+          ))}
+        </Grid>
       </Box>
       
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>

@@ -103,7 +103,7 @@ export default function ContractManagement() {
   useEffect(() => {
     if (selectedContract && selectedContract.id) {
       try {
-        loadContractDetails(selectedContract.id)
+        loadContractDetailsAndSetTab(selectedContract.id)
       } catch (error) {
         console.error('Error in useEffect for selectedContract:', error)
       }
@@ -141,9 +141,22 @@ export default function ContractManagement() {
       const quarterlyRes = await quarterlyPlanAPI.getAll(contractId)
       const filteredQuarterlyPlans = (quarterlyRes.data || []).filter((p: QuarterlyPlan) => p.contract_id === contractId)
       setQuarterlyPlans(filteredQuarterlyPlans)
+      return filteredQuarterlyPlans
     } catch (error) {
       console.error('Error loading contract details:', error)
       setQuarterlyPlans([])
+      return []
+    }
+  }
+
+  const loadContractDetailsAndSetTab = async (contractId: number) => {
+    const plans = await loadContractDetails(contractId)
+    // If quarterly plans exist, default to Monthly Plan tab (index 1)
+    // Otherwise, default to Quarterly Plan tab (index 0)
+    if (plans && plans.length > 0) {
+      setTabValue(1) // Monthly Plan tab
+    } else {
+      setTabValue(0) // Quarterly Plan tab
     }
   }
 
@@ -615,7 +628,7 @@ export default function ContractManagement() {
                           return
                         }
                         setSelectedContract(contract)
-                        setTabValue(0)
+                        // Tab value will be set by loadContractDetailsAndSetTab based on whether quarterly plans exist
                       } catch (error: any) {
                         console.error('ERROR selecting contract:', error)
                         console.error('Error stack:', error?.stack)
