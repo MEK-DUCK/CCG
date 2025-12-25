@@ -1695,7 +1695,7 @@ export default function HomePage() {
                               <Typography variant="body2" fontWeight={600}>
                                 {totalQty} KT
                               </Typography>
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography variant="caption" sx={{ color: totalTopup > 0 ? '#10B981' : 'text.secondary' }}>
                                 (Total{totalTopup > 0 ? `, incl. ${totalTopup} top-up` : ''})
                               </Typography>
                             </>
@@ -2013,7 +2013,7 @@ export default function HomePage() {
                               <Typography variant="body2" fontWeight={600}>
                                 {totalQty} KT
                               </Typography>
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography variant="caption" sx={{ color: totalTopup > 0 ? '#10B981' : 'text.secondary' }}>
                                 (Total{totalTopup > 0 ? `, incl. ${totalTopup} top-up` : ''})
                               </Typography>
                             </>
@@ -2887,7 +2887,7 @@ export default function HomePage() {
                                 {cargo.cargo_quantity} KT
                               </Typography>
                               {isCombi ? (
-                                <Typography variant="caption" color="text.secondary">
+                                <Typography variant="caption" sx={{ color: topupQty > 0 ? '#10B981' : 'text.secondary' }}>
                                   (Total{topupQty > 0 ? `, incl. ${topupQty} top-up` : ''})
                                 </Typography>
                               ) : topupQty > 0 && (
@@ -2909,7 +2909,7 @@ export default function HomePage() {
                               <Typography variant="body2" fontWeight={600}>
                                 {totalQty} KT
                               </Typography>
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography variant="caption" sx={{ color: totalTopup > 0 ? '#10B981' : 'text.secondary' }}>
                                 (Total{totalTopup > 0 ? `, incl. ${totalTopup} top-up` : ''})
                               </Typography>
                             </>
@@ -3359,7 +3359,7 @@ export default function HomePage() {
                                             <Typography variant="body2" fontWeight={600}>
                                               {totalQty} KT
                                             </Typography>
-                                            <Typography variant="caption" color="text.secondary">
+                                            <Typography variant="caption" sx={{ color: totalTopup > 0 ? '#10B981' : 'text.secondary' }}>
                                               (Total{totalTopup > 0 ? `, incl. ${totalTopup} top-up` : ''})
                                             </Typography>
                                           </>
