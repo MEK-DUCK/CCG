@@ -399,6 +399,7 @@ export default function HomePage() {
     eta_discharge_port: '',
     discharge_port_location: '',
     discharge_completion_time: '',
+    five_nd_date: '',  // 5-ND: Due date for narrowing down delivery window (CIF In-Road)
     notes: '',
     status: 'Planned' as CargoStatus,
     lc_status: '' as '' | LCStatus,
@@ -649,6 +650,7 @@ export default function HomePage() {
         const d = new Date(cargo.discharge_completion_time)
         return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16)
       })() : '',
+      five_nd_date: cargo.five_nd_date || '',
       notes: cargo.notes || '',
       status: cargo.status,
       lc_status: cargo.lc_status || '',
@@ -843,6 +845,8 @@ export default function HomePage() {
           if (cargoFormData.eta_discharge_port) updatePayload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
           if (cargoFormData.discharge_port_location) updatePayload.discharge_port_location = cargoFormData.discharge_port_location
           if (cargoFormData.discharge_completion_time) updatePayload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
+          // 5-ND date for In-Road CIF tracking
+          updatePayload.five_nd_date = cargoFormData.five_nd_date || undefined
         }
         
         // Include monthly_plan_id if it's being changed (for moving cargo between months)
@@ -1164,6 +1168,7 @@ export default function HomePage() {
             if (cargoFormData.eta_discharge_port) payload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
             if (cargoFormData.discharge_port_location) payload.discharge_port_location = cargoFormData.discharge_port_location
             if (cargoFormData.discharge_completion_time) payload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
+            if (cargoFormData.five_nd_date) payload.five_nd_date = cargoFormData.five_nd_date
           }
 
             const response = await cargoAPI.create(payload)
@@ -1525,6 +1530,181 @@ export default function HomePage() {
                   />
                 </TableCell>
                 <TableCell>{cargo.load_ports}</TableCell>
+                <TableCell>{cargo.notes || '-'}</TableCell>
+              </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    )
+  }
+
+  // Render In-Road CIF table with 5-ND column
+  const renderInRoadCIFTable = (cargos: Cargo[]) => {
+    if (loading) {
+      return (
+        <Box display="flex" justifyContent="center" p={4}>
+          <CircularProgress />
+        </Box>
+      )
+    }
+
+    // Group combie cargos - only show one row per combi_group_id
+    const seenCombiGroups = new Set<string>()
+    const groupedCargos = cargos.filter((cargo) => {
+      if (cargo.combi_group_id) {
+        if (seenCombiGroups.has(cargo.combi_group_id)) {
+          return false // Skip duplicate combie rows
+        }
+        seenCombiGroups.add(cargo.combi_group_id)
+      }
+      return true
+    })
+
+    if (groupedCargos.length === 0) {
+      return (
+        <Typography variant="body1" color="text.secondary" sx={{ p: 2 }}>
+          No In-Road CIF cargos found
+        </Typography>
+      )
+    }
+
+    // Handler for inline 5-ND date update
+    const handleFiveNDDateChange = async (cargo: Cargo, newDate: string) => {
+      try {
+        await cargoAPI.update(cargo.id, { five_nd_date: newDate || undefined })
+        // Update local state
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, five_nd_date: newDate } : c))
+      } catch (error) {
+        console.error('Error updating 5-ND date:', error)
+      }
+    }
+
+    return (
+      <TableContainer 
+        component={Paper}
+        sx={{
+          maxWidth: '100%',
+          overflowX: 'auto',
+          '& .MuiTable-root': {
+            minWidth: isMobile ? 900 : 'auto',
+          },
+        }}
+      >
+        <Table stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Vessel Name</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Customer</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold', bgcolor: '#FEF3C7' }}>5-ND</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Status</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Remark</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {groupedCargos.map((cargo) => {
+              // Get all cargos in combie group for display
+              const allCargosForLookup = [...portMovement, ...completedCargos, ...inRoadCIF, ...activeLoadings, ...cargos]
+              const combieCargos = cargo.combi_group_id 
+                ? allCargosForLookup
+                    .filter(c => c.combi_group_id === cargo.combi_group_id)
+                    .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i) // dedupe
+                : [cargo]
+              
+              return (
+              <TableRow 
+                  key={cargo.combi_group_id ? `combi-${cargo.combi_group_id}` : cargo.id}
+                onClick={() => handleEditCargo(cargo)}
+                sx={{ 
+                  cursor: 'pointer', 
+                  '&:hover': { bgcolor: 'action.hover' },
+                  '& td': { 
+                    minHeight: isMobile ? 56 : 48,
+                    py: isMobile ? 1.5 : 1,
+                    },
+                    bgcolor: 'inherit'
+                  }}
+                >
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {cargo.vessel_name}
+                      {cargo.combi_group_id && (
+                        <Chip 
+                          label="Combie" 
+                          size="small" 
+                          sx={{ 
+                            bgcolor: '#F59E0B', 
+                            color: 'white', 
+                            fontWeight: 600,
+                            fontSize: '0.7rem',
+                            height: 20,
+                          }} 
+                        />
+                      )}
+                    </Box>
+                  </TableCell>
+                <TableCell>{getCustomerName(cargo.customer_id)}</TableCell>
+                  <TableCell>
+                    {cargo.combi_group_id ? (
+                      <Box>
+                        {combieCargos.map(c => (
+                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
+                            {c.product_name}: {c.cargo_quantity} KT
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      getProductName(cargo.product_name)
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {cargo.combi_group_id ? (
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          {combieCargos.reduce((sum, c) => sum + c.cargo_quantity, 0)} KT
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          (Total)
+                        </Typography>
+                      </Box>
+                    ) : (
+                      cargo.cargo_quantity
+                    )}
+                  </TableCell>
+                <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
+                  <TableCell 
+                    sx={{ bgcolor: '#FFFBEB' }}
+                    onClick={(e) => e.stopPropagation()} // Prevent row click when editing
+                  >
+                    <TextField
+                      size="small"
+                      type="date"
+                      value={cargo.five_nd_date || ''}
+                      onChange={(e) => handleFiveNDDateChange(cargo, e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      sx={{ 
+                        width: 140,
+                        '& .MuiInputBase-input': {
+                          fontSize: '0.875rem',
+                          py: 0.5,
+                        },
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>{cargo.discharge_port_location || '-'}</TableCell>
+                <TableCell>
+                  <Chip 
+                    label={cargo.status} 
+                    color={getStatusColor(cargo.status)} 
+                    size="small" 
+                    {...getStatusChipProps(cargo.status)}
+                  />
+                </TableCell>
                 <TableCell>{cargo.notes || '-'}</TableCell>
               </TableRow>
               )
@@ -3292,7 +3472,7 @@ export default function HomePage() {
               </Select>
             </FormControl>
           </Box>
-          {renderCargoTable(
+          {renderInRoadCIFTable(
             inRoadCIFFilterCustomers.length === 0
               ? inRoadCIF
               : inRoadCIF.filter(cargo => inRoadCIFFilterCustomers.includes(cargo.customer_id))
@@ -3584,6 +3764,19 @@ export default function HomePage() {
                       onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_port_location: e.target.value })}
                       fullWidth
                       disabled={isCompletedCargo}
+                      sx={isCompletedCargo ? disabledStyle : {}}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label="5-ND (Narrowing Down Due Date)"
+                      type="date"
+                      value={cargoFormData.five_nd_date}
+                      onChange={(e) => setCargoFormData({ ...cargoFormData, five_nd_date: e.target.value })}
+                      fullWidth
+                      disabled={isCompletedCargo}
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Due date for narrowing down delivery window"
                       sx={isCompletedCargo ? disabledStyle : {}}
                     />
                   </Grid>

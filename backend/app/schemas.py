@@ -276,6 +276,8 @@ class CargoBase(BaseModel):
     eta_discharge_port: Optional[datetime] = None
     discharge_port_location: Optional[str] = None
     discharge_completion_time: Optional[datetime] = None
+    # CIF In-Road tracking fields
+    five_nd_date: Optional[str] = None  # 5-ND: Due date for narrowing down delivery window
     notes: Optional[str] = None
     # Completion tracking fields
     sailing_fax_entry_completed: Optional[bool] = False
@@ -315,6 +317,8 @@ class CargoUpdate(BaseModel):
     eta_discharge_port: Optional[datetime] = None
     discharge_port_location: Optional[str] = None
     discharge_completion_time: Optional[datetime] = None
+    # CIF In-Road tracking fields
+    five_nd_date: Optional[str] = None  # 5-ND: Due date for narrowing down delivery window
     status: Optional[CargoStatus] = None
     notes: Optional[str] = None
     # Accept empty string from UI; router converts '' -> None before writing to DB.

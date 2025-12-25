@@ -146,6 +146,9 @@ class Cargo(Base):
     discharge_port_location = Column(String)
     discharge_completion_time = Column(DateTime)
     
+    # CIF In-Road tracking fields
+    five_nd_date = Column(String, nullable=True)  # 5-ND: Due date for narrowing down delivery window
+    
     # Completion tracking fields
     sailing_fax_entry_completed = Column(Boolean, default=False)
     sailing_fax_entry_initials = Column(String)

@@ -118,6 +118,8 @@ export interface Cargo {
   eta_discharge_port?: string
   discharge_port_location?: string
   discharge_completion_time?: string
+  // CIF In-Road tracking fields
+  five_nd_date?: string  // 5-ND: Due date for narrowing down delivery window
   status: CargoStatus
   notes?: string
   monthly_plan_id: number
