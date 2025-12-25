@@ -51,7 +51,8 @@ interface MonthlyPlanEntry {
   deliveryWindow?: string  // CIF: Delivery window
   isCombi?: boolean  // True if this is a combi entry (multiple products, same vessel/laycan)
   combiGroupId?: string  // UUID linking combi monthly plans together
-  combiProducts?: { productName: string; quantity: number }[]  // List of products with quantities in the combi group
+  combiProducts?: { productName: string; quantity: number; topupQuantity?: number }[]  // List of products with quantities in the combi group
+  topupQuantity?: number  // Authority top-up quantity
 }
 
 interface ContractQuarterlyData {
@@ -299,8 +300,12 @@ export default function LiftingPlanPage() {
         // Collect all product quantities in the combi group
         const allCombiProducts = combiPlans.map(mp => ({
           productName: mp.productName || 'Unknown',
-          quantity: mp.month_quantity
+          quantity: mp.month_quantity,
+          topupQuantity: (mp as any).authority_topup_quantity || 0
         }))
+        
+        // Calculate total top-up for the combi group
+        const totalTopup = combiPlans.reduce((sum, mp) => sum + ((mp as any).authority_topup_quantity || 0), 0)
 
         // If a product filter is selected, check if this combi contains the filtered product
         if (selectedProduct) {
@@ -321,6 +326,7 @@ export default function LiftingPlanPage() {
             isCombi: true,
             combiGroupId,
             combiProducts: undefined,  // Don't show other products when filtered
+            topupQuantity: matchingProduct.topupQuantity,  // Only the filtered product's top-up
           }
 
           if (monthIndex === 0) {
@@ -347,6 +353,7 @@ export default function LiftingPlanPage() {
             isCombi: true,
             combiGroupId,
             combiProducts: allCombiProducts,
+            topupQuantity: totalTopup,
           }
 
           if (monthIndex === 0) {
@@ -378,6 +385,7 @@ export default function LiftingPlanPage() {
           deliveryMonth: contract.contract_type === 'CIF' ? (mp.delivery_month || undefined) : undefined,
           deliveryWindow: contract.contract_type === 'CIF' ? (mp.delivery_window || undefined) : undefined,
           isCombi: false,
+          topupQuantity: (mp as any).authority_topup_quantity || 0,
         }
 
         if (monthIndex === 0) {
@@ -768,14 +776,33 @@ export default function LiftingPlanPage() {
                               />
                             )}
                           </Box>
+                          {/* Top-up indicator for non-combi */}
+                          {!entry.isCombi && (entry.topupQuantity || 0) > 0 && (
+                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
+                              ({(entry.quantity - (entry.topupQuantity || 0)).toLocaleString()} + {entry.topupQuantity?.toLocaleString()} top-up)
+                            </Typography>
+                          )}
                           {entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0 && (
                             <Box sx={{ mb: 0.5, pl: 0.5 }}>
                               {entry.combiProducts.map((cp, cpIdx) => (
-                                <Typography key={cpIdx} variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                  • {cp.productName}: {cp.quantity.toLocaleString()} KT
-                                </Typography>
+                                <Box key={cpIdx}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'inline' }}>
+                                    • {cp.productName}: {cp.quantity.toLocaleString()} KT
+                                  </Typography>
+                                  {(cp.topupQuantity || 0) > 0 && (
+                                    <Typography variant="caption" sx={{ color: '#10B981', ml: 0.5 }}>
+                                      (+{cp.topupQuantity?.toLocaleString()} top-up)
+                                    </Typography>
+                                  )}
+                                </Box>
                               ))}
                             </Box>
+                          )}
+                          {/* Total top-up for combi */}
+                          {entry.isCombi && (entry.topupQuantity || 0) > 0 && (
+                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
+                              Total incl. {entry.topupQuantity?.toLocaleString()} top-up
+                            </Typography>
                           )}
                           {data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days) && (
                             <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
@@ -835,14 +862,33 @@ export default function LiftingPlanPage() {
                               />
                             )}
                           </Box>
+                          {/* Top-up indicator for non-combi */}
+                          {!entry.isCombi && (entry.topupQuantity || 0) > 0 && (
+                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
+                              ({(entry.quantity - (entry.topupQuantity || 0)).toLocaleString()} + {entry.topupQuantity?.toLocaleString()} top-up)
+                            </Typography>
+                          )}
                           {entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0 && (
                             <Box sx={{ mb: 0.5, pl: 0.5 }}>
                               {entry.combiProducts.map((cp, cpIdx) => (
-                                <Typography key={cpIdx} variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                  • {cp.productName}: {cp.quantity.toLocaleString()} KT
-                                </Typography>
+                                <Box key={cpIdx}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'inline' }}>
+                                    • {cp.productName}: {cp.quantity.toLocaleString()} KT
+                                  </Typography>
+                                  {(cp.topupQuantity || 0) > 0 && (
+                                    <Typography variant="caption" sx={{ color: '#10B981', ml: 0.5 }}>
+                                      (+{cp.topupQuantity?.toLocaleString()} top-up)
+                                    </Typography>
+                                  )}
+                                </Box>
                               ))}
                             </Box>
+                          )}
+                          {/* Total top-up for combi */}
+                          {entry.isCombi && (entry.topupQuantity || 0) > 0 && (
+                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
+                              Total incl. {entry.topupQuantity?.toLocaleString()} top-up
+                            </Typography>
                           )}
                           {data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days) && (
                             <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
@@ -902,14 +948,33 @@ export default function LiftingPlanPage() {
                               />
                             )}
                           </Box>
+                          {/* Top-up indicator for non-combi */}
+                          {!entry.isCombi && (entry.topupQuantity || 0) > 0 && (
+                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
+                              ({(entry.quantity - (entry.topupQuantity || 0)).toLocaleString()} + {entry.topupQuantity?.toLocaleString()} top-up)
+                            </Typography>
+                          )}
                           {entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0 && (
                             <Box sx={{ mb: 0.5, pl: 0.5 }}>
                               {entry.combiProducts.map((cp, cpIdx) => (
-                                <Typography key={cpIdx} variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                  • {cp.productName}: {cp.quantity.toLocaleString()} KT
-                                </Typography>
+                                <Box key={cpIdx}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'inline' }}>
+                                    • {cp.productName}: {cp.quantity.toLocaleString()} KT
+                                  </Typography>
+                                  {(cp.topupQuantity || 0) > 0 && (
+                                    <Typography variant="caption" sx={{ color: '#10B981', ml: 0.5 }}>
+                                      (+{cp.topupQuantity?.toLocaleString()} top-up)
+                                    </Typography>
+                                  )}
+                                </Box>
                               ))}
                             </Box>
+                          )}
+                          {/* Total top-up for combi */}
+                          {entry.isCombi && (entry.topupQuantity || 0) > 0 && (
+                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
+                              Total incl. {entry.topupQuantity?.toLocaleString()} top-up
+                            </Typography>
                           )}
                           {data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days) && (
                             <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
