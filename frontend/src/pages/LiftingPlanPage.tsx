@@ -53,12 +53,21 @@ interface ContractQuarterlyData {
   notes: string
 }
 
+// Helper to get current quarter
+const getCurrentQuarter = (): 'Q1' | 'Q2' | 'Q3' | 'Q4' => {
+  const month = new Date().getMonth() + 1 // 1-12
+  if (month <= 3) return 'Q1'
+  if (month <= 6) return 'Q2'
+  if (month <= 9) return 'Q3'
+  return 'Q4'
+}
+
 export default function LiftingPlanPage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const PRODUCT_FILTERS = ['GASOIL', 'JET A-1', 'FUEL OIL'] as const
-  const [selectedQuarter, setSelectedQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>('Q1')
-  const [selectedYear, setSelectedYear] = useState(2024) // Default to 2024 to match test data
+  const [selectedQuarter, setSelectedQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>(getCurrentQuarter())
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()) // Default to current year
   const [selectedProduct, setSelectedProduct] = useState<string>('GASOIL') // Product filter - defaults to first tab
   const [customers, setCustomers] = useState<Customer[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
