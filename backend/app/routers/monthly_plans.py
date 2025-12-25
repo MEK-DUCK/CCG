@@ -406,3 +406,81 @@ def get_monthly_plan_status(plan_id: int, db: Session = Depends(get_db)):
         'cargo_ids': cargo_info['cargo_ids'],
         'completed_cargo_ids': cargo_info['completed_cargo_ids']
     }
+
+
+@router.post("/{plan_id}/authority-topup", response_model=schemas.MonthlyPlan)
+def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: Session = Depends(get_db)):
+    """
+    Add an authority top-up to a specific monthly plan cargo.
+    This allows loading more quantity than originally planned when authorization is received.
+    
+    Example: March cargo was 100 KT, got authority to load 120 KT -> add 20 KT top-up
+    """
+    db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
+    if db_plan is None:
+        raise to_http_exception(monthly_plan_not_found(plan_id))
+    
+    # Get quarterly plan and contract for context
+    quarterly_plan = db.query(models.QuarterlyPlan).filter(
+        models.QuarterlyPlan.id == db_plan.quarterly_plan_id
+    ).first()
+    
+    contract = None
+    customer = None
+    if quarterly_plan:
+        contract = db.query(models.Contract).filter(
+            models.Contract.id == quarterly_plan.contract_id
+        ).first()
+        if contract:
+            customer = db.query(models.Customer).filter(
+                models.Customer.id == contract.customer_id
+            ).first()
+    
+    # Store old values for audit
+    old_topup_qty = db_plan.authority_topup_quantity or 0
+    old_month_qty = db_plan.month_quantity
+    
+    # Update the monthly plan with top-up info
+    new_topup_qty = old_topup_qty + topup.quantity
+    db_plan.authority_topup_quantity = new_topup_qty
+    db_plan.authority_topup_reference = topup.authority_reference
+    db_plan.authority_topup_reason = topup.reason
+    db_plan.authority_topup_date = topup.date
+    
+    # Also increase the month_quantity by the top-up amount
+    db_plan.month_quantity = old_month_qty + topup.quantity
+    
+    # Build description for audit log
+    month_str = month_name[db_plan.month]
+    product_name = quarterly_plan.product_name if quarterly_plan else "Unknown"
+    description = f"Authority top-up: +{topup.quantity:,.0f} KT for {month_str} {db_plan.year} {product_name} (Ref: {topup.authority_reference})"
+    if topup.reason:
+        description += f" - {topup.reason}"
+    
+    # Log the top-up action
+    log_monthly_plan_action(
+        db=db,
+        action='AUTHORITY_TOPUP',
+        monthly_plan=db_plan,
+        field_name='authority_topup_quantity',
+        old_value=old_topup_qty,
+        new_value=new_topup_qty,
+        description=description
+    )
+    
+    # Also log the quantity change
+    log_monthly_plan_action(
+        db=db,
+        action='UPDATE',
+        monthly_plan=db_plan,
+        field_name='month_quantity',
+        old_value=old_month_qty,
+        new_value=db_plan.month_quantity,
+        description=f"Quantity increased from {old_month_qty:,.0f} KT to {db_plan.month_quantity:,.0f} KT due to authority top-up"
+    )
+    
+    db.commit()
+    db.refresh(db_plan)
+    
+    logger.info(f"Authority top-up added to monthly plan {plan_id}: +{topup.quantity} KT (Ref: {topup.authority_reference})")
+    return db_plan

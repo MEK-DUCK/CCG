@@ -175,7 +175,25 @@ def ensure_schema():
                     else:
                         conn.execute(text('ALTER TABLE cargos ADD COLUMN five_nd_date VARCHAR'))
         
-        # Contracts migrations - add authority_topups for authorized quantity increases
+        # Monthly plans migrations - add authority top-up fields
+        if insp.has_table("monthly_plans"):
+            cols = [c.get("name") for c in insp.get_columns("monthly_plans")]
+            topup_cols = [
+                ("authority_topup_quantity", "FLOAT"),
+                ("authority_topup_reference", "VARCHAR"),
+                ("authority_topup_reason", "TEXT"),
+                ("authority_topup_date", "DATE"),
+            ]
+            for col_name, col_type in topup_cols:
+                if col_name not in cols:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS {col_name} {col_type}'))
+                        else:
+                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col_name} {col_type}'))
+                    logger.info(f"Added {col_name} column to monthly_plans table")
+        
+        # Contracts migrations - add authority_topups for authorized quantity increases (legacy, kept for compatibility)
         if insp.has_table("contracts"):
             cols = [c.get("name") for c in insp.get_columns("contracts")]
             if "authority_topups" not in cols:

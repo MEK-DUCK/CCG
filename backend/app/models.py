@@ -154,6 +154,13 @@ class MonthlyPlan(Base):
     # Combi cargo support - links multiple monthly plans for same vessel
     combi_group_id = Column(String, nullable=True, index=True)
     
+    # Authority Top-Up: Additional quantity authorized for this specific cargo
+    # Used when customer gets authority to load more than originally planned
+    authority_topup_quantity = Column(Float, nullable=True, default=0)  # Additional KT authorized
+    authority_topup_reference = Column(String, nullable=True)  # Reference number (e.g., AUTH-2025-001)
+    authority_topup_reason = Column(Text, nullable=True)  # Reason for the top-up
+    authority_topup_date = Column(Date, nullable=True)  # Date of authorization
+    
     quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

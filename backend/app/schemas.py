@@ -41,6 +41,18 @@ class AuthorityTopUp(BaseModel):
     reason: Optional[str] = Field(None, max_length=500)  # Reason for the top-up
     date: Optional[date] = None  # Date of authorization
 
+
+# Authority Top-Up Request for Monthly Plan (cargo-level top-up)
+class AuthorityTopUpRequest(BaseModel):
+    """
+    Request to add authority top-up to a specific monthly plan cargo.
+    Used when authorization is received to load more than originally planned.
+    """
+    quantity: float = Field(..., gt=0)  # Additional quantity in KT
+    authority_reference: str = Field(..., min_length=1, max_length=100)  # Reference number
+    reason: Optional[str] = Field(None, max_length=500)  # Reason for the top-up
+    date: Optional[date] = None  # Date of authorization
+
 # Contract Schemas
 class ContractBase(BaseModel):
     contract_number: str = Field(..., min_length=1, max_length=255)
@@ -154,6 +166,11 @@ class MonthlyPlanBase(BaseModel):
     delivery_window: Optional[str] = None  # For CIF contracts only
     delivery_window_remark: Optional[str] = Field(None, max_length=10000)
     combi_group_id: Optional[str] = None  # UUID to link combi monthly plans (multiple products, same vessel/laycan)
+    # Authority Top-Up fields
+    authority_topup_quantity: Optional[float] = Field(None, ge=0)  # Additional KT authorized
+    authority_topup_reference: Optional[str] = Field(None, max_length=100)  # Reference number
+    authority_topup_reason: Optional[str] = Field(None, max_length=500)  # Reason for top-up
+    authority_topup_date: Optional[date] = None  # Date of authorization
 
 class MonthlyPlanCreate(MonthlyPlanBase):
     quarterly_plan_id: int
@@ -173,6 +190,11 @@ class MonthlyPlanUpdate(BaseModel):
     delivery_window: Optional[str] = None
     delivery_window_remark: Optional[str] = Field(None, max_length=10000)
     combi_group_id: Optional[str] = None
+    # Authority Top-Up fields
+    authority_topup_quantity: Optional[float] = Field(None, ge=0)
+    authority_topup_reference: Optional[str] = Field(None, max_length=100)
+    authority_topup_reason: Optional[str] = Field(None, max_length=500)
+    authority_topup_date: Optional[date] = None
 
 class MonthlyPlan(MonthlyPlanBase):
     id: int

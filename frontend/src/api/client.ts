@@ -100,6 +100,14 @@ export const quarterlyPlanAPI = {
   delete: (id: number) => client.delete(`/api/quarterly-plans/${id}`),
 }
 
+// Monthly Plan Authority Top-Up Request
+export interface MonthlyPlanTopUpRequest {
+  quantity: number
+  authority_reference: string
+  reason?: string
+  date?: string
+}
+
 // Monthly Plan API
 export const monthlyPlanAPI = {
   getAll: (quarterlyPlanId?: number) => {
@@ -124,6 +132,9 @@ export const monthlyPlanAPI = {
   delete: (id: number) => client.delete(`/api/monthly-plans/${id}`),
   move: (id: number, data: { action: 'DEFER' | 'ADVANCE'; target_month: number; target_year: number; reason?: string }) =>
     client.put(`/api/monthly-plans/${id}/move`, data),
+  // Add authority top-up to a specific monthly plan cargo
+  addAuthorityTopup: (id: number, topup: MonthlyPlanTopUpRequest) =>
+    client.post(`/api/monthly-plans/${id}/authority-topup`, topup),
 }
 
 // Cargo API

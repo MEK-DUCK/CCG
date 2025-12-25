@@ -24,8 +24,8 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material'
-import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack } from '@mui/icons-material'
-import { monthlyPlanAPI, contractAPI } from '../api/client'
+import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp } from '@mui/icons-material'
+import { monthlyPlanAPI, contractAPI, MonthlyPlanTopUpRequest } from '../api/client'
 import { MonthlyPlanStatus } from '../types'
 
 // Simple UUID generator
@@ -132,6 +132,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   // Action menu state
   const [actionMenuAnchor, setActionMenuAnchor] = useState<null | HTMLElement>(null)
   const [actionMenuEntry, setActionMenuEntry] = useState<{ month: number; year: number; entryIndex: number; entry: MonthlyPlanEntry } | null>(null)
+  
+  // Top-Up dialog state
+  const [topupDialogOpen, setTopupDialogOpen] = useState(false)
+  const [topupForm, setTopupForm] = useState({
+    quantity: '',
+    authority_reference: '',
+    reason: '',
+    date: new Date().toISOString().split('T')[0],
+  })
+  const [isAddingTopup, setIsAddingTopup] = useState(false)
 
   // Get product list from contract
   const products = contract?.products ? (Array.isArray(contract.products) ? contract.products : JSON.parse(contract.products)) : []
@@ -200,7 +210,6 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     loadContract()
   }, [propContract, contractId])
 
-  // Load existing monthly plans from ALL quarterly plans
   useEffect(() => {
     const loadExistingMonthlyPlans = async () => {
       if (!quarterlyPlans || quarterlyPlans.length === 0) return
@@ -1342,6 +1351,23 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           </ListItemIcon>
           <ListItemText primary="Advance to Earlier Month" />
         </MenuItem>
+        <MenuItem 
+          onClick={() => {
+            setTopupForm({
+              quantity: '',
+              authority_reference: '',
+              reason: '',
+              date: new Date().toISOString().split('T')[0],
+            })
+            setTopupDialogOpen(true)
+            handleActionMenuClose()
+          }}
+        >
+          <ListItemIcon>
+            <TrendingUp fontSize="small" sx={{ color: '#10B981' }} />
+          </ListItemIcon>
+          <ListItemText primary="Authority Top-Up" />
+        </MenuItem>
         <Divider />
         <MenuItem 
           onClick={() => {
@@ -1425,6 +1451,123 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             }}
           >
             {isMoving ? 'Moving...' : moveAction === 'DEFER' ? 'Defer Cargo' : 'Advance Cargo'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Authority Top-Up Dialog */}
+      <Dialog open={topupDialogOpen} onClose={() => setTopupDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: '#F0FDF4', borderBottom: '1px solid #D1FAE5' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TrendingUp sx={{ color: '#10B981' }} />
+            <Typography variant="h6">Authority Top-Up</Typography>
+          </Box>
+          {actionMenuEntry && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Add authorized quantity increase for{' '}
+              <strong>
+                {getMonthName(actionMenuEntry.month)} {actionMenuEntry.year}
+                {actionMenuEntry.entry.is_combi ? ' (Combie)' : ` - ${actionMenuEntry.entry.product_name}`}
+              </strong>
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            <TextField
+              label="Top-Up Quantity (KT)"
+              type="number"
+              value={topupForm.quantity}
+              onChange={(e) => setTopupForm({ ...topupForm, quantity: e.target.value })}
+              required
+              fullWidth
+              InputProps={{
+                endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
+              }}
+              helperText={actionMenuEntry ? `Current quantity: ${actionMenuEntry.entry.quantity || 0} KT → New: ${(parseFloat(actionMenuEntry.entry.quantity) || 0) + (parseFloat(topupForm.quantity) || 0)} KT` : ''}
+            />
+            <TextField
+              label="Authority Reference"
+              value={topupForm.authority_reference}
+              onChange={(e) => setTopupForm({ ...topupForm, authority_reference: e.target.value })}
+              required
+              fullWidth
+              placeholder="e.g., AUTH-2025-001"
+              helperText="Reference number for the authorization"
+            />
+            <TextField
+              label="Date"
+              type="date"
+              value={topupForm.date}
+              onChange={(e) => setTopupForm({ ...topupForm, date: e.target.value })}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Reason (Optional)"
+              value={topupForm.reason}
+              onChange={(e) => setTopupForm({ ...topupForm, reason: e.target.value })}
+              fullWidth
+              multiline
+              rows={2}
+              placeholder="e.g., Customer request, market demand"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setTopupDialogOpen(false)} disabled={isAddingTopup}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              if (!topupForm.quantity || !topupForm.authority_reference) {
+                alert('Please fill in quantity and authority reference')
+                return
+              }
+              
+              if (!actionMenuEntry || !actionMenuEntry.entry.id) {
+                alert('No monthly plan selected. Please save the entry first before adding a top-up.')
+                return
+              }
+              
+              setIsAddingTopup(true)
+              try {
+                const topupData: MonthlyPlanTopUpRequest = {
+                  quantity: parseFloat(topupForm.quantity),
+                  authority_reference: topupForm.authority_reference,
+                  reason: topupForm.reason || undefined,
+                  date: topupForm.date || undefined,
+                }
+                
+                // For combi entries, apply top-up to all plans in the group
+                if (actionMenuEntry.entry.is_combi && actionMenuEntry.entry._combi_plan_ids) {
+                  // Apply top-up to the first plan (or we could distribute it)
+                  await monthlyPlanAPI.addAuthorityTopup(actionMenuEntry.entry.id, topupData)
+                } else {
+                  await monthlyPlanAPI.addAuthorityTopup(actionMenuEntry.entry.id, topupData)
+                }
+                
+                setTopupDialogOpen(false)
+                alert(`Authority top-up of ${parseFloat(topupForm.quantity).toLocaleString()} KT added successfully!`)
+                
+                // Reload data
+                onPlanCreated()
+              } catch (error: any) {
+                console.error('Error adding authority top-up:', error)
+                const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error'
+                alert(`Error adding top-up: ${errorMessage}`)
+              } finally {
+                setIsAddingTopup(false)
+              }
+            }}
+            disabled={isAddingTopup || !topupForm.quantity || !topupForm.authority_reference}
+            sx={{ 
+              bgcolor: '#10B981', 
+              '&:hover': { bgcolor: '#059669' } 
+            }}
+          >
+            {isAddingTopup ? 'Adding...' : 'Add Top-Up'}
           </Button>
         </DialogActions>
       </Dialog>
