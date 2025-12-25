@@ -222,27 +222,27 @@ export default function HomePage() {
 
   const applyLocalPortOpPatch = (cargoId: number, portCode: string, patch: Partial<CargoPortOperation>) => {
     const patchCargoPortOps = (c: Cargo): Cargo => {
-      if (c.id !== cargoId) return c
-      const existing = Array.isArray(c.port_operations) ? c.port_operations : []
-      const found = existing.find((op) => op.port_code === portCode)
-      const base: CargoPortOperation = found || {
-        id: -1,
-        cargo_id: cargoId,
-        port_code: portCode as any,
-        status: 'Loading',
-        eta: undefined,
-        berthed: undefined,
-        commenced: undefined,
-        etc: undefined,
-        notes: undefined,
-        created_at: new Date().toISOString(),
-        updated_at: undefined,
-      }
-      const nextOp = { ...base, ...patch, port_code: base.port_code, cargo_id: cargoId }
-      const nextOps = found
-        ? existing.map((op) => (op.port_code === portCode ? (nextOp as CargoPortOperation) : op))
-        : [...existing, nextOp as CargoPortOperation]
-      return { ...c, port_operations: nextOps }
+        if (c.id !== cargoId) return c
+        const existing = Array.isArray(c.port_operations) ? c.port_operations : []
+        const found = existing.find((op) => op.port_code === portCode)
+        const base: CargoPortOperation = found || {
+          id: -1,
+          cargo_id: cargoId,
+          port_code: portCode as any,
+          status: 'Loading',
+          eta: undefined,
+          berthed: undefined,
+          commenced: undefined,
+          etc: undefined,
+          notes: undefined,
+          created_at: new Date().toISOString(),
+          updated_at: undefined,
+        }
+        const nextOp = { ...base, ...patch, port_code: base.port_code, cargo_id: cargoId }
+        const nextOps = found
+          ? existing.map((op) => (op.port_code === portCode ? (nextOp as CargoPortOperation) : op))
+          : [...existing, nextOp as CargoPortOperation]
+        return { ...c, port_operations: nextOps }
     }
     
     setPortMovement((prev) => prev.map(patchCargoPortOps))
@@ -546,7 +546,7 @@ export default function HomePage() {
       })
       
       setQuarterlyPlansMap(qpMap)
-      
+
       // Update contracts if we got new ones (merge with existing to avoid losing any)
       if (contractsMap.size > 0) {
         setContracts(prev => {
@@ -1146,7 +1146,7 @@ export default function HomePage() {
 
         // OPTIMISTIC UPDATE: Add to Port Movement immediately
         setPortMovement(prevCargos => [...prevCargos, ...optimisticCargos])
-
+        
         try {
           // Create cargos for all monthly plans in the combie group
           const createdCargos: Cargo[] = []
@@ -1199,9 +1199,9 @@ export default function HomePage() {
           })
           
           alert(isCombieCargo ? `Combie cargo created successfully! (${createdCargos.length} products)` : 'Cargo created successfully!')
-        } catch (error: any) {
+          } catch (error: any) {
           // Remove optimistic cargos on error
-          setPortMovement(prevCargos =>
+            setPortMovement(prevCargos =>
             prevCargos.filter(cargo => !optimisticCargos.some(oc => oc.id === cargo.id))
           )
           const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error'
@@ -1494,8 +1494,8 @@ export default function HomePage() {
                     py: isMobile ? 1.5 : 1,
                     },
                     bgcolor: 'inherit'
-                  }}
-                >
+                }}
+              >
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {cargo.vessel_name}
@@ -3649,8 +3649,8 @@ export default function HomePage() {
                                   ({originalQty} + {topupQty} top-up)
                                 </span>
                               )}
-                            </Typography>
-                          </Box>
+                          </Typography>
+                        </Box>
                         )
                       })}
                       {(() => {
@@ -3667,7 +3667,7 @@ export default function HomePage() {
                           </Typography>
                         )
                       })()}
-                        </Box>
+                      </Box>
                   ) : (
                     // Single product cargo - show as read-only
                     <Box sx={{ p: 2, bgcolor: '#F3F4F6', borderRadius: 1, border: '1px solid #D1D5DB' }}>
@@ -3694,7 +3694,7 @@ export default function HomePage() {
                           </>
                         )
                       })()}
-                      </Box>
+                            </Box>
                   )
                 ) : editingCargo ? (
                   // Editing existing cargo
@@ -3723,7 +3723,7 @@ export default function HomePage() {
                                       ({originalQty} + {topupQty} top-up)
                                     </span>
                                   )}
-                                </Typography>
+                      </Typography>
                               )
                             })}
                             <Typography variant="body2" sx={{ mt: 1, fontWeight: 600, color: '#92400E' }}>
@@ -3758,7 +3758,7 @@ export default function HomePage() {
                                   📊 Original: {originalQty} KT | ➕ Top-up: {topupQty} KT
                                 </Typography>
                               </Box>
-                            )}
+              )}
                           </>
                         )
                       })()}
@@ -3945,19 +3945,19 @@ export default function HomePage() {
                   </Grid>
                   {/* Only show 5-ND field for In-Road CIF cargos */}
                   {editingCargo && editingCargo.status === 'In-Road (Pending Discharge)' && (
-                    <Grid item xs={12} md={6}>
-                      <TextField
+                  <Grid item xs={12} md={6}>
+                    <TextField
                         label="5-ND (Narrowing Down Due Date)"
                         type="date"
                         value={cargoFormData.five_nd_date}
                         onChange={(e) => setCargoFormData({ ...cargoFormData, five_nd_date: e.target.value })}
-                        fullWidth
-                        disabled={isCompletedCargo}
+                      fullWidth
+                      disabled={isCompletedCargo}
                         InputLabelProps={{ shrink: true }}
                         helperText="Due date for narrowing down delivery window"
-                        sx={isCompletedCargo ? disabledStyle : {}}
-                      />
-                    </Grid>
+                      sx={isCompletedCargo ? disabledStyle : {}}
+                    />
+                  </Grid>
                   )}
                 </>
               )}

@@ -219,7 +219,7 @@ export default function LiftingPlanPage() {
           if (name) {
             productNames.push(name)
             const cat = normalizeProductCategory(name)
-            if (cat) productCategories.add(cat)
+          if (cat) productCategories.add(cat)
           }
         })
       }
@@ -285,7 +285,7 @@ export default function LiftingPlanPage() {
         }
       })
 
-      const contractData = dataMap.get(contract.id)
+            const contractData = dataMap.get(contract.id)
       if (!contractData) return
 
       // Process combi groups - create one unified entry per group
@@ -373,35 +373,35 @@ export default function LiftingPlanPage() {
         
         const monthIndex = months.indexOf(mp.month)
         if (monthIndex === -1) return
-
-        const entry: MonthlyPlanEntry = {
-          monthlyPlanId: mp.id,
-          month: mp.month,
-          quantity: mp.month_quantity,
-          laycan5Days: contract.contract_type === 'FOB' ? (mp.laycan_5_days || undefined) : undefined,
-          laycan2Days: contract.contract_type === 'FOB' ? (mp.laycan_2_days || undefined) : undefined,
+              
+              const entry: MonthlyPlanEntry = {
+                monthlyPlanId: mp.id,
+                month: mp.month,
+                quantity: mp.month_quantity,
+                laycan5Days: contract.contract_type === 'FOB' ? (mp.laycan_5_days || undefined) : undefined,
+                laycan2Days: contract.contract_type === 'FOB' ? (mp.laycan_2_days || undefined) : undefined,
           loadingMonth: contract.contract_type === 'CIF' ? (mp.loading_month || undefined) : undefined,
-          loadingWindow: contract.contract_type === 'CIF' ? (mp.loading_window || undefined) : undefined,
+                loadingWindow: contract.contract_type === 'CIF' ? (mp.loading_window || undefined) : undefined,
           deliveryMonth: contract.contract_type === 'CIF' ? (mp.delivery_month || undefined) : undefined,
-          deliveryWindow: contract.contract_type === 'CIF' ? (mp.delivery_window || undefined) : undefined,
+                deliveryWindow: contract.contract_type === 'CIF' ? (mp.delivery_window || undefined) : undefined,
           isCombi: false,
           topupQuantity: (mp as any).authority_topup_quantity || 0,
-        }
+              }
 
-        if (monthIndex === 0) {
-          contractData.month1Entries.push(entry)
-        } else if (monthIndex === 1) {
-          contractData.month2Entries.push(entry)
-        } else if (monthIndex === 2) {
-          contractData.month3Entries.push(entry)
-        }
+              if (monthIndex === 0) {
+                contractData.month1Entries.push(entry)
+              } else if (monthIndex === 1) {
+                contractData.month2Entries.push(entry)
+              } else if (monthIndex === 2) {
+                contractData.month3Entries.push(entry)
+              }
       })
-
-      // Calculate total
-      contractData.total = 
-        contractData.month1Entries.reduce((sum, e) => sum + e.quantity, 0) +
-        contractData.month2Entries.reduce((sum, e) => sum + e.quantity, 0) +
-        contractData.month3Entries.reduce((sum, e) => sum + e.quantity, 0)
+              
+              // Calculate total
+              contractData.total = 
+                contractData.month1Entries.reduce((sum, e) => sum + e.quantity, 0) +
+                contractData.month2Entries.reduce((sum, e) => sum + e.quantity, 0) +
+                contractData.month3Entries.reduce((sum, e) => sum + e.quantity, 0)
     })
 
     setContractData(dataMap)

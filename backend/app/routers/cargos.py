@@ -319,7 +319,7 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
         if cargos_needing_ops:
             for c in cargos_needing_ops:
                 _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
-            db.commit()
+        db.commit()
         
         return cargos
     except SQLAlchemyError as e:
@@ -390,7 +390,7 @@ def read_active_loadings(db: Session = Depends(get_db)):
         if cargos_needing_ops:
             for c in cargos_needing_ops:
                 _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
-            db.commit()
+        db.commit()
         
         return cargos
     except SQLAlchemyError as e:
@@ -500,7 +500,7 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
         if db_cargo is None:
             raise to_http_exception(cargo_not_found(cargo_id))
         
-        update_data = cargo.model_dump(exclude_unset=True) if hasattr(cargo, 'model_dump') else cargo.dict(exclude_unset=True)
+            update_data = cargo.model_dump(exclude_unset=True) if hasattr(cargo, 'model_dump') else cargo.dict(exclude_unset=True)
         logger.debug(f"Updating cargo {cargo_id} with data: {update_data}")
         
     except HTTPException:
@@ -539,7 +539,7 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
             valid_values = [e.value for e in LCStatus]
             if lc_status_value not in valid_values:
                 raise to_http_exception(invalid_status(lc_status_value, valid_values))
-
+    
     # Guardrail: prevent putting a cargo into Loading lifecycle without at least one load port
     def _coerce_load_ports_to_str(val) -> Optional[str]:
         if val is None:

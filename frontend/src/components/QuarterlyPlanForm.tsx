@@ -392,17 +392,17 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                       
                       return (
                         <Box key={quarter}>
-                          <TextField
-                            label={`${quarter} (${getQuarterLabel(quarter)})`}
-                            type="number"
-                            size="small"
-                            value={plan[fieldKey]}
-                            onChange={(e) => handleQuantityChange(productIndex, fieldKey, e.target.value)}
-                            fullWidth
-                            InputProps={{
-                              endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
-                            }}
-                          />
+                        <TextField
+                          label={`${quarter} (${getQuarterLabel(quarter)})`}
+                          type="number"
+                          size="small"
+                          value={plan[fieldKey]}
+                          onChange={(e) => handleQuantityChange(productIndex, fieldKey, e.target.value)}
+                          fullWidth
+                          InputProps={{
+                            endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
+                          }}
+                        />
                           {topupQty > 0 && (
                             <Box sx={{ mt: 0.5, ml: 1, p: 0.5, bgcolor: '#F0FDF4', borderRadius: 0.5, border: '1px solid #D1FAE5' }}>
                               <Typography variant="caption" sx={{ color: '#166534' }}>
@@ -422,21 +422,21 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                       const originalTotal = total - totalTopup
                       return (
                         <>
-                          <Typography 
-                            variant="body1" 
-                            sx={{ 
-                              fontWeight: 'bold', 
-                              color: isValid ? 'success.main' : total > 0 ? 'error.main' : 'text.primary' 
-                            }}
-                          >
-                            Total: {total.toLocaleString()} KT
+                    <Typography 
+                      variant="body1" 
+                      sx={{ 
+                        fontWeight: 'bold', 
+                        color: isValid ? 'success.main' : total > 0 ? 'error.main' : 'text.primary' 
+                      }}
+                    >
+                      Total: {total.toLocaleString()} KT
                             {totalTopup > 0 && (
                               <span style={{ color: '#10B981', fontWeight: 500, marginLeft: 8 }}>
                                 ({originalTotal.toLocaleString()} + {totalTopup.toLocaleString()} top-up)
                               </span>
                             )}
-                            {isValid && ' ✓'}
-                          </Typography>
+                      {isValid && ' ✓'}
+                    </Typography>
                         </>
                       )
                     })()}

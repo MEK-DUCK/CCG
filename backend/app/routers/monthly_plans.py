@@ -113,7 +113,7 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
                 field_name=field_name,
                 old_value=None,
                 new_value=val
-            )
+    )
     
     db.commit()
     db.refresh(db_plan)

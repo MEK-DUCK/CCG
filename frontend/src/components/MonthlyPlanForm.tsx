@@ -717,7 +717,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               combiEntriesToUpdate.push({ entry, month, year })
             } else {
               // Single product entry
-              plansToKeep.add(entry.id)
+            plansToKeep.add(entry.id)
             }
           } else if (entry.is_combi) {
             // New combi entry - check if any product has quantity
@@ -786,28 +786,28 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         if (!plansToKeep.has(existingPlan.id)) continue
         if (existingPlan.combi_group_id) continue  // Already handled above
         
-        const key = `${existingPlan.month}-${existingPlan.year}`
-        const entries = monthEntries[key] || []
+          const key = `${existingPlan.month}-${existingPlan.year}`
+          const entries = monthEntries[key] || []
         const entry = entries.find(e => e.id === existingPlan.id && !e.is_combi)
-        
-        if (entry) {
-          const updateData: any = {
-            month_quantity: parseFloat(entry.quantity || '0'),
-            number_of_liftings: 1,
-            laycan_5_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
-            laycan_2_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
-            laycan_2_days_remark: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
-            loading_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_month || undefined) : undefined,
-            loading_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_window || undefined) : undefined,
-            delivery_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_month || undefined) : undefined,
-            delivery_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window || undefined) : undefined,
-            delivery_window_remark: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window_remark || undefined) : undefined,
-          }
           
-          try {
-            await monthlyPlanAPI.update(existingPlan.id, updateData)
-          } catch (error: any) {
-            console.error(`Error updating plan ${existingPlan.id}:`, error)
+          if (entry) {
+            const updateData: any = {
+              month_quantity: parseFloat(entry.quantity || '0'),
+              number_of_liftings: 1,
+              laycan_5_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
+              laycan_2_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
+              laycan_2_days_remark: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
+              loading_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_month || undefined) : undefined,
+              loading_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_window || undefined) : undefined,
+              delivery_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_month || undefined) : undefined,
+              delivery_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window || undefined) : undefined,
+              delivery_window_remark: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window_remark || undefined) : undefined,
+            }
+            
+            try {
+              await monthlyPlanAPI.update(existingPlan.id, updateData)
+            } catch (error: any) {
+              console.error(`Error updating plan ${existingPlan.id}:`, error)
           }
         }
       }
@@ -929,22 +929,22 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         </Typography>
         
         <Grid container spacing={2}>
-          {products.map((product: any) => (
+        {products.map((product: any) => (
             <Grid item xs={12} key={product.name}>
-              {isMultiProduct && (
+            {isMultiProduct && (
                 <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B', mb: 1.5 }}>
                   {product.name}
-                </Typography>
-              )}
+              </Typography>
+            )}
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-                {quarterOrder.map((q, idx) => {
+              {quarterOrder.map((q, idx) => {
                   const quarterLabel = QUARTER_MONTHS[q].labels.join(', ')
-                  const qty = getQuarterlyQuantity(product.name, idx)
-                  const entered = getTotalEntered(q, product.name)
-                  const isComplete = entered === qty
+                const qty = getQuarterlyQuantity(product.name, idx)
+                const entered = getTotalEntered(q, product.name)
+                const isComplete = entered === qty
                   const percentage = qty > 0 ? Math.round((entered / qty) * 100) : 0
                   
-                  return (
+                return (
                     <Box 
                       key={q} 
                       sx={{ 
@@ -989,13 +989,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                       </Box>
                       <Typography variant="caption" sx={{ color: '#94A3B8', fontSize: '0.65rem', mt: 0.5, display: 'block' }}>
                         {quarterLabel}
-                      </Typography>
+            </Typography>
                     </Box>
                   )
                 })}
-              </Box>
+          </Box>
             </Grid>
-          ))}
+        ))}
         </Grid>
       </Box>
       
@@ -1022,13 +1022,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   
                   return (
                     <Box key={product.name} sx={{ mb: 0.5 }}>
-                      <Typography 
-                        variant="body2" 
-                        sx={{ 
-                          color: isComplete ? 'success.main' : 'text.secondary',
-                        }}
-                      >
-                        {isMultiProduct && <strong>{product.name}: </strong>}
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        color: isComplete ? 'success.main' : 'text.secondary',
+                      }}
+                    >
+                      {isMultiProduct && <strong>{product.name}: </strong>}
                         Total: {quarterlyQuantity.toLocaleString()} KT
                         {quarterlyTopup > 0 && (
                           <span style={{ color: '#10B981', fontWeight: 500 }}>
@@ -1036,9 +1036,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           </span>
                         )}
                         {' | '}Entered: {totalEntered.toLocaleString()} KT | 
-                        Remaining: {remaining.toLocaleString()} KT
-                        {isComplete && ' ✓'}
-                      </Typography>
+                      Remaining: {remaining.toLocaleString()} KT
+                      {isComplete && ' ✓'}
+                    </Typography>
                     </Box>
                   )
                 })}
@@ -1189,13 +1189,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                   {parseFloat(entry.quantity || '0') > 0 && (
                                     <Box sx={{ mt: 0.5 }}>
                                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#B45309' }}>
-                                        Total: {parseFloat(entry.quantity).toLocaleString()} KT
+                                      Total: {parseFloat(entry.quantity).toLocaleString()} KT
                                         {(entry.authority_topup_quantity || 0) > 0 && (
                                           <span style={{ color: '#10B981', fontWeight: 500, marginLeft: 8 }}>
                                             (incl. {entry.authority_topup_quantity?.toLocaleString()} top-up)
                                           </span>
                                         )}
-                                      </Typography>
+                                    </Typography>
                                       {/* Show top-up breakdown for combi entries */}
                                       {(entry.authority_topup_quantity || 0) > 0 && (
                                         <Box sx={{ 
@@ -1226,39 +1226,39 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               {/* Single quantity input - for single product contracts OR multi-product non-combi */}
                               {!entry.is_combi && (
                                 <>
-                                  <TextField
-                                    label={!isMultiProduct 
+                                <TextField
+                                  label={!isMultiProduct 
                                       ? `${getMonthName(month)} ${year}${entries.length > 1 ? ` (${entryIndex + 1})` : ''} *`
-                                      : 'Quantity (KT)'
-                                    }
-                                    type="number"
-                                    value={entry.quantity}
-                                    onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
-                                    required
-                                    fullWidth
-                                    disabled={isLocked}
-                                    helperText={
-                                      entry.id 
-                                        ? `${isLocked ? '(Locked)' : hasCargos ? '(Has cargos)' : ''}`
-                                        : ''
-                                    }
-                                    InputProps={{
-                                      endAdornment: (
-                                        <InputAdornment position="end">
-                                          {entries.length > 1 && !isLocked && !hasCargos && (
-                                            <IconButton
-                                              size="small"
-                                              color="error"
-                                              onClick={() => handleRemoveEntry(month, year, entryIndex)}
-                                              edge="end"
-                                            >
-                                              <Delete fontSize="small" />
-                                            </IconButton>
-                                          )}
-                                        </InputAdornment>
-                                      ),
-                                    }}
-                                  />
+                                    : 'Quantity (KT)'
+                                  }
+                                  type="number"
+                                  value={entry.quantity}
+                                  onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
+                                  required
+                                  fullWidth
+                                  disabled={isLocked}
+                                  helperText={
+                                    entry.id 
+                                      ? `${isLocked ? '(Locked)' : hasCargos ? '(Has cargos)' : ''}`
+                                      : ''
+                                  }
+                                  InputProps={{
+                                    endAdornment: (
+                                      <InputAdornment position="end">
+                                        {entries.length > 1 && !isLocked && !hasCargos && (
+                                          <IconButton
+                                            size="small"
+                                            color="error"
+                                            onClick={() => handleRemoveEntry(month, year, entryIndex)}
+                                            edge="end"
+                                          >
+                                            <Delete fontSize="small" />
+                                          </IconButton>
+                                        )}
+                                      </InputAdornment>
+                                    ),
+                                  }}
+                                />
                                   {/* Show top-up breakdown if there's a top-up */}
                                   {(entry.authority_topup_quantity || 0) > 0 && (
                                     <Box sx={{ 

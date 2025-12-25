@@ -299,7 +299,7 @@ class CargoAuditLog(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     cargo_snapshot = Column(Text, nullable=True)  # JSON snapshot for deleted cargos
-
+    
 
 class MonthlyPlanAuditLog(Base):
     """Audit log for monthly plan changes."""
@@ -321,7 +321,7 @@ class MonthlyPlanAuditLog(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     monthly_plan_snapshot = Column(Text, nullable=True)
-
+    
 
 class QuarterlyPlanAuditLog(Base):
     """Audit log for quarterly plan changes."""

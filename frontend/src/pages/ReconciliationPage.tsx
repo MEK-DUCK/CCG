@@ -551,9 +551,9 @@ export default function ReconciliationPage() {
                       </TableCell>
                       <TableCell>
                         {(isMonthlyPlanLog(log) ? log.contract_number : (log as QuarterlyPlanAuditLog).contract_number) ? (
-                          <Typography variant="body2" sx={{ fontWeight: 500, color: '#1E293B' }}>
-                            {isMonthlyPlanLog(log) ? log.contract_number : (log as QuarterlyPlanAuditLog).contract_number}
-                          </Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 500, color: '#1E293B' }}>
+                              {isMonthlyPlanLog(log) ? log.contract_number : (log as QuarterlyPlanAuditLog).contract_number}
+                            </Typography>
                         ) : (
                           <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
                         )}
