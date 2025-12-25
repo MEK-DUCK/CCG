@@ -3753,7 +3753,8 @@ export default function HomePage() {
                         Product:
                       </Typography>
                       {(() => {
-                        const topupQty = selectedMonthlyPlan?.authority_topup_quantity || 0
+                        const mp = monthlyPlans.find(m => m.id === cargoMonthlyPlanId)
+                        const topupQty = (mp as any)?.authority_topup_quantity || 0
                         const totalQty = parseFloat(cargoFormData.cargo_quantity) || 0
                         const originalQty = totalQty - topupQty
                         return (
