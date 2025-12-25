@@ -32,8 +32,10 @@ interface MonthlyPlanEntry {
   quantity: number
   laycan5Days?: string
   laycan2Days?: string
-  loadingWindow?: string
-  deliveryWindow?: string
+  loadingMonth?: string    // CIF: Loading month
+  loadingWindow?: string   // CIF: Loading window
+  deliveryMonth?: string   // CIF: Delivery month
+  deliveryWindow?: string  // CIF: Delivery window
   isCombi?: boolean  // True if this is a combi entry (multiple products, same vessel/laycan)
   combiGroupId?: string  // UUID linking combi monthly plans together
   combiProducts?: { productName: string; quantity: number }[]  // List of products with quantities in the combi group
@@ -255,7 +257,9 @@ export default function LiftingPlanPage() {
             quantity: matchingProduct.quantity,  // Only the filtered product's quantity
             laycan5Days: contract.contract_type === 'FOB' ? (firstPlan.laycan_5_days || undefined) : undefined,
             laycan2Days: contract.contract_type === 'FOB' ? (firstPlan.laycan_2_days || undefined) : undefined,
+            loadingMonth: contract.contract_type === 'CIF' ? (firstPlan.loading_month || undefined) : undefined,
             loadingWindow: contract.contract_type === 'CIF' ? (firstPlan.loading_window || undefined) : undefined,
+            deliveryMonth: contract.contract_type === 'CIF' ? (firstPlan.delivery_month || undefined) : undefined,
             deliveryWindow: contract.contract_type === 'CIF' ? (firstPlan.delivery_window || undefined) : undefined,
             isCombi: true,
             combiGroupId,
@@ -279,7 +283,9 @@ export default function LiftingPlanPage() {
             quantity: totalQuantity,
             laycan5Days: contract.contract_type === 'FOB' ? (firstPlan.laycan_5_days || undefined) : undefined,
             laycan2Days: contract.contract_type === 'FOB' ? (firstPlan.laycan_2_days || undefined) : undefined,
+            loadingMonth: contract.contract_type === 'CIF' ? (firstPlan.loading_month || undefined) : undefined,
             loadingWindow: contract.contract_type === 'CIF' ? (firstPlan.loading_window || undefined) : undefined,
+            deliveryMonth: contract.contract_type === 'CIF' ? (firstPlan.delivery_month || undefined) : undefined,
             deliveryWindow: contract.contract_type === 'CIF' ? (firstPlan.delivery_window || undefined) : undefined,
             isCombi: true,
             combiGroupId,
@@ -310,7 +316,9 @@ export default function LiftingPlanPage() {
           quantity: mp.month_quantity,
           laycan5Days: contract.contract_type === 'FOB' ? (mp.laycan_5_days || undefined) : undefined,
           laycan2Days: contract.contract_type === 'FOB' ? (mp.laycan_2_days || undefined) : undefined,
+          loadingMonth: contract.contract_type === 'CIF' ? (mp.loading_month || undefined) : undefined,
           loadingWindow: contract.contract_type === 'CIF' ? (mp.loading_window || undefined) : undefined,
+          deliveryMonth: contract.contract_type === 'CIF' ? (mp.delivery_month || undefined) : undefined,
           deliveryWindow: contract.contract_type === 'CIF' ? (mp.delivery_window || undefined) : undefined,
           isCombi: false,
         }
@@ -675,16 +683,16 @@ export default function LiftingPlanPage() {
                               )}
                             </Box>
                           )}
-                          {data.contractType === 'CIF' && (entry.loadingWindow || entry.deliveryWindow) && (
+                          {data.contractType === 'CIF' && (entry.loadingMonth || entry.loadingWindow || entry.deliveryMonth || entry.deliveryWindow) && (
                             <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                              {entry.loadingWindow && (
+                              {(entry.loadingMonth || entry.loadingWindow) && (
                                 <Typography variant="caption" color="text.secondary">
-                                  Loading: {entry.loadingWindow}
+                                  Loading: {[entry.loadingMonth, entry.loadingWindow].filter(Boolean).join(' - ')}
                                 </Typography>
                               )}
-                              {entry.deliveryWindow && (
+                              {(entry.deliveryMonth || entry.deliveryWindow) && (
                                 <Typography variant="caption" color="text.secondary">
-                                  Delivery: {entry.deliveryWindow}
+                                  Delivery: {[entry.deliveryMonth, entry.deliveryWindow].filter(Boolean).join(' - ')}
                                 </Typography>
                               )}
                             </Box>
@@ -742,16 +750,16 @@ export default function LiftingPlanPage() {
                               )}
                             </Box>
                           )}
-                          {data.contractType === 'CIF' && (entry.loadingWindow || entry.deliveryWindow) && (
+                          {data.contractType === 'CIF' && (entry.loadingMonth || entry.loadingWindow || entry.deliveryMonth || entry.deliveryWindow) && (
                             <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                              {entry.loadingWindow && (
+                              {(entry.loadingMonth || entry.loadingWindow) && (
                                 <Typography variant="caption" color="text.secondary">
-                                  Loading: {entry.loadingWindow}
+                                  Loading: {[entry.loadingMonth, entry.loadingWindow].filter(Boolean).join(' - ')}
                                 </Typography>
                               )}
-                              {entry.deliveryWindow && (
+                              {(entry.deliveryMonth || entry.deliveryWindow) && (
                                 <Typography variant="caption" color="text.secondary">
-                                  Delivery: {entry.deliveryWindow}
+                                  Delivery: {[entry.deliveryMonth, entry.deliveryWindow].filter(Boolean).join(' - ')}
                                 </Typography>
                               )}
                             </Box>
@@ -809,16 +817,16 @@ export default function LiftingPlanPage() {
                               )}
                             </Box>
                           )}
-                          {data.contractType === 'CIF' && (entry.loadingWindow || entry.deliveryWindow) && (
+                          {data.contractType === 'CIF' && (entry.loadingMonth || entry.loadingWindow || entry.deliveryMonth || entry.deliveryWindow) && (
                             <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                              {entry.loadingWindow && (
+                              {(entry.loadingMonth || entry.loadingWindow) && (
                                 <Typography variant="caption" color="text.secondary">
-                                  Loading: {entry.loadingWindow}
+                                  Loading: {[entry.loadingMonth, entry.loadingWindow].filter(Boolean).join(' - ')}
                                 </Typography>
                               )}
-                              {entry.deliveryWindow && (
+                              {(entry.deliveryMonth || entry.deliveryWindow) && (
                                 <Typography variant="caption" color="text.secondary">
-                                  Delivery: {entry.deliveryWindow}
+                                  Delivery: {[entry.deliveryMonth, entry.deliveryWindow].filter(Boolean).join(' - ')}
                                 </Typography>
                               )}
                             </Box>
