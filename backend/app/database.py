@@ -172,6 +172,14 @@ def ensure_schema():
                             conn.execute(text('CREATE INDEX IF NOT EXISTS ix_cargos_combi_group_id ON cargos (combi_group_id)'))
                 except Exception:
                     pass  # Index may already exist
+            
+            # Add five_nd_date for CIF In-Road tracking
+            if "five_nd_date" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE cargos ADD COLUMN IF NOT EXISTS five_nd_date VARCHAR'))
+                    else:
+                        conn.execute(text('ALTER TABLE cargos ADD COLUMN five_nd_date VARCHAR'))
                     
     except Exception:
         # Never block app startup on best-effort migrations
