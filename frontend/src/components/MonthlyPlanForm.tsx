@@ -135,6 +135,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   
   // Top-Up dialog state
   const [topupDialogOpen, setTopupDialogOpen] = useState(false)
+  const [topupEntry, setTopupEntry] = useState<{ month: number; year: number; entry: MonthlyPlanEntry } | null>(null)
   const [topupForm, setTopupForm] = useState({
     quantity: '',
     authority_reference: '',
@@ -219,12 +220,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         const allPlans: any[] = []
         for (const qp of quarterlyPlans) {
           const monthlyRes = await monthlyPlanAPI.getAll(qp.id)
+          console.log('Loaded monthly plans for QP', qp.id, ':', monthlyRes.data)
           const plans = (monthlyRes.data || []).map((p: any) => ({
             ...p,
             product_name: qp.product_name || products[0]?.name || 'Unknown'
           }))
           allPlans.push(...plans)
         }
+        console.log('All loaded plans:', allPlans.map(p => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
         setExistingMonthlyPlans(allPlans)
         
         // Load status for each plan
@@ -288,6 +291,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           // Calculate total quantity
           const totalQuantity = combiPlans.reduce((sum: number, p: any) => sum + p.month_quantity, 0)
           
+          console.log('Creating combi entry with id:', firstPlan.id, 'from firstPlan:', firstPlan)
           entries[key].push({
             id: firstPlan.id,  // Use first plan's ID as reference
             quarterly_plan_id: firstPlan.quarterly_plan_id,
@@ -315,6 +319,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           if (!entries[key]) {
             entries[key] = []
           }
+          console.log('Creating non-combi entry with id:', plan.id, 'from plan:', plan)
           entries[key].push({
             id: plan.id,
             quarterly_plan_id: plan.quarterly_plan_id,
@@ -528,6 +533,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
 
   // Action menu handlers
   const handleActionMenuOpen = (event: React.MouseEvent<HTMLElement>, month: number, year: number, entryIndex: number, entry: MonthlyPlanEntry) => {
+    console.log('Opening action menu for entry - ID:', entry.id, 'Type:', typeof entry.id, 'Truthy:', !!entry.id)
+    console.log('Full entry:', JSON.stringify(entry, null, 2))
     setActionMenuAnchor(event.currentTarget)
     setActionMenuEntry({ month, year, entryIndex, entry })
   }
@@ -1052,18 +1059,18 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                 borderRadius: 1,
                               }}
                             >
-                              {/* Action buttons for existing entries - Defer/Advance/Delete */}
-                              {entry.id && !hasCargos && (
-                                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
-                                  <IconButton
-                                    size="small"
-                                    onClick={(e) => handleActionMenuOpen(e, month, year, entryIndex, entry)}
-                                    sx={{ color: '#64748B' }}
-                                  >
-                                    <MoreVert fontSize="small" />
-                                  </IconButton>
-                                </Box>
-                              )}
+                              {/* Action buttons for entries - show menu for all entries, but some options may be disabled */}
+                              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => handleActionMenuOpen(e, month, year, entryIndex, entry)}
+                                  sx={{ color: '#64748B' }}
+                                  disabled={hasCargos}
+                                  title={hasCargos ? 'Cannot modify - has cargos' : 'Actions'}
+                                >
+                                  <MoreVert fontSize="small" />
+                                </IconButton>
+                              </Box>
                               
                               {/* Combi Cargo option - only for multi-product contracts and new entries */}
                               {isMultiProduct && !entry.id && (
@@ -1358,6 +1365,12 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               handleActionMenuClose()
               return
             }
+            // Store the entry data BEFORE closing the menu
+            setTopupEntry({
+              month: actionMenuEntry.month,
+              year: actionMenuEntry.year,
+              entry: actionMenuEntry.entry,
+            })
             setTopupForm({
               quantity: '',
               authority_reference: '',
@@ -1468,18 +1481,18 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       </Dialog>
       
       {/* Authority Top-Up Dialog */}
-      <Dialog open={topupDialogOpen} onClose={() => setTopupDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={topupDialogOpen} onClose={() => { setTopupDialogOpen(false); setTopupEntry(null); }} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: '#F0FDF4', borderBottom: '1px solid #D1FAE5' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TrendingUp sx={{ color: '#10B981' }} />
             <Typography variant="h6">Authority Top-Up</Typography>
           </Box>
-          {actionMenuEntry && (
+          {topupEntry && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               Add authorized quantity increase for{' '}
               <strong>
-                {getMonthName(actionMenuEntry.month)} {actionMenuEntry.year}
-                {actionMenuEntry.entry.is_combi ? ' (Combie)' : ` - ${actionMenuEntry.entry.product_name}`}
+                {getMonthName(topupEntry.month)} {topupEntry.year}
+                {topupEntry.entry.is_combi ? ' (Combie)' : ` - ${topupEntry.entry.product_name}`}
               </strong>
             </Typography>
           )}
@@ -1496,7 +1509,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               InputProps={{
                 endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
               }}
-              helperText={actionMenuEntry ? `Current quantity: ${actionMenuEntry.entry.quantity || 0} KT → New: ${(parseFloat(actionMenuEntry.entry.quantity) || 0) + (parseFloat(topupForm.quantity) || 0)} KT` : ''}
+              helperText={topupEntry ? `Current quantity: ${topupEntry.entry.quantity || 0} KT → New: ${(parseFloat(topupEntry.entry.quantity) || 0) + (parseFloat(topupForm.quantity) || 0)} KT` : ''}
             />
             <TextField
               label="Authority Reference"
@@ -1527,7 +1540,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setTopupDialogOpen(false)} disabled={isAddingTopup}>
+          <Button onClick={() => { setTopupDialogOpen(false); setTopupEntry(null); }} disabled={isAddingTopup}>
             Cancel
           </Button>
           <Button
@@ -1538,8 +1551,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 return
               }
               
-              if (!actionMenuEntry || !actionMenuEntry.entry.id) {
-                alert('This cargo entry has not been saved yet. Please save your changes first (click "Save All Monthly Plans"), then try adding the top-up again.')
+              if (!topupEntry || !topupEntry.entry.id) {
+                alert('No monthly plan selected. This should not happen - please close the dialog and try again.')
                 return
               }
               
@@ -1553,14 +1566,15 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 }
                 
                 // For combi entries, apply top-up to all plans in the group
-                if (actionMenuEntry.entry.is_combi && actionMenuEntry.entry._combi_plan_ids) {
+                if (topupEntry.entry.is_combi && topupEntry.entry._combi_plan_ids) {
                   // Apply top-up to the first plan (or we could distribute it)
-                  await monthlyPlanAPI.addAuthorityTopup(actionMenuEntry.entry.id, topupData)
+                  await monthlyPlanAPI.addAuthorityTopup(topupEntry.entry.id, topupData)
                 } else {
-                  await monthlyPlanAPI.addAuthorityTopup(actionMenuEntry.entry.id, topupData)
+                  await monthlyPlanAPI.addAuthorityTopup(topupEntry.entry.id, topupData)
                 }
                 
                 setTopupDialogOpen(false)
+                setTopupEntry(null)
                 alert(`Authority top-up of ${parseFloat(topupForm.quantity).toLocaleString()} KT added successfully!`)
                 
                 // Reload data
