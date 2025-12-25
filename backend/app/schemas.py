@@ -38,8 +38,11 @@ class AuthorityTopUp(BaseModel):
     product_name: str = Field(..., min_length=1, max_length=64)  # Must match a product in the contract
     quantity: float = Field(..., gt=0)  # Top-up quantity in KT (must be positive)
     authority_reference: str = Field(..., min_length=1, max_length=100)  # Reference number (e.g., AUTH-2024-001)
-    reason: Optional[str] = Field(None, max_length=500)  # Reason for the top-up
-    date: Optional[date] = None  # Date of authorization
+    reason: str | None = Field(default=None, max_length=500)  # Reason for the top-up
+    authorization_date: str | None = None  # Date of authorization (renamed to avoid conflict, stored as string in JSON)
+    month: int | None = None  # Month of the cargo
+    year: int | None = None  # Year of the cargo
+    monthly_plan_id: int | None = None  # Reference to the monthly plan
 
 
 # Authority Top-Up Request for Monthly Plan (cargo-level top-up)

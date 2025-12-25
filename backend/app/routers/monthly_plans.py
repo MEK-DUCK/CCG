@@ -518,7 +518,7 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
         "quantity": topup.quantity,
         "authority_reference": topup.authority_reference,
         "reason": topup.reason,
-        "date": str(topup.authorization_date) if topup.authorization_date else None,
+        "authorization_date": str(topup.authorization_date) if topup.authorization_date else None,
         "month": db_plan.month,
         "year": db_plan.year,
         "monthly_plan_id": db_plan.id
