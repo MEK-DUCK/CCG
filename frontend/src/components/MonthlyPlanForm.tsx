@@ -107,6 +107,9 @@ interface MonthlyPlanEntry {
   combi_group_id?: string
   combi_quantities: Record<string, string>  // For combi entries - quantity per product (e.g., { "GASOIL": "45", "JET A-1": "10" })
   _combi_plan_ids?: number[]  // For existing combi entries - all plan IDs in the group
+  // Authority top-up tracking
+  authority_topup_quantity?: number  // Top-up quantity in KT
+  authority_topup_reference?: string  // Reference number
 }
 
 export default function MonthlyPlanForm({ contractId, contract: propContract, quarterlyPlans, onPlanCreated }: MonthlyPlanFormProps) {
@@ -291,6 +294,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           // Calculate total quantity
           const totalQuantity = combiPlans.reduce((sum: number, p: any) => sum + p.month_quantity, 0)
           
+          // Calculate total top-up for combi entries
+          const totalTopup = combiPlans.reduce((sum: number, p: any) => sum + (p.authority_topup_quantity || 0), 0)
+          
           console.log('Creating combi entry with id:', firstPlan.id, 'from firstPlan:', firstPlan)
           entries[key].push({
             id: firstPlan.id,  // Use first plan's ID as reference
@@ -310,6 +316,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             combi_quantities: combiQuantities,
             // Store all plan IDs for updates/deletes
             _combi_plan_ids: combiPlanIds,
+            authority_topup_quantity: totalTopup,
+            authority_topup_reference: firstPlan.authority_topup_reference || '',
           } as MonthlyPlanEntry & { _combi_plan_ids?: number[] })
         })
         
@@ -336,6 +344,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             is_combi: false,
             combi_group_id: undefined,
             combi_quantities: {},
+            authority_topup_quantity: plan.authority_topup_quantity || 0,
+            authority_topup_reference: plan.authority_topup_reference || '',
           })
         })
         
@@ -619,6 +629,26 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     ]
     
     return quantities[quarterPosition] || 0
+  }
+
+  // Get quarterly top-up amount for a product and quarter position
+  const getQuarterlyTopup = (productName: string, quarterPosition: number): number => {
+    const qp = productQuarterlyPlanMap.get(productName)
+    if (!qp) return 0
+    
+    const topups = [
+      (qp as any).q1_topup || 0,
+      (qp as any).q2_topup || 0,
+      (qp as any).q3_topup || 0,
+      (qp as any).q4_topup || 0,
+    ]
+    
+    return topups[quarterPosition] || 0
+  }
+
+  // Get original quarterly quantity (total - topup)
+  const getQuarterlyOriginal = (productName: string, quarterPosition: number): number => {
+    return getQuarterlyQuantity(productName, quarterPosition) - getQuarterlyTopup(productName, quarterPosition)
   }
 
   // Get total entered for a quarter for a specific product
@@ -979,25 +1009,32 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 {/* Product-wise summary for this quarter */}
                 {products.map((product: any) => {
                   const quarterlyQuantity = getQuarterlyQuantity(product.name, quarterIndex)
+                  const quarterlyTopup = getQuarterlyTopup(product.name, quarterIndex)
+                  const quarterlyOriginal = getQuarterlyOriginal(product.name, quarterIndex)
                   const totalEntered = getTotalEntered(quarter, product.name)
                   const remaining = quarterlyQuantity - totalEntered
                   const isComplete = remaining === 0
                   
                   return (
-                    <Typography 
-                      key={product.name} 
-                      variant="body2" 
-                      sx={{ 
-                        color: isComplete ? 'success.main' : 'text.secondary',
-                        mb: 0.5
-                      }}
-                    >
-                      {isMultiProduct && <strong>{product.name}: </strong>}
-                      Total: {quarterlyQuantity.toLocaleString()} KT | 
-                      Entered: {totalEntered.toLocaleString()} KT | 
-                      Remaining: {remaining.toLocaleString()} KT
-                      {isComplete && ' ✓'}
-                    </Typography>
+                    <Box key={product.name} sx={{ mb: 0.5 }}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          color: isComplete ? 'success.main' : 'text.secondary',
+                        }}
+                      >
+                        {isMultiProduct && <strong>{product.name}: </strong>}
+                        Total: {quarterlyQuantity.toLocaleString()} KT
+                        {quarterlyTopup > 0 && (
+                          <span style={{ color: '#10B981', fontWeight: 500 }}>
+                            {' '}({quarterlyOriginal.toLocaleString()} + <span style={{ backgroundColor: '#D1FAE5', padding: '1px 4px', borderRadius: '4px' }}>{quarterlyTopup.toLocaleString()} top-up</span>)
+                          </span>
+                        )}
+                        {' | '}Entered: {totalEntered.toLocaleString()} KT | 
+                        Remaining: {remaining.toLocaleString()} KT
+                        {isComplete && ' ✓'}
+                      </Typography>
+                    </Box>
                   )
                 })}
               </Box>
@@ -1145,48 +1182,101 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                     />
                                   ))}
                                   {parseFloat(entry.quantity || '0') > 0 && (
-                                    <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 600, color: '#B45309' }}>
-                                      Total: {parseFloat(entry.quantity).toLocaleString()} KT
-                                    </Typography>
+                                    <Box sx={{ mt: 0.5 }}>
+                                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#B45309' }}>
+                                        Total: {parseFloat(entry.quantity).toLocaleString()} KT
+                                        {(entry.authority_topup_quantity || 0) > 0 && (
+                                          <span style={{ color: '#10B981', fontWeight: 500, marginLeft: 8 }}>
+                                            (incl. {entry.authority_topup_quantity?.toLocaleString()} top-up)
+                                          </span>
+                                        )}
+                                      </Typography>
+                                      {/* Show top-up breakdown for combi entries */}
+                                      {(entry.authority_topup_quantity || 0) > 0 && (
+                                        <Box sx={{ 
+                                          mt: 0.5, 
+                                          p: 0.75, 
+                                          bgcolor: '#F0FDF4', 
+                                          borderRadius: 1,
+                                          border: '1px solid #D1FAE5'
+                                        }}>
+                                          <Typography variant="caption" sx={{ color: '#166534', display: 'block' }}>
+                                            📊 Original: {(parseFloat(entry.quantity) - (entry.authority_topup_quantity || 0)).toLocaleString()} KT
+                                          </Typography>
+                                          <Typography variant="caption" sx={{ color: '#10B981', display: 'block' }}>
+                                            ➕ Top-up: {(entry.authority_topup_quantity || 0).toLocaleString()} KT
+                                            {entry.authority_topup_reference && (
+                                              <span style={{ marginLeft: 8, color: '#6B7280', fontSize: '0.7rem' }}>
+                                                (Ref: {entry.authority_topup_reference})
+                                              </span>
+                                            )}
+                                          </Typography>
+                                        </Box>
+                                      )}
+                                    </Box>
                                   )}
                                 </Box>
                               )}
                               
                               {/* Single quantity input - for single product contracts OR multi-product non-combi */}
                               {!entry.is_combi && (
-                                <TextField
-                                  label={!isMultiProduct 
-                                    ? `${getMonthName(month)} ${year}${entries.length > 1 ? ` (${entryIndex + 1})` : ''}`
-                                    : 'Quantity (KT)'
-                                  }
-                                  type="number"
-                                  value={entry.quantity}
-                                  onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
-                                  required
-                                  fullWidth
-                                  disabled={isLocked}
-                                  helperText={
-                                    entry.id 
-                                      ? `${isLocked ? '(Locked)' : hasCargos ? '(Has cargos)' : ''}`
-                                      : ''
-                                  }
-                                  InputProps={{
-                                    endAdornment: (
-                                      <InputAdornment position="end">
-                                        {entries.length > 1 && !isLocked && !hasCargos && (
-                                          <IconButton
-                                            size="small"
-                                            color="error"
-                                            onClick={() => handleRemoveEntry(month, year, entryIndex)}
-                                            edge="end"
-                                          >
-                                            <Delete fontSize="small" />
-                                          </IconButton>
+                                <>
+                                  <TextField
+                                    label={!isMultiProduct 
+                                      ? `${getMonthName(month)} ${year}${entries.length > 1 ? ` (${entryIndex + 1})` : ''} *`
+                                      : 'Quantity (KT)'
+                                    }
+                                    type="number"
+                                    value={entry.quantity}
+                                    onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
+                                    required
+                                    fullWidth
+                                    disabled={isLocked}
+                                    helperText={
+                                      entry.id 
+                                        ? `${isLocked ? '(Locked)' : hasCargos ? '(Has cargos)' : ''}`
+                                        : ''
+                                    }
+                                    InputProps={{
+                                      endAdornment: (
+                                        <InputAdornment position="end">
+                                          {entries.length > 1 && !isLocked && !hasCargos && (
+                                            <IconButton
+                                              size="small"
+                                              color="error"
+                                              onClick={() => handleRemoveEntry(month, year, entryIndex)}
+                                              edge="end"
+                                            >
+                                              <Delete fontSize="small" />
+                                            </IconButton>
+                                          )}
+                                        </InputAdornment>
+                                      ),
+                                    }}
+                                  />
+                                  {/* Show top-up breakdown if there's a top-up */}
+                                  {(entry.authority_topup_quantity || 0) > 0 && (
+                                    <Box sx={{ 
+                                      mt: 0.5, 
+                                      p: 1, 
+                                      bgcolor: '#F0FDF4', 
+                                      borderRadius: 1,
+                                      border: '1px solid #D1FAE5'
+                                    }}>
+                                      <Typography variant="caption" sx={{ color: '#166534', display: 'block' }}>
+                                        📊 <strong>Original:</strong> {(parseFloat(entry.quantity) - (entry.authority_topup_quantity || 0)).toLocaleString()} KT
+                                      </Typography>
+                                      <Typography variant="caption" sx={{ color: '#10B981', display: 'block' }}>
+                                        ➕ <strong>Top-up:</strong> {(entry.authority_topup_quantity || 0).toLocaleString()} KT
+                                        {entry.authority_topup_reference && (
+                                          <span style={{ marginLeft: 8, color: '#6B7280', fontSize: '0.7rem' }}>
+                                            (Ref: {entry.authority_topup_reference})
+                                          </span>
                                         )}
-                                      </InputAdornment>
-                                    ),
-                                  }}
-                                />
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                </>
                               )}
                               
                               {/* Delete button for combi entries */}
