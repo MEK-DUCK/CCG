@@ -130,6 +130,19 @@ def ensure_schema():
                                 pass
             except Exception as e:
                 logger.warning(f"Failed to populate product_name for quarterly plans: {e}")
+        
+        # Quarterly plans migrations - add top-up tracking fields
+        if insp.has_table("quarterly_plans"):
+            cols = [c.get("name") for c in insp.get_columns("quarterly_plans")]
+            topup_fields = ["q1_topup", "q2_topup", "q3_topup", "q4_topup"]
+            for field in topup_fields:
+                if field not in cols:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text(f'ALTER TABLE quarterly_plans ADD COLUMN IF NOT EXISTS {field} FLOAT DEFAULT 0'))
+                        else:
+                            conn.execute(text(f'ALTER TABLE quarterly_plans ADD COLUMN {field} FLOAT DEFAULT 0'))
+                    logger.info(f"Added {field} column to quarterly_plans table")
 
         # Monthly plans migrations - add combi_group_id for combi monthly plans
         if insp.has_table("monthly_plans"):

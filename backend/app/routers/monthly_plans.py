@@ -412,75 +412,154 @@ def get_monthly_plan_status(plan_id: int, db: Session = Depends(get_db)):
 def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: Session = Depends(get_db)):
     """
     Add an authority top-up to a specific monthly plan cargo.
-    This allows loading more quantity than originally planned when authorization is received.
+    This CASCADE updates quantities at all levels:
+    - Monthly Plan: increases month_quantity
+    - Quarterly Plan: increases the relevant quarter's quantity AND tracks top-up separately
+    - Contract: adds to authority_topups JSON array
     
     Example: March cargo was 100 KT, got authority to load 120 KT -> add 20 KT top-up
     """
+    import json
+    
     db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
     if db_plan is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
     
-    # Get quarterly plan and contract for context
+    # Get quarterly plan and contract for cascading updates
     quarterly_plan = db.query(models.QuarterlyPlan).filter(
         models.QuarterlyPlan.id == db_plan.quarterly_plan_id
     ).first()
     
-    contract = None
-    customer = None
-    if quarterly_plan:
-        contract = db.query(models.Contract).filter(
-            models.Contract.id == quarterly_plan.contract_id
-        ).first()
-        if contract:
-            customer = db.query(models.Customer).filter(
-                models.Customer.id == contract.customer_id
-            ).first()
+    if not quarterly_plan:
+        raise HTTPException(status_code=400, detail="Monthly plan has no associated quarterly plan")
     
-    # Store old values for audit
+    contract = db.query(models.Contract).filter(
+        models.Contract.id == quarterly_plan.contract_id
+    ).first()
+    
+    if not contract:
+        raise HTTPException(status_code=400, detail="Quarterly plan has no associated contract")
+    
+    customer = db.query(models.Customer).filter(
+        models.Customer.id == contract.customer_id
+    ).first()
+    
+    # Determine which quarter this month belongs to
+    month = db_plan.month
+    if month in [1, 2, 3]:
+        quarter = 'Q1'
+        quarter_field = 'q1_quantity'
+        topup_field = 'q1_topup'
+    elif month in [4, 5, 6]:
+        quarter = 'Q2'
+        quarter_field = 'q2_quantity'
+        topup_field = 'q2_topup'
+    elif month in [7, 8, 9]:
+        quarter = 'Q3'
+        quarter_field = 'q3_quantity'
+        topup_field = 'q3_topup'
+    else:
+        quarter = 'Q4'
+        quarter_field = 'q4_quantity'
+        topup_field = 'q4_topup'
+    
+    # ========================
+    # 1. UPDATE MONTHLY PLAN
+    # ========================
     old_topup_qty = db_plan.authority_topup_quantity or 0
     old_month_qty = db_plan.month_quantity
     
-    # Update the monthly plan with top-up info
-    new_topup_qty = old_topup_qty + topup.quantity
-    db_plan.authority_topup_quantity = new_topup_qty
+    db_plan.authority_topup_quantity = old_topup_qty + topup.quantity
     db_plan.authority_topup_reference = topup.authority_reference
     db_plan.authority_topup_reason = topup.reason
     db_plan.authority_topup_date = topup.authorization_date
-    
-    # Also increase the month_quantity by the top-up amount
     db_plan.month_quantity = old_month_qty + topup.quantity
     
-    # Build description for audit log
     month_str = month_name[db_plan.month]
-    product_name = quarterly_plan.product_name if quarterly_plan else "Unknown"
-    description = f"Authority top-up: +{topup.quantity:,.0f} KT for {month_str} {db_plan.year} {product_name} (Ref: {topup.authority_reference})"
-    if topup.reason:
-        description += f" - {topup.reason}"
+    product_name = quarterly_plan.product_name or "Unknown"
     
-    # Log the top-up action
+    # Log monthly plan changes
     log_monthly_plan_action(
         db=db,
         action='AUTHORITY_TOPUP',
         monthly_plan=db_plan,
         field_name='authority_topup_quantity',
         old_value=old_topup_qty,
-        new_value=new_topup_qty,
-        description=description
+        new_value=db_plan.authority_topup_quantity,
+        description=f"Authority top-up: +{topup.quantity:,.0f} KT for {month_str} {db_plan.year} {product_name} (Ref: {topup.authority_reference})"
     )
     
-    # Also log the quantity change
-    log_monthly_plan_action(
-        db=db,
-        action='UPDATE',
-        monthly_plan=db_plan,
-        field_name='month_quantity',
-        old_value=old_month_qty,
-        new_value=db_plan.month_quantity,
-        description=f"Quantity increased from {old_month_qty:,.0f} KT to {db_plan.month_quantity:,.0f} KT due to authority top-up"
+    # ========================
+    # 2. UPDATE QUARTERLY PLAN
+    # ========================
+    old_quarter_qty = getattr(quarterly_plan, quarter_field) or 0
+    old_quarter_topup = getattr(quarterly_plan, topup_field) or 0
+    
+    # Increase both the quarter quantity AND track the top-up separately
+    setattr(quarterly_plan, quarter_field, old_quarter_qty + topup.quantity)
+    setattr(quarterly_plan, topup_field, old_quarter_topup + topup.quantity)
+    
+    logger.info(f"Quarterly plan {quarterly_plan.id} {quarter} updated: {old_quarter_qty} -> {old_quarter_qty + topup.quantity} KT (top-up: {old_quarter_topup + topup.quantity} KT)")
+    
+    # ========================
+    # 3. UPDATE CONTRACT
+    # ========================
+    # Parse existing authority_topups or create new array
+    existing_topups = []
+    if contract.authority_topups:
+        try:
+            existing_topups = json.loads(contract.authority_topups)
+        except (json.JSONDecodeError, TypeError):
+            existing_topups = []
+    
+    # Add new top-up entry
+    new_topup_entry = {
+        "product_name": product_name,
+        "quantity": topup.quantity,
+        "authority_reference": topup.authority_reference,
+        "reason": topup.reason,
+        "date": str(topup.authorization_date) if topup.authorization_date else None,
+        "month": db_plan.month,
+        "year": db_plan.year,
+        "monthly_plan_id": db_plan.id
+    }
+    existing_topups.append(new_topup_entry)
+    
+    contract.authority_topups = json.dumps(existing_topups)
+    
+    # Also update the product's total_quantity in the products JSON
+    try:
+        products = json.loads(contract.products) if contract.products else []
+        for product in products:
+            if product.get('name') == product_name:
+                old_product_qty = product.get('total_quantity', 0)
+                product['total_quantity'] = old_product_qty + topup.quantity
+                # Track top-up amount in product
+                product['topup_quantity'] = product.get('topup_quantity', 0) + topup.quantity
+                logger.info(f"Contract {contract.contract_number} product {product_name}: {old_product_qty} -> {product['total_quantity']} KT (top-up: {product['topup_quantity']} KT)")
+                break
+        contract.products = json.dumps(products)
+    except (json.JSONDecodeError, TypeError) as e:
+        logger.warning(f"Could not update contract products JSON: {e}")
+    
+    # Log contract authority top-up
+    contract_audit = models.ContractAuditLog(
+        contract_id=contract.id,
+        contract_db_id=contract.id,
+        action='AUTHORITY_TOPUP',
+        field_name='authority_topups',
+        product_name=product_name,
+        topup_quantity=topup.quantity,
+        authority_reference=topup.authority_reference,
+        topup_reason=topup.reason,
+        contract_number=contract.contract_number,
+        customer_name=customer.name if customer else None,
+        description=f"Authority top-up: +{topup.quantity:,.0f} KT {product_name} for {month_str} {db_plan.year} (Ref: {topup.authority_reference})"
     )
+    db.add(contract_audit)
     
     db.commit()
     db.refresh(db_plan)
     
-    logger.info(f"Authority top-up added to monthly plan {plan_id}: +{topup.quantity} KT (Ref: {topup.authority_reference})")
+    logger.info(f"Authority top-up CASCADE completed: Monthly plan {plan_id}, Quarterly plan {quarterly_plan.id}, Contract {contract.contract_number}: +{topup.quantity} KT {product_name}")
     return db_plan

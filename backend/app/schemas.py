@@ -130,6 +130,11 @@ class QuarterlyPlanBase(BaseModel):
     q2_quantity: float = Field(0, ge=0)
     q3_quantity: float = Field(0, ge=0)
     q4_quantity: float = Field(0, ge=0)
+    # Authority top-up quantities (tracked separately from original allocation)
+    q1_topup: float = Field(0, ge=0)
+    q2_topup: float = Field(0, ge=0)
+    q3_topup: float = Field(0, ge=0)
+    q4_topup: float = Field(0, ge=0)
 
 class QuarterlyPlanCreate(QuarterlyPlanBase):
     contract_id: int
@@ -140,6 +145,10 @@ class QuarterlyPlanUpdate(BaseModel):
     q2_quantity: Optional[float] = Field(None, ge=0)
     q3_quantity: Optional[float] = Field(None, ge=0)
     q4_quantity: Optional[float] = Field(None, ge=0)
+    q1_topup: Optional[float] = Field(None, ge=0)
+    q2_topup: Optional[float] = Field(None, ge=0)
+    q3_topup: Optional[float] = Field(None, ge=0)
+    q4_topup: Optional[float] = Field(None, ge=0)
 
 class QuarterlyPlan(QuarterlyPlanBase):
     id: int
@@ -284,6 +293,10 @@ class QuarterlyPlanEmbedded(BaseModel):
     q2_quantity: float = 0
     q3_quantity: float = 0
     q4_quantity: float = 0
+    q1_topup: float = 0
+    q2_topup: float = 0
+    q3_topup: float = 0
+    q4_topup: float = 0
     contract_id: int
     contract: Optional[ContractEmbedded] = None
     
