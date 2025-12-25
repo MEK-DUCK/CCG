@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Box,
   Paper,
@@ -25,6 +25,19 @@ import {
 import { FileDownload, PictureAsPdf } from '@mui/icons-material'
 import { customerAPI, contractAPI, quarterlyPlanAPI, monthlyPlanAPI, cargoAPI } from '../api/client'
 import type { Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo } from '../types'
+
+// Column configuration for resizable columns
+const COLUMN_CONFIG = [
+  { id: 'customer', label: 'Customer', defaultWidth: 200, minWidth: 100 },
+  { id: 'contract', label: 'Contract Number', defaultWidth: 200, minWidth: 100 },
+  { id: 'products', label: 'Product(s)', defaultWidth: 220, minWidth: 100 },
+  { id: 'type', label: 'Type', defaultWidth: 120, minWidth: 80 },
+  { id: 'month1', label: 'Month 1', defaultWidth: 150, minWidth: 100 },
+  { id: 'month2', label: 'Month 2', defaultWidth: 150, minWidth: 100 },
+  { id: 'month3', label: 'Month 3', defaultWidth: 150, minWidth: 100 },
+  { id: 'total', label: 'Total', defaultWidth: 150, minWidth: 100 },
+  { id: 'remark', label: 'Remark', defaultWidth: 250, minWidth: 150 },
+]
 
 interface MonthlyPlanEntry {
   monthlyPlanId: number
@@ -79,6 +92,50 @@ export default function LiftingPlanPage() {
   const [contractData, setContractData] = useState<Map<number, ContractQuarterlyData>>(new Map())
   const [notes, setNotes] = useState<Map<number, string>>(new Map()) // contractId -> notes
   const [loading, setLoading] = useState(true)
+  
+  // Resizable columns state
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    // Initialize with default widths from config
+    const widths: Record<string, number> = {}
+    COLUMN_CONFIG.forEach(col => {
+      widths[col.id] = col.defaultWidth
+    })
+    return widths
+  })
+  const resizingRef = useRef<{ columnId: string; startX: number; startWidth: number } | null>(null)
+  
+  // Handle column resize start
+  const handleResizeStart = useCallback((e: React.MouseEvent, columnId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startWidth = columnWidths[columnId] || COLUMN_CONFIG.find(c => c.id === columnId)?.defaultWidth || 150
+    resizingRef.current = { columnId, startX, startWidth }
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizingRef.current) return
+      const diff = moveEvent.clientX - resizingRef.current.startX
+      const minWidth = COLUMN_CONFIG.find(c => c.id === resizingRef.current!.columnId)?.minWidth || 80
+      const newWidth = Math.max(minWidth, resizingRef.current.startWidth + diff)
+      setColumnWidths(prev => ({
+        ...prev,
+        [resizingRef.current!.columnId]: newWidth
+      }))
+    }
+    
+    const handleMouseUp = () => {
+      resizingRef.current = null
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [columnWidths])
 
   useEffect(() => {
     loadData()
@@ -589,6 +646,54 @@ export default function LiftingPlanPage() {
       )
     }
 
+    // Helper to render resizable header cell
+    const renderResizableHeader = (columnId: string, label: string) => (
+      <TableCell 
+        sx={{ 
+          width: columnWidths[columnId], 
+          minWidth: COLUMN_CONFIG.find(c => c.id === columnId)?.minWidth || 80,
+          fontWeight: 'bold',
+          position: 'relative',
+          userSelect: 'none',
+          '&:hover .resize-handle': {
+            opacity: 1,
+          },
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{label}</span>
+          <Box
+            className="resize-handle"
+            onMouseDown={(e) => handleResizeStart(e, columnId)}
+            sx={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 6,
+              cursor: 'col-resize',
+              opacity: 0,
+              transition: 'opacity 0.2s',
+              '&:hover': {
+                opacity: 1,
+                bgcolor: 'primary.main',
+              },
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                right: 2,
+                top: '25%',
+                bottom: '25%',
+                width: 2,
+                bgcolor: 'divider',
+                borderRadius: 1,
+              },
+            }}
+          />
+        </Box>
+      </TableCell>
+    )
+
     return (
       <TableContainer 
         component={Paper}
@@ -597,21 +702,22 @@ export default function LiftingPlanPage() {
           overflowX: 'auto',
           '& .MuiTable-root': {
             minWidth: isMobile ? 1100 : 'auto',
+            tableLayout: 'fixed', // Fixed layout for consistent column widths
           },
         }}
       >
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ minWidth: isMobile ? 150 : 200, fontWeight: 'bold' }}>Customer</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 150 : 200, fontWeight: 'bold' }}>Contract Number</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 160 : 220, fontWeight: 'bold' }}>Product(s)</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold' }}>Type</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 150, fontWeight: 'bold' }}>{getMonthName(selectedQuarter, 0)}</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 150, fontWeight: 'bold' }}>{getMonthName(selectedQuarter, 1)}</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 150, fontWeight: 'bold' }}>{getMonthName(selectedQuarter, 2)}</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 150, fontWeight: 'bold' }}>Total ({selectedQuarter})</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 200 : 250, fontWeight: 'bold' }}>Remark</TableCell>
+              {renderResizableHeader('customer', 'Customer')}
+              {renderResizableHeader('contract', 'Contract Number')}
+              {renderResizableHeader('products', 'Product(s)')}
+              {renderResizableHeader('type', 'Type')}
+              {renderResizableHeader('month1', getMonthName(selectedQuarter, 0))}
+              {renderResizableHeader('month2', getMonthName(selectedQuarter, 1))}
+              {renderResizableHeader('month3', getMonthName(selectedQuarter, 2))}
+              {renderResizableHeader('total', `Total (${selectedQuarter})`)}
+              {renderResizableHeader('remark', 'Remark')}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -622,20 +728,22 @@ export default function LiftingPlanPage() {
                   '& td': { 
                     minHeight: isMobile ? 56 : 48,
                     py: isMobile ? 1.5 : 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
                   }
                 }}
               >
-                <TableCell sx={{ fontWeight: 'medium' }}>{data.customerName}</TableCell>
-                <TableCell>{data.contractNumber}</TableCell>
-                <TableCell>{data.productsText || '-'}</TableCell>
-                <TableCell>
+                <TableCell sx={{ fontWeight: 'medium', width: columnWidths['customer'] }}>{data.customerName}</TableCell>
+                <TableCell sx={{ width: columnWidths['contract'] }}>{data.contractNumber}</TableCell>
+                <TableCell sx={{ width: columnWidths['products'] }}>{data.productsText || '-'}</TableCell>
+                <TableCell sx={{ width: columnWidths['type'] }}>
                   <Chip 
                     label={data.contractType} 
                     color={data.contractType === 'FOB' ? 'primary' : 'secondary'} 
                     size="small"
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ width: columnWidths['month1'] }}>
                   <Box>
                     {data.month1Entries.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">-</Typography>
@@ -702,7 +810,7 @@ export default function LiftingPlanPage() {
                     )}
                   </Box>
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ width: columnWidths['month2'] }}>
                   <Box>
                     {data.month2Entries.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">-</Typography>
@@ -769,7 +877,7 @@ export default function LiftingPlanPage() {
                     )}
                   </Box>
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ width: columnWidths['month3'] }}>
                   <Box>
                     {data.month3Entries.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">-</Typography>
@@ -836,8 +944,8 @@ export default function LiftingPlanPage() {
                     )}
                   </Box>
                 </TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>{data.total.toLocaleString()} KT</TableCell>
-                <TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: columnWidths['total'] }}>{data.total.toLocaleString()} KT</TableCell>
+                <TableCell sx={{ width: columnWidths['remark'] }}>
                   <TextField
                     value={data.notes}
                     onChange={(e) => handleNotesChange(data.contractId, e.target.value)}
