@@ -64,6 +64,15 @@ export const customerAPI = {
   delete: (id: number) => client.delete(`/api/customers/${id}`),
 }
 
+// Authority Top-Up type
+export interface AuthorityTopUp {
+  product_name: string
+  quantity: number
+  authority_reference: string
+  reason?: string
+  date?: string
+}
+
 // Contract API
 export const contractAPI = {
   getAll: (customerId?: number) => {
@@ -74,6 +83,9 @@ export const contractAPI = {
   create: (data: any) => client.post('/api/contracts/', data),
   update: (id: number, data: any) => client.put(`/api/contracts/${id}`, data),
   delete: (id: number) => client.delete(`/api/contracts/${id}`),
+  // Add authority top-up to a contract
+  addAuthorityTopup: (contractId: number, topup: AuthorityTopUp) => 
+    client.post(`/api/contracts/${contractId}/authority-topup`, topup),
 }
 
 // Quarterly Plan API

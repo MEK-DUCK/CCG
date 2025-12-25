@@ -175,6 +175,59 @@ def ensure_schema():
                     else:
                         conn.execute(text('ALTER TABLE cargos ADD COLUMN five_nd_date VARCHAR'))
         
+        # Contracts migrations - add authority_topups for authorized quantity increases
+        if insp.has_table("contracts"):
+            cols = [c.get("name") for c in insp.get_columns("contracts")]
+            if "authority_topups" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE contracts ADD COLUMN IF NOT EXISTS authority_topups TEXT'))
+                    else:
+                        conn.execute(text('ALTER TABLE contracts ADD COLUMN authority_topups TEXT'))
+                logger.info("Added authority_topups column to contracts table")
+        
+        # Create contract_audit_logs table if not exists
+        if not insp.has_table("contract_audit_logs"):
+            with engine.begin() as conn:
+                conn.execute(text('''
+                    CREATE TABLE contract_audit_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        contract_id INTEGER REFERENCES contracts(id),
+                        contract_db_id INTEGER,
+                        action VARCHAR NOT NULL,
+                        field_name VARCHAR,
+                        old_value TEXT,
+                        new_value TEXT,
+                        product_name VARCHAR,
+                        topup_quantity FLOAT,
+                        authority_reference VARCHAR,
+                        topup_reason VARCHAR,
+                        contract_number VARCHAR,
+                        customer_name VARCHAR,
+                        description TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''' if dialect == "sqlite" else '''
+                    CREATE TABLE IF NOT EXISTS contract_audit_logs (
+                        id SERIAL PRIMARY KEY,
+                        contract_id INTEGER REFERENCES contracts(id),
+                        contract_db_id INTEGER,
+                        action VARCHAR NOT NULL,
+                        field_name VARCHAR,
+                        old_value TEXT,
+                        new_value TEXT,
+                        product_name VARCHAR,
+                        topup_quantity FLOAT,
+                        authority_reference VARCHAR,
+                        topup_reason VARCHAR,
+                        contract_number VARCHAR,
+                        customer_name VARCHAR,
+                        description TEXT,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    )
+                '''))
+                logger.info("Created contract_audit_logs table")
+        
         # =============================================================================
         # DATABASE CONSTRAINTS (PostgreSQL only)
         # =============================================================================

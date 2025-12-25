@@ -43,6 +43,11 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         has_remarks = _contracts_has_column(db, "remarks")
         has_additives_required = _contracts_has_column(db, "additives_required")
 
+        # Handle authority top-ups if provided
+        authority_topups_json = None
+        if contract.authority_topups:
+            authority_topups_json = json.dumps([t.dict() for t in contract.authority_topups], default=str)
+        
         db_contract = models.Contract(
             contract_id=contract_id,
             contract_number=contract.contract_number,
@@ -51,6 +56,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             start_period=contract.start_period,
             end_period=contract.end_period,
             products=products_json,
+            authority_topups=authority_topups_json,
             discharge_ranges=getattr(contract, "discharge_ranges", None),
             **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
             fax_received=getattr(contract, "fax_received", None),
@@ -76,6 +82,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             "start_period": db_contract.start_period,
             "end_period": db_contract.end_period,
             "products": json.loads(db_contract.products) if db_contract.products else [],
+            "authority_topups": json.loads(db_contract.authority_topups) if db_contract.authority_topups else None,
             "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
             **({"additives_required": getattr(db_contract, "additives_required", None)} if has_additives_required else {}),
             "fax_received": getattr(db_contract, "fax_received", None),
@@ -130,6 +137,12 @@ def read_contracts(
                 print(f"[WARNING] Failed to parse products JSON for contract {contract.id}")
                 products = []
             
+            # Parse authority topups
+            try:
+                authority_topups = json.loads(contract.authority_topups) if contract.authority_topups else None
+            except json.JSONDecodeError:
+                authority_topups = None
+            
             contract_dict = {
                 "id": contract.id,
                 "contract_id": contract.contract_id,
@@ -139,6 +152,7 @@ def read_contracts(
                 "start_period": contract.start_period,
                 "end_period": contract.end_period,
                 "products": products,
+                "authority_topups": authority_topups,
                 "discharge_ranges": getattr(contract, "discharge_ranges", None),
                 **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
                 "fax_received": getattr(contract, "fax_received", None),
@@ -183,6 +197,14 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
                 print(f"[ERROR] Products value: {contract.products}")
                 products_list = []
         
+        # Parse authority topups
+        authority_topups_list = None
+        if contract.authority_topups:
+            try:
+                authority_topups_list = json.loads(contract.authority_topups)
+            except json.JSONDecodeError:
+                authority_topups_list = None
+        
         # Convert products JSON string to list for response
         contract_dict = {
             "id": contract.id,
@@ -193,6 +215,7 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
             "start_period": contract.start_period,
             "end_period": contract.end_period,
             "products": products_list,
+            "authority_topups": authority_topups_list,
             "discharge_ranges": getattr(contract, "discharge_ranges", None),
             **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
             "fax_received": getattr(contract, "fax_received", None),
@@ -255,6 +278,27 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
                 raise HTTPException(status_code=400, detail=f"Invalid product: {product['name']}. Must be one of: {', '.join(valid_products)}")
         update_data["products"] = json.dumps(update_data["products"])
     
+    # Handle authority_topups conversion to JSON
+    if "authority_topups" in update_data:
+        if update_data["authority_topups"]:
+            # Validate that top-up products exist in contract products
+            contract_products = json.loads(db_contract.products) if db_contract.products else []
+            if "products" in update_data:
+                contract_products = json.loads(update_data["products"])
+            product_names = {p.get('name') for p in contract_products}
+            
+            for topup in update_data["authority_topups"]:
+                if topup.get("product_name") not in product_names:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Top-up product '{topup.get('product_name')}' not found in contract products: {product_names}"
+                    )
+            
+            # Convert to JSON, handling date serialization
+            update_data["authority_topups"] = json.dumps(update_data["authority_topups"], default=str)
+        else:
+            update_data["authority_topups"] = None
+    
     # Verify customer if being updated
     if "customer_id" in update_data:
         customer = db.query(models.Customer).filter(models.Customer.id == update_data["customer_id"]).first()
@@ -277,6 +321,7 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         "start_period": db_contract.start_period,
         "end_period": db_contract.end_period,
         "products": json.loads(db_contract.products) if db_contract.products else [],
+        "authority_topups": json.loads(db_contract.authority_topups) if db_contract.authority_topups else None,
         "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
         **({"additives_required": getattr(db_contract, "additives_required", None)} if has_additives_required else {}),
         "fax_received": getattr(db_contract, "fax_received", None),
@@ -289,6 +334,105 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         "updated_at": db_contract.updated_at
     }
     return contract_dict
+
+@router.post("/{contract_id}/authority-topup", response_model=schemas.Contract)
+def add_authority_topup(contract_id: int, topup: schemas.AuthorityTopUp, db: Session = Depends(get_db)):
+    """
+    Add an authority top-up to a contract.
+    This allows loading more quantity than originally contracted when authorization is received.
+    """
+    import json
+    
+    db_contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
+    if db_contract is None:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    
+    # Get customer for audit log
+    customer = db.query(models.Customer).filter(models.Customer.id == db_contract.customer_id).first()
+    customer_name = customer.name if customer else None
+    
+    # Validate product exists in contract
+    contract_products = json.loads(db_contract.products) if db_contract.products else []
+    product_names = {p.get('name') for p in contract_products}
+    
+    if topup.product_name not in product_names:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Product '{topup.product_name}' not found in contract products: {product_names}"
+        )
+    
+    # Get existing top-ups or initialize empty list
+    existing_topups = []
+    if db_contract.authority_topups:
+        try:
+            existing_topups = json.loads(db_contract.authority_topups)
+        except json.JSONDecodeError:
+            existing_topups = []
+    
+    # Calculate total existing top-up for this product
+    existing_topup_for_product = sum(
+        t.get('quantity', 0) for t in existing_topups 
+        if t.get('product_name') == topup.product_name
+    )
+    
+    # Add new top-up
+    new_topup = topup.dict()
+    # Convert date to string for JSON serialization
+    if new_topup.get('date'):
+        new_topup['date'] = str(new_topup['date'])
+    existing_topups.append(new_topup)
+    
+    # Save updated top-ups
+    db_contract.authority_topups = json.dumps(existing_topups)
+    
+    # Create audit log entry for the authority top-up
+    audit_log = models.ContractAuditLog(
+        contract_id=db_contract.id,
+        contract_db_id=db_contract.id,
+        action='AUTHORITY_TOPUP',
+        field_name='authority_topups',
+        old_value=str(existing_topup_for_product),
+        new_value=str(existing_topup_for_product + topup.quantity),
+        product_name=topup.product_name,
+        topup_quantity=topup.quantity,
+        authority_reference=topup.authority_reference,
+        topup_reason=topup.reason,
+        contract_number=db_contract.contract_number,
+        customer_name=customer_name,
+        description=f"Authority top-up: {topup.quantity:,.0f} KT of {topup.product_name} added (Ref: {topup.authority_reference})"
+    )
+    db.add(audit_log)
+    
+    db.commit()
+    db.refresh(db_contract)
+    
+    # Return updated contract
+    has_remarks = _contracts_has_column(db, "remarks")
+    has_additives_required = _contracts_has_column(db, "additives_required")
+    
+    contract_dict = {
+        "id": db_contract.id,
+        "contract_id": db_contract.contract_id,
+        "contract_number": db_contract.contract_number,
+        "contract_type": db_contract.contract_type,
+        "payment_method": db_contract.payment_method,
+        "start_period": db_contract.start_period,
+        "end_period": db_contract.end_period,
+        "products": json.loads(db_contract.products) if db_contract.products else [],
+        "authority_topups": json.loads(db_contract.authority_topups) if db_contract.authority_topups else None,
+        "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
+        **({"additives_required": getattr(db_contract, "additives_required", None)} if has_additives_required else {}),
+        "fax_received": getattr(db_contract, "fax_received", None),
+        "fax_received_date": getattr(db_contract, "fax_received_date", None),
+        "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
+        "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
+        **({"remarks": getattr(db_contract, "remarks", None)} if has_remarks else {}),
+        "customer_id": db_contract.customer_id,
+        "created_at": db_contract.created_at,
+        "updated_at": db_contract.updated_at
+    }
+    return contract_dict
+
 
 @router.delete("/{contract_id}")
 def delete_contract(contract_id: int, db: Session = Depends(get_db)):

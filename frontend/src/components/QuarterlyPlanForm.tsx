@@ -7,9 +7,15 @@ import {
   Paper,
   Grid,
   Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Chip,
+  Divider,
 } from '@mui/material'
-import { Add, Save } from '@mui/icons-material'
-import { quarterlyPlanAPI, contractAPI } from '../api/client'
+import { Add, Save, TrendingUp } from '@mui/icons-material'
+import { quarterlyPlanAPI, contractAPI, AuthorityTopUp } from '../api/client'
 
 interface QuarterlyPlanFormProps {
   contractId: number
@@ -48,6 +54,7 @@ interface ProductPlanData {
   productName: string
   totalQuantity: number
   optionalQuantity: number
+  authorityTopupQuantity: number  // Total authority top-ups for this product
   existingPlanId?: number
   q1: string
   q2: string
@@ -60,6 +67,17 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
   const [contractData, setContractData] = useState<any>(contract)
   const [productPlans, setProductPlans] = useState<ProductPlanData[]>([])
   const [isSaving, setIsSaving] = useState(false)
+  
+  // Authority Top-Up Dialog State
+  const [topupDialogOpen, setTopupDialogOpen] = useState(false)
+  const [topupProductName, setTopupProductName] = useState('')
+  const [topupForm, setTopupForm] = useState({
+    quantity: '',
+    authority_reference: '',
+    reason: '',
+    date: new Date().toISOString().split('T')[0],
+  })
+  const [isAddingTopup, setIsAddingTopup] = useState(false)
 
   // Load contract and determine quarter order
   useEffect(() => {
@@ -86,6 +104,15 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
     }
     loadContract()
   }, [contract, contractId])
+
+  // Helper function to calculate authority top-up for a product
+  const getAuthorityTopupForProduct = (productName: string): number => {
+    if (!contractData?.authority_topups) return 0
+    const topups = Array.isArray(contractData.authority_topups) ? contractData.authority_topups : []
+    return topups
+      .filter((t: any) => t.product_name === productName)
+      .reduce((sum: number, t: any) => sum + (t.quantity || 0), 0)
+  }
 
   // Initialize product plans when contract data or existing plans change
   useEffect(() => {
@@ -130,6 +157,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
           productName: product.name,
           totalQuantity: product.total_quantity || 0,
           optionalQuantity: product.optional_quantity || 0,
+          authorityTopupQuantity: getAuthorityTopupForProduct(product.name),
           existingPlanId: existingPlan?.id,
           q1,
           q2,
@@ -171,6 +199,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
         productName: product.name,
         totalQuantity: product.total_quantity || 0,
         optionalQuantity: product.optional_quantity || 0,
+        authorityTopupQuantity: getAuthorityTopupForProduct(product.name),
         existingPlanId: existingPlan?.id,
         q1,
         q2,
@@ -203,20 +232,19 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
     // Validate all products
     for (const plan of productPlans) {
       const total = getProductTotal(plan)
-      const maxAllowed = plan.totalQuantity + plan.optionalQuantity
+      // Max allowed = total + optional + authority top-ups
+      const maxAllowed = plan.totalQuantity + plan.optionalQuantity + plan.authorityTopupQuantity
       
       if (total < plan.totalQuantity) {
         alert(`${plan.productName}: Total (${total.toLocaleString()} KT) is less than required (${plan.totalQuantity.toLocaleString()} KT)`)
         return
       }
       if (total > maxAllowed) {
-        alert(`${plan.productName}: Total (${total.toLocaleString()} KT) exceeds maximum allowed (${maxAllowed.toLocaleString()} KT)`)
+        const topupMsg = plan.authorityTopupQuantity > 0 ? ` + ${plan.authorityTopupQuantity.toLocaleString()} KT authority top-up` : ''
+        alert(`${plan.productName}: Total (${total.toLocaleString()} KT) exceeds maximum allowed (${maxAllowed.toLocaleString()} KT = ${plan.totalQuantity.toLocaleString()} KT + ${plan.optionalQuantity.toLocaleString()} KT optional${topupMsg})`)
         return
       }
-      if (total !== plan.totalQuantity && total !== maxAllowed) {
-        alert(`${plan.productName}: Total must equal either ${plan.totalQuantity.toLocaleString()} KT or ${maxAllowed.toLocaleString()} KT (with optional)`)
-        return
-      }
+      // Allow any value between totalQuantity and maxAllowed (more flexible)
     }
 
     setIsSaving(true)
@@ -306,7 +334,8 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
         <Grid container spacing={3}>
           {productPlans.map((plan, productIndex) => {
             const total = getProductTotal(plan)
-            const isValid = total === plan.totalQuantity || total === (plan.totalQuantity + plan.optionalQuantity)
+            const maxAllowed = plan.totalQuantity + plan.optionalQuantity + plan.authorityTopupQuantity
+            const isValid = total >= plan.totalQuantity && total <= maxAllowed
             const isExact = total === plan.totalQuantity
             
             return (
@@ -322,22 +351,62 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                 >
                   {/* Product Header */}
                   <Box sx={{ mb: 2, pb: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Box sx={{ 
-                      display: 'inline-flex', 
-                      alignItems: 'center', 
-                      px: 1.5, 
-                      py: 0.5, 
-                      bgcolor: '#DBEAFE', 
-                      color: '#1D4ED8', 
-                      borderRadius: 1,
-                      fontWeight: 600,
-                      fontSize: '0.95rem',
-                    }}>
-                      {plan.productName}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Box sx={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        px: 1.5, 
+                        py: 0.5, 
+                        bgcolor: '#DBEAFE', 
+                        color: '#1D4ED8', 
+                        borderRadius: 1,
+                        fontWeight: 600,
+                        fontSize: '0.95rem',
+                      }}>
+                        {plan.productName}
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<TrendingUp />}
+                        onClick={() => {
+                          setTopupProductName(plan.productName)
+                          setTopupForm({
+                            quantity: '',
+                            authority_reference: '',
+                            reason: '',
+                            date: new Date().toISOString().split('T')[0],
+                          })
+                          setTopupDialogOpen(true)
+                        }}
+                        sx={{ 
+                          borderColor: '#10B981', 
+                          color: '#10B981',
+                          '&:hover': { 
+                            borderColor: '#059669', 
+                            bgcolor: 'rgba(16, 185, 129, 0.04)' 
+                          }
+                        }}
+                      >
+                        Authority Top-Up
+                      </Button>
                     </Box>
                     <Typography variant="body2" sx={{ mt: 1, color: 'text.secondary' }}>
                       Total: {plan.totalQuantity.toLocaleString()} KT
                       {plan.optionalQuantity > 0 && ` (+${plan.optionalQuantity.toLocaleString()} KT optional)`}
+                      {plan.authorityTopupQuantity > 0 && (
+                        <Chip 
+                          size="small" 
+                          label={`+${plan.authorityTopupQuantity.toLocaleString()} KT top-up`}
+                          sx={{ 
+                            ml: 1, 
+                            bgcolor: '#D1FAE5', 
+                            color: '#065F46',
+                            fontWeight: 600,
+                            height: 22,
+                          }}
+                        />
+                      )}
                     </Typography>
                   </Box>
 
@@ -378,8 +447,10 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                       {isExact 
                         ? `Matches contract total (${plan.totalQuantity.toLocaleString()} KT)`
                         : isValid 
-                          ? `Using optional quantity (${plan.totalQuantity.toLocaleString()} + ${plan.optionalQuantity.toLocaleString()} KT)`
-                          : `Target: ${plan.totalQuantity.toLocaleString()} KT`}
+                          ? plan.authorityTopupQuantity > 0 && total > plan.totalQuantity + plan.optionalQuantity
+                            ? `Using authority top-up (max: ${maxAllowed.toLocaleString()} KT)`
+                            : `Using optional quantity (${plan.totalQuantity.toLocaleString()} + ${plan.optionalQuantity.toLocaleString()} KT)`
+                          : `Target: ${plan.totalQuantity.toLocaleString()} - ${maxAllowed.toLocaleString()} KT`}
                     </Typography>
                   </Box>
                 </Paper>
@@ -405,6 +476,108 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
           </Button>
         </Box>
       </Box>
+
+      {/* Authority Top-Up Dialog */}
+      <Dialog open={topupDialogOpen} onClose={() => setTopupDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: '#F0FDF4', borderBottom: '1px solid #D1FAE5' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TrendingUp sx={{ color: '#10B981' }} />
+            <Typography variant="h6">Authority Top-Up</Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Add authorized quantity increase for <strong>{topupProductName}</strong>
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            <TextField
+              label="Top-Up Quantity (KT)"
+              type="number"
+              value={topupForm.quantity}
+              onChange={(e) => setTopupForm({ ...topupForm, quantity: e.target.value })}
+              required
+              fullWidth
+              InputProps={{
+                endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
+              }}
+              helperText="Additional quantity authorized beyond contract"
+            />
+            <TextField
+              label="Authority Reference"
+              value={topupForm.authority_reference}
+              onChange={(e) => setTopupForm({ ...topupForm, authority_reference: e.target.value })}
+              required
+              fullWidth
+              placeholder="e.g., AUTH-2024-001"
+              helperText="Reference number for the authorization"
+            />
+            <TextField
+              label="Date"
+              type="date"
+              value={topupForm.date}
+              onChange={(e) => setTopupForm({ ...topupForm, date: e.target.value })}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Reason (Optional)"
+              value={topupForm.reason}
+              onChange={(e) => setTopupForm({ ...topupForm, reason: e.target.value })}
+              fullWidth
+              multiline
+              rows={2}
+              placeholder="e.g., Customer request, market demand"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setTopupDialogOpen(false)} disabled={isAddingTopup}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              if (!topupForm.quantity || !topupForm.authority_reference) {
+                alert('Please fill in quantity and authority reference')
+                return
+              }
+              
+              setIsAddingTopup(true)
+              try {
+                const topupData: AuthorityTopUp = {
+                  product_name: topupProductName,
+                  quantity: parseFloat(topupForm.quantity),
+                  authority_reference: topupForm.authority_reference,
+                  reason: topupForm.reason || undefined,
+                  date: topupForm.date || undefined,
+                }
+                
+                await contractAPI.addAuthorityTopup(contractId, topupData)
+                
+                // Reload contract to get updated top-ups
+                const contractRes = await contractAPI.getById(contractId)
+                setContractData(contractRes.data)
+                
+                setTopupDialogOpen(false)
+                alert(`Authority top-up of ${parseFloat(topupForm.quantity).toLocaleString()} KT added successfully!`)
+              } catch (error: any) {
+                console.error('Error adding authority top-up:', error)
+                const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error'
+                alert(`Error adding top-up: ${errorMessage}`)
+              } finally {
+                setIsAddingTopup(false)
+              }
+            }}
+            disabled={isAddingTopup || !topupForm.quantity || !topupForm.authority_reference}
+            sx={{ 
+              bgcolor: '#10B981', 
+              '&:hover': { bgcolor: '#059669' } 
+            }}
+          >
+            {isAddingTopup ? 'Adding...' : 'Add Top-Up'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   )
 }

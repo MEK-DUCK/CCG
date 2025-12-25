@@ -28,6 +28,19 @@ class ContractProduct(BaseModel):
     total_quantity: float = Field(..., ge=0)  # Total quantity in KT
     optional_quantity: Optional[float] = Field(0, ge=0)  # Optional quantity in KT
 
+
+# Authority Top-Up Schema (for authorized quantity increases beyond contract)
+class AuthorityTopUp(BaseModel):
+    """
+    Represents an authorized top-up quantity beyond the original contract.
+    Used when customer gets authority to load more than contracted amount.
+    """
+    product_name: str = Field(..., min_length=1, max_length=64)  # Must match a product in the contract
+    quantity: float = Field(..., gt=0)  # Top-up quantity in KT (must be positive)
+    authority_reference: str = Field(..., min_length=1, max_length=100)  # Reference number (e.g., AUTH-2024-001)
+    reason: Optional[str] = Field(None, max_length=500)  # Reason for the top-up
+    date: Optional[date] = None  # Date of authorization
+
 # Contract Schemas
 class ContractBase(BaseModel):
     contract_number: str = Field(..., min_length=1, max_length=255)
@@ -36,6 +49,7 @@ class ContractBase(BaseModel):
     start_period: date
     end_period: date
     products: List[ContractProduct]  # List of products with quantities
+    authority_topups: Optional[List[AuthorityTopUp]] = None  # Authorized top-ups beyond contract
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
     additives_required: Optional[bool] = None
     fax_received: Optional[bool] = None
@@ -49,6 +63,16 @@ class ContractBase(BaseModel):
         if self.start_period and self.end_period and self.start_period > self.end_period:
             raise ValueError("start_period must be on or before end_period")
         return self
+    
+    @model_validator(mode="after")
+    def _validate_topup_products(self):
+        """Ensure top-up product names match contract products."""
+        if self.authority_topups:
+            product_names = {p.name for p in self.products}
+            for topup in self.authority_topups:
+                if topup.product_name not in product_names:
+                    raise ValueError(f"Top-up product '{topup.product_name}' not found in contract products: {product_names}")
+        return self
 
 class ContractCreate(ContractBase):
     customer_id: int
@@ -60,6 +84,7 @@ class ContractUpdate(BaseModel):
     start_period: Optional[date] = None
     end_period: Optional[date] = None
     products: Optional[List[ContractProduct]] = None
+    authority_topups: Optional[List[AuthorityTopUp]] = None  # Can add/update top-ups
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
     additives_required: Optional[bool] = None
     fax_received: Optional[bool] = None

@@ -79,6 +79,10 @@ class Contract(Base):
     # Using Text for SQLite compatibility, but PostgreSQL can use JSONB natively
     products = Column(Text, nullable=False)
     
+    # Authority Top-Up: Additional quantity authorized beyond contract total + optional
+    # JSON array: [{"product_name": "GASOIL", "quantity": 50, "authority_reference": "AUTH-2024-001", "reason": "Customer request", "date": "2024-12-25"}]
+    authority_topups = Column(Text, nullable=True)
+    
     discharge_ranges = Column(Text, nullable=True)  # Free-form notes
     additives_required = Column(Boolean, nullable=True)  # For JET A-1 contracts
     fax_received = Column(Boolean, nullable=True)
@@ -324,3 +328,31 @@ class QuarterlyPlanAuditLog(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     quarterly_plan_snapshot = Column(Text, nullable=True)
+
+
+class ContractAuditLog(Base):
+    """
+    Audit log for contract changes, especially authority top-ups.
+    Tracks when additional quantities are authorized beyond the original contract.
+    """
+    __tablename__ = "contract_audit_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True)
+    contract_db_id = Column(Integer, nullable=True, index=True)  # Preserved after contract deletion
+    action = Column(String, nullable=False)  # CREATE, UPDATE, DELETE, AUTHORITY_TOPUP
+    field_name = Column(String, nullable=True)  # Field that was changed
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+    
+    # For AUTHORITY_TOPUP actions
+    product_name = Column(String, nullable=True)  # Product being topped up
+    topup_quantity = Column(Float, nullable=True)  # Quantity added in KT
+    authority_reference = Column(String, nullable=True)  # Reference number
+    topup_reason = Column(String, nullable=True)  # Reason for top-up
+    
+    # Context info
+    contract_number = Column(String, nullable=True)
+    customer_name = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
