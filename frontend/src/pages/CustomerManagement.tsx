@@ -310,7 +310,7 @@ export default function CustomerManagement() {
           sx: { borderRadius: 3 }
         }}
       >
-        <DialogTitle sx={{ pb: 1 }}>
+        <DialogTitle component="div" sx={{ pb: 1 }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
             {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
           </Typography>

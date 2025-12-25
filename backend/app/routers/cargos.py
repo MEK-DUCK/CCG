@@ -500,7 +500,7 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
         if db_cargo is None:
             raise to_http_exception(cargo_not_found(cargo_id))
         
-            update_data = cargo.model_dump(exclude_unset=True) if hasattr(cargo, 'model_dump') else cargo.dict(exclude_unset=True)
+        update_data = cargo.model_dump(exclude_unset=True) if hasattr(cargo, 'model_dump') else cargo.dict(exclude_unset=True)
         logger.debug(f"Updating cargo {cargo_id} with data: {update_data}")
         
     except HTTPException:
