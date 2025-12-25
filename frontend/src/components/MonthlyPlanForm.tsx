@@ -1353,6 +1353,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         </MenuItem>
         <MenuItem 
           onClick={() => {
+            if (!actionMenuEntry?.entry.id) {
+              alert('Please save the cargo entry first before adding an authority top-up.')
+              handleActionMenuClose()
+              return
+            }
             setTopupForm({
               quantity: '',
               authority_reference: '',
@@ -1362,11 +1367,18 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             setTopupDialogOpen(true)
             handleActionMenuClose()
           }}
+          disabled={!actionMenuEntry?.entry.id}
+          sx={{ 
+            opacity: !actionMenuEntry?.entry.id ? 0.5 : 1,
+          }}
         >
           <ListItemIcon>
-            <TrendingUp fontSize="small" sx={{ color: '#10B981' }} />
+            <TrendingUp fontSize="small" sx={{ color: !actionMenuEntry?.entry.id ? '#9CA3AF' : '#10B981' }} />
           </ListItemIcon>
-          <ListItemText primary="Authority Top-Up" />
+          <ListItemText 
+            primary="Authority Top-Up" 
+            secondary={!actionMenuEntry?.entry.id ? '(Save entry first)' : undefined}
+          />
         </MenuItem>
         <Divider />
         <MenuItem 
@@ -1527,7 +1539,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               }
               
               if (!actionMenuEntry || !actionMenuEntry.entry.id) {
-                alert('No monthly plan selected. Please save the entry first before adding a top-up.')
+                alert('This cargo entry has not been saved yet. Please save your changes first (click "Save All Monthly Plans"), then try adding the top-up again.')
                 return
               }
               
