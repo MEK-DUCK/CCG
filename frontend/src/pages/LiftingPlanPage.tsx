@@ -150,21 +150,30 @@ export default function LiftingPlanPage() {
       const customer = customers.find(c => c.id === contract.customer_id)
       if (!customer) return
 
+      // Collect actual product names and their categories
+      const productNames: string[] = []
       const productCategories = new Set<string>()
       if (Array.isArray(contract.products)) {
         contract.products.forEach((p) => {
-          const cat = normalizeProductCategory((p as any)?.name)
-          if (cat) productCategories.add(cat)
+          const name = (p as any)?.name
+          if (name) {
+            productNames.push(name)
+            const cat = normalizeProductCategory(name)
+            if (cat) productCategories.add(cat)
+          }
         })
       }
       
-      // When a product filter is selected, only show that product in the productsText
+      // When a product filter is selected, show the actual product name(s) that match the filter
       let productsText: string
       if (selectedProduct) {
-        // Only show the selected product if the contract has it
-        productsText = productCategories.has(selectedProduct) ? selectedProduct : '-'
+        // Find actual product names that match the selected category
+        const matchingProducts = productNames.filter(name => 
+          normalizeProductCategory(name) === selectedProduct
+        )
+        productsText = matchingProducts.length > 0 ? matchingProducts.join(', ') : '-'
       } else {
-        productsText = productCategories.size > 0 ? Array.from(productCategories).join(', ') : '-'
+        productsText = productNames.length > 0 ? productNames.join(', ') : '-'
       }
 
       dataMap.set(contract.id, {
