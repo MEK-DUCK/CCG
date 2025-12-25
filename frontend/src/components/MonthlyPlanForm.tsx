@@ -1562,7 +1562,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   quantity: parseFloat(topupForm.quantity),
                   authority_reference: topupForm.authority_reference,
                   reason: topupForm.reason || undefined,
-                  date: topupForm.date || undefined,
+                  authorization_date: topupForm.date || undefined,
                 }
                 
                 // For combi entries, apply top-up to all plans in the group

@@ -445,7 +445,7 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
     db_plan.authority_topup_quantity = new_topup_qty
     db_plan.authority_topup_reference = topup.authority_reference
     db_plan.authority_topup_reason = topup.reason
-    db_plan.authority_topup_date = topup.date
+    db_plan.authority_topup_date = topup.authorization_date
     
     # Also increase the month_quantity by the top-up amount
     db_plan.month_quantity = old_month_qty + topup.quantity

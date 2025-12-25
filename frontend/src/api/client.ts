@@ -105,7 +105,7 @@ export interface MonthlyPlanTopUpRequest {
   quantity: number
   authority_reference: string
   reason?: string
-  date?: string
+  authorization_date?: string
 }
 
 // Monthly Plan API

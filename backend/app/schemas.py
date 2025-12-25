@@ -50,8 +50,8 @@ class AuthorityTopUpRequest(BaseModel):
     """
     quantity: float = Field(..., gt=0)  # Additional quantity in KT
     authority_reference: str = Field(..., min_length=1, max_length=100)  # Reference number
-    reason: Optional[str] = Field(None, max_length=500)  # Reason for the top-up
-    date: Optional[date] = None  # Date of authorization
+    reason: str | None = Field(default=None, max_length=500)  # Reason for the top-up
+    authorization_date: date | None = None  # Date of authorization (renamed to avoid conflict)
 
 # Contract Schemas
 class ContractBase(BaseModel):
