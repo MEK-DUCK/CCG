@@ -53,6 +53,11 @@ interface ProductPlanData {
   q2: string
   q3: string
   q4: string
+  // Top-up amounts per quarter
+  q1_topup: number
+  q2_topup: number
+  q3_topup: number
+  q4_topup: number
 }
 
 export default function QuarterlyPlanForm({ contractId, contract, existingPlans = [], onPlanCreated, onCancel }: QuarterlyPlanFormProps) {
@@ -102,6 +107,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
         
         // Map database quantities to form (based on quarter order)
         let q1 = '', q2 = '', q3 = '', q4 = ''
+        let q1_topup = 0, q2_topup = 0, q3_topup = 0, q4_topup = 0
         if (existingPlan && contractData.start_period) {
           const startDate = new Date(contractData.start_period)
           const startMonth = startDate.getMonth() + 1
@@ -114,16 +120,29 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
             existingPlan.q4_quantity || 0,
           ]
           
+          const dbTopups = [
+            existingPlan.q1_topup || 0,
+            existingPlan.q2_topup || 0,
+            existingPlan.q3_topup || 0,
+            existingPlan.q4_topup || 0,
+          ]
+          
           // Map to calendar quarters
           const calendarQuantities: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number> = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
+          const calendarTopups: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number> = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
           order.forEach((calQ, contractIdx) => {
             calendarQuantities[calQ] = dbQuantities[contractIdx]
+            calendarTopups[calQ] = dbTopups[contractIdx]
           })
           
           q1 = calendarQuantities.Q1.toString()
           q2 = calendarQuantities.Q2.toString()
           q3 = calendarQuantities.Q3.toString()
           q4 = calendarQuantities.Q4.toString()
+          q1_topup = calendarTopups.Q1
+          q2_topup = calendarTopups.Q2
+          q3_topup = calendarTopups.Q3
+          q4_topup = calendarTopups.Q4
         }
         
         return {
@@ -135,6 +154,10 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
           q2,
           q3,
           q4,
+          q1_topup,
+          q2_topup,
+          q3_topup,
+          q4_topup,
         }
       })
       setProductPlans(newProductPlans)
@@ -144,6 +167,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
       const existingPlan = existingPlans.length > 0 ? existingPlans[0] : null
       
       let q1 = '', q2 = '', q3 = '', q4 = ''
+      let q1_topup = 0, q2_topup = 0, q3_topup = 0, q4_topup = 0
       if (existingPlan && contractData.start_period) {
         const startDate = new Date(contractData.start_period)
         const startMonth = startDate.getMonth() + 1
@@ -156,15 +180,28 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
           existingPlan.q4_quantity || 0,
         ]
         
+        const dbTopups = [
+          existingPlan.q1_topup || 0,
+          existingPlan.q2_topup || 0,
+          existingPlan.q3_topup || 0,
+          existingPlan.q4_topup || 0,
+        ]
+        
         const calendarQuantities: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number> = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
+        const calendarTopups: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number> = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
         order.forEach((calQ, contractIdx) => {
           calendarQuantities[calQ] = dbQuantities[contractIdx]
+          calendarTopups[calQ] = dbTopups[contractIdx]
         })
         
         q1 = calendarQuantities.Q1.toString()
         q2 = calendarQuantities.Q2.toString()
         q3 = calendarQuantities.Q3.toString()
         q4 = calendarQuantities.Q4.toString()
+        q1_topup = calendarTopups.Q1
+        q2_topup = calendarTopups.Q2
+        q3_topup = calendarTopups.Q3
+        q4_topup = calendarTopups.Q4
       }
       
       setProductPlans([{
@@ -176,6 +213,10 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
         q2,
         q3,
         q4,
+        q1_topup,
+        q2_topup,
+        q3_topup,
+        q4_topup,
       }])
     }
   }, [contractData, existingPlans])
@@ -344,35 +385,61 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {quarterOrder.map((quarter) => {
                       const fieldKey = `q${['Q1', 'Q2', 'Q3', 'Q4'].indexOf(quarter) + 1}` as 'q1' | 'q2' | 'q3' | 'q4'
+                      const topupKey = `${fieldKey}_topup` as 'q1_topup' | 'q2_topup' | 'q3_topup' | 'q4_topup'
+                      const topupQty = plan[topupKey] || 0
+                      const totalQty = parseFloat(plan[fieldKey]) || 0
+                      const originalQty = totalQty - topupQty
+                      
                       return (
-                        <TextField
-                          key={quarter}
-                          label={`${quarter} (${getQuarterLabel(quarter)})`}
-                          type="number"
-                          size="small"
-                          value={plan[fieldKey]}
-                          onChange={(e) => handleQuantityChange(productIndex, fieldKey, e.target.value)}
-                          fullWidth
-                          InputProps={{
-                            endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
-                          }}
-                        />
+                        <Box key={quarter}>
+                          <TextField
+                            label={`${quarter} (${getQuarterLabel(quarter)})`}
+                            type="number"
+                            size="small"
+                            value={plan[fieldKey]}
+                            onChange={(e) => handleQuantityChange(productIndex, fieldKey, e.target.value)}
+                            fullWidth
+                            InputProps={{
+                              endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
+                            }}
+                          />
+                          {topupQty > 0 && (
+                            <Box sx={{ mt: 0.5, ml: 1, p: 0.5, bgcolor: '#F0FDF4', borderRadius: 0.5, border: '1px solid #D1FAE5' }}>
+                              <Typography variant="caption" sx={{ color: '#166534' }}>
+                                📊 {originalQty.toLocaleString()} original + <span style={{ color: '#10B981', fontWeight: 600 }}>{topupQty.toLocaleString()} top-up</span>
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
                       )
                     })}
                   </Box>
 
                   {/* Total and Validation */}
                   <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-                    <Typography 
-                      variant="body1" 
-                      sx={{ 
-                        fontWeight: 'bold', 
-                        color: isValid ? 'success.main' : total > 0 ? 'error.main' : 'text.primary' 
-                      }}
-                    >
-                      Total: {total.toLocaleString()} KT
-                      {isValid && ' ✓'}
-                    </Typography>
+                    {(() => {
+                      const totalTopup = (plan.q1_topup || 0) + (plan.q2_topup || 0) + (plan.q3_topup || 0) + (plan.q4_topup || 0)
+                      const originalTotal = total - totalTopup
+                      return (
+                        <>
+                          <Typography 
+                            variant="body1" 
+                            sx={{ 
+                              fontWeight: 'bold', 
+                              color: isValid ? 'success.main' : total > 0 ? 'error.main' : 'text.primary' 
+                            }}
+                          >
+                            Total: {total.toLocaleString()} KT
+                            {totalTopup > 0 && (
+                              <span style={{ color: '#10B981', fontWeight: 500, marginLeft: 8 }}>
+                                ({originalTotal.toLocaleString()} + {totalTopup.toLocaleString()} top-up)
+                              </span>
+                            )}
+                            {isValid && ' ✓'}
+                          </Typography>
+                        </>
+                      )
+                    })()}
                     <Typography variant="caption" color="text.secondary">
                       {isExact 
                         ? `Matches contract total (${plan.totalQuantity.toLocaleString()} KT)`
