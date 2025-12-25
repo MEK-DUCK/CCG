@@ -1,20 +1,42 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from typing import List, Optional
 from datetime import datetime
+import logging
+import uuid
+import json
+
 from app.database import get_db
 from app import models, schemas
 from app.models import ContractType, CargoStatus, LCStatus
 from app.audit_utils import log_cargo_action
-import uuid
-import json
+from app.config import (
+    SUPPORTED_LOAD_PORTS,
+    PORT_OP_ALLOWED_STATUSES,
+    PortOperationStatus,
+    QUANTITY_TOLERANCE,
+    is_quantity_equal,
+)
+from app.errors import (
+    AppError,
+    cargo_not_found,
+    cargo_already_exists,
+    contract_not_found,
+    customer_not_found,
+    monthly_plan_not_found,
+    combi_group_not_found,
+    invalid_load_port,
+    invalid_status,
+    load_port_required_for_loading,
+    to_http_exception,
+    ValidationError,
+    ErrorCode,
+)
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Supported load port codes for operational tracking sections in Port Movement UI
-SUPPORTED_LOAD_PORTS = {"MAA", "MAB", "SHU", "ZOR"}
-PORT_OP_ALLOWED_STATUSES = {"Planned", "Loading", "Completed Loading"}
 
 def _parse_load_ports(load_ports: Optional[str]) -> List[str]:
     """
@@ -35,6 +57,7 @@ def _parse_load_ports(load_ports: Optional[str]) -> List[str]:
             pass
     return [p.strip() for p in raw.split(",") if p.strip()]
 
+
 def _sync_port_operations(db: Session, cargo: models.Cargo, ports: List[str]):
     """
     Ensure per-port operation rows exist for the given cargo + selected ports.
@@ -48,14 +71,19 @@ def _sync_port_operations(db: Session, cargo: models.Cargo, ports: List[str]):
         if port not in existing:
             try:
                 # Prefer relationship append so in-memory collections update immediately
-                cargo.port_operations.append(models.CargoPortOperation(port_code=port, status="Planned"))
+                cargo.port_operations.append(
+                    models.CargoPortOperation(port_code=port, status=PortOperationStatus.PLANNED.value)
+                )
             except Exception:
-                db.add(models.CargoPortOperation(cargo_id=cargo.id, port_code=port, status="Planned"))
+                db.add(models.CargoPortOperation(
+                    cargo_id=cargo.id, port_code=port, status=PortOperationStatus.PLANNED.value
+                ))
 
     # Remove operations for removed ports (supported only)
     for port_code, op in existing.items():
         if port_code in SUPPORTED_LOAD_PORTS and port_code not in selected:
             db.delete(op)
+
 
 def _recompute_cargo_status_from_port_ops(db: Session, cargo: models.Cargo):
     """
@@ -75,14 +103,15 @@ def _recompute_cargo_status_from_port_ops(db: Session, cargo: models.Cargo):
         if not statuses:
             return
 
-        if all(s == "Completed Loading" for s in statuses):
+        if all(s == PortOperationStatus.COMPLETED.value for s in statuses):
             cargo.status = CargoStatus.COMPLETED_LOADING
-        elif any(s == "Loading" for s in statuses):
+        elif any(s == PortOperationStatus.LOADING.value for s in statuses):
             cargo.status = CargoStatus.LOADING
         else:
             cargo.status = CargoStatus.PLANNED
     except Exception:
         return
+
 
 def update_cargo_status(cargo: models.Cargo, db: Session):
     """Update cargo status - now manual, but keep this for backward compatibility"""
@@ -91,64 +120,52 @@ def update_cargo_status(cargo: models.Cargo, db: Session):
     if not cargo.status:
         cargo.status = CargoStatus.PLANNED
 
+
 @router.post("/", response_model=schemas.Cargo)
 def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
-    print(f"[DEBUG] Creating cargo with data:")
-    print(f"  Vessel: {cargo.vessel_name}")
-    print(f"  Customer ID: {cargo.customer_id}")
-    print(f"  Contract ID: {cargo.contract_id}")
-    print(f"  Monthly Plan ID: {cargo.monthly_plan_id}")
-    print(f"  Product: {cargo.product_name}")
-    print(f"  Quantity: {cargo.cargo_quantity}")
-    print(f"  LC Status from Pydantic: {cargo.lc_status}, type: {type(cargo.lc_status)}")
+    logger.info(f"Creating cargo: vessel={cargo.vessel_name}, contract={cargo.contract_id}, monthly_plan={cargo.monthly_plan_id}")
     
     # Verify all related entities exist
     customer = db.query(models.Customer).filter(models.Customer.id == cargo.customer_id).first()
     if not customer:
-        print(f"[ERROR] Customer {cargo.customer_id} not found")
-        raise HTTPException(status_code=404, detail="Customer not found")
-    print(f"[DEBUG] Customer found: {customer.name}")
+        raise to_http_exception(customer_not_found(cargo.customer_id))
     
-    import json
     contract = db.query(models.Contract).filter(models.Contract.id == cargo.contract_id).first()
     if not contract:
-        print(f"[ERROR] Contract {cargo.contract_id} not found")
-        raise HTTPException(status_code=404, detail="Contract not found")
-    print(f"[DEBUG] Contract found: {contract.contract_number}")
+        raise to_http_exception(contract_not_found(cargo.contract_id))
     
     # Verify product_name is in contract's products list
     contract_products = json.loads(contract.products) if contract.products else []
     product_names = [p["name"] for p in contract_products]
-    print(f"[DEBUG] Contract products: {product_names}")
     if cargo.product_name not in product_names:
-        print(f"[ERROR] Product '{cargo.product_name}' not in {product_names}")
-        raise HTTPException(status_code=400, detail=f"Product '{cargo.product_name}' not found in contract's products list")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Product '{cargo.product_name}' not found in contract's products list. Valid products: {', '.join(product_names)}"
+        )
     
     monthly_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == cargo.monthly_plan_id).first()
     if not monthly_plan:
-        print(f"[ERROR] Monthly plan {cargo.monthly_plan_id} not found")
-        raise HTTPException(status_code=404, detail="Monthly plan not found")
-    print(f"[DEBUG] Monthly plan found: Month {monthly_plan.month}, Year {monthly_plan.year}")
+        raise to_http_exception(monthly_plan_not_found(cargo.monthly_plan_id))
     
-    # Check if this monthly plan already has a cargo
+    # Validate cargo quantity matches monthly plan quantity (with tolerance)
+    if not is_quantity_equal(cargo.cargo_quantity, monthly_plan.month_quantity):
+        logger.warning(
+            f"Cargo quantity ({cargo.cargo_quantity}) differs from monthly plan ({monthly_plan.month_quantity})"
+        )
+        # Allow the mismatch but log it - some business cases may require different quantities
+    
+    # Check if this monthly plan already has a cargo (race condition handled below)
     existing_cargo = db.query(models.Cargo).filter(
         models.Cargo.monthly_plan_id == cargo.monthly_plan_id
     ).first()
     
     if existing_cargo:
-        # Monthly plan already has a cargo assigned - return error with existing cargo info
-        raise HTTPException(
-            status_code=400,
-            detail=f"This monthly plan already has a cargo assigned (Cargo ID: {existing_cargo.cargo_id}, Vessel: {existing_cargo.vessel_name}). Please edit the existing cargo instead of creating a new one."
-        )
+        raise to_http_exception(cargo_already_exists(existing_cargo.cargo_id, existing_cargo.vessel_name))
     
     # Generate system cargo_id
     cargo_id = f"CARGO-{uuid.uuid4().hex[:8].upper()}"
     
-    # CRITICAL: For lc_status, SQLAlchemy uses enum NAME but database needs enum VALUE
-    # So we need to ensure we use the enum VALUE, not the enum NAME
-    # For status, it works because database has both names and values
-    # For lc_status, database only has values, so we must use .value
+    # For lc_status, use enum VALUE for database storage
     lc_status_for_db = cargo.lc_status.value if cargo.lc_status else None
     
     # Get combi_group_id - either from cargo payload or inherit from monthly plan
@@ -162,8 +179,8 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
         customer_id=cargo.customer_id,
         product_name=cargo.product_name,
         contract_id=cargo.contract_id,
-        contract_type=contract.contract_type,  # Auto from contract
-        lc_status=lc_status_for_db,  # LC status - use enum VALUE, not enum NAME
+        contract_type=contract.contract_type,
+        lc_status=lc_status_for_db,
         load_ports=cargo.load_ports,
         inspector_name=cargo.inspector_name,
         cargo_quantity=cargo.cargo_quantity,
@@ -172,25 +189,25 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
         berthed=cargo.berthed,
         commenced=cargo.commenced,
         etc=cargo.etc,
-        eta_load_port=cargo.eta_load_port,  # Legacy field
-        loading_start_time=cargo.loading_start_time,  # Legacy field
-        loading_completion_time=cargo.loading_completion_time,  # Legacy field
-        etd_load_port=cargo.etd_load_port,  # Legacy field
+        eta_load_port=cargo.eta_load_port,
+        loading_start_time=cargo.loading_start_time,
+        loading_completion_time=cargo.loading_completion_time,
+        etd_load_port=cargo.etd_load_port,
         eta_discharge_port=cargo.eta_discharge_port,
         discharge_port_location=cargo.discharge_port_location,
         discharge_completion_time=cargo.discharge_completion_time,
         notes=cargo.notes,
         monthly_plan_id=cargo.monthly_plan_id,
-        combi_group_id=combi_group_id,  # Link combi cargos together
-        status=CargoStatus.PLANNED,  # Always start as Planned, user will update manually
-        product_id=0  # Legacy field, set to 0 for backward compatibility
+        combi_group_id=combi_group_id,
+        status=CargoStatus.PLANNED,
+        product_id=0  # Legacy field
     )
     
     try:
         db.add(db_cargo)
-        db.flush()  # Flush to get the ID
+        db.flush()
 
-        # Create per-port operation rows for supported ports (MAA/MAB/SHU/ZOR)
+        # Create per-port operation rows for supported ports
         _sync_port_operations(db, db_cargo, _parse_load_ports(db_cargo.load_ports))
         
         # Log the creation
@@ -203,45 +220,34 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
         
         db.commit()
         db.refresh(db_cargo)
-        print(f"[DEBUG] Cargo created successfully:")
-        print(f"  ID: {db_cargo.id}")
-        print(f"  Vessel Name: {db_cargo.vessel_name}")
-        print(f"  Load Ports: {db_cargo.load_ports}")
-        print(f"  Inspector Name: {db_cargo.inspector_name}")
-        print(f"  Cargo Quantity: {db_cargo.cargo_quantity}")
-        print(f"  Monthly Plan ID: {db_cargo.monthly_plan_id}")
-        print(f"  Status: {db_cargo.status}")
-        print(f"  Contract ID: {db_cargo.contract_id}")
-        print(f"  Customer ID: {db_cargo.customer_id}")
-        
-        # Verify the cargo was actually saved
-        if not db_cargo.id:
-            raise Exception("Cargo was not assigned an ID after commit")
-        
+        logger.info(f"Cargo created: id={db_cargo.id}, cargo_id={db_cargo.cargo_id}")
         return db_cargo
+        
     except IntegrityError as e:
         db.rollback()
-        # Race condition: another request created a cargo for this monthly_plan_id after our pre-check.
-        try:
-            # psycopg2 unique violation text includes 'UniqueViolation'
-            if "UniqueViolation" in str(getattr(e, "orig", "")) or "duplicate key value" in str(e):
-                existing = db.query(models.Cargo).filter(models.Cargo.monthly_plan_id == cargo.monthly_plan_id).first()
-                if existing:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"This monthly plan already has a cargo assigned (Cargo ID: {existing.cargo_id}, Vessel: {existing.vessel_name}). Please edit the existing cargo instead of creating a new one."
-                    )
-        except HTTPException:
-            raise
-        except Exception:
-            pass
-        raise HTTPException(status_code=500, detail=f"Failed to create cargo: {str(e)}")
+        # Race condition: another request created a cargo for this monthly_plan_id
+        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+            existing = db.query(models.Cargo).filter(
+                models.Cargo.monthly_plan_id == cargo.monthly_plan_id
+            ).first()
+            if existing:
+                raise HTTPException(
+                    status_code=409,  # Use 409 Conflict for race conditions
+                    detail=f"This monthly plan already has a cargo assigned (Cargo ID: {existing.cargo_id}, Vessel: {existing.vessel_name}). Please edit the existing cargo instead."
+                )
+        logger.error(f"IntegrityError creating cargo: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create cargo due to database constraint")
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database error creating cargo: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Database error while creating cargo")
+        
     except Exception as e:
         db.rollback()
-        print(f"[ERROR] Failed to create cargo: {str(e)}")
-        import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Failed to create cargo: {str(e)}")
+        logger.error(f"Unexpected error creating cargo: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
+
 
 @router.get("/", response_model=List[schemas.Cargo])
 def read_cargos(
@@ -277,10 +283,10 @@ def read_cargos(
         
         cargos = query.offset(skip).limit(limit).all()
         return cargos
-    except Exception as e:
-        import traceback
-        print(f"[ERROR] Error reading cargos: {str(e)}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Error loading cargos: {str(e)}")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error reading cargos: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error loading cargos")
+
 
 @router.get("/port-movement", response_model=List[schemas.Cargo])
 def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, db: Session = Depends(get_db)):
@@ -294,68 +300,71 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
                 year = now.year
         
         from sqlalchemy import or_, not_
-        # Exclude cargos that should be in other tabs:
-        # - Completed Loading (all types) -> goes to Completed Cargos tab
-        # - In-Road (Pending Discharge) -> goes to In-Road CIF tab
-        # (CIF Pending Nomination remains in Port Movement)
-        # Also exclude cargos where the monthly plan has quantity 0 (deferred/cancelled)
         query = db.query(models.Cargo).join(models.MonthlyPlan).filter(
             models.MonthlyPlan.month == month,
             models.MonthlyPlan.year == year,
-            models.MonthlyPlan.month_quantity > 0  # Exclude deferred/cancelled plans with 0 quantity
+            models.MonthlyPlan.month_quantity > 0
         ).filter(
             not_(
                 or_(
-                    models.Cargo.status == CargoStatus.COMPLETED_LOADING,  # All completed loading cargos
-                    models.Cargo.status == CargoStatus.IN_ROAD,  # In-Road cargos
+                    models.Cargo.status == CargoStatus.COMPLETED_LOADING,
+                    models.Cargo.status == CargoStatus.IN_ROAD,
                 )
             )
         )
         cargos = query.all()
-        # Backfill port operations for existing cargos that predate this feature
-        for c in cargos:
-            if (getattr(c, "port_operations", None) is not None) and len(getattr(c, "port_operations")) == 0:
+        
+        # Batch backfill port operations for cargos that need it
+        cargos_needing_ops = [c for c in cargos if not getattr(c, "port_operations", None)]
+        if cargos_needing_ops:
+            for c in cargos_needing_ops:
                 _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
-        db.commit()
+            db.commit()
+        
         return cargos
-    except Exception as e:
-        import traceback
-        error_msg = f"Error in read_port_movement: {str(e)}\n{traceback.format_exc()}"
-        print(f"[ERROR] {error_msg}")
-        raise HTTPException(status_code=500, detail=f"Error loading port movement: {str(e)}")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in read_port_movement: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error loading port movement data")
+
 
 @router.get("/completed-cargos", response_model=List[schemas.Cargo])
 def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = None, db: Session = Depends(get_db)):
     """Get FOB completed cargos and CIF cargos after loading completion, optionally filtered by month/year"""
-    from sqlalchemy import or_, and_
-    query = db.query(models.Cargo).filter(
-        or_(
-            and_(
-                models.Cargo.status == CargoStatus.COMPLETED_LOADING,
-                models.Cargo.contract_type == ContractType.FOB
-            ),
-            and_(
-                models.Cargo.status == CargoStatus.COMPLETED_LOADING,
-                models.Cargo.contract_type == ContractType.CIF
+    try:
+        from sqlalchemy import or_, and_
+        query = db.query(models.Cargo).filter(
+            or_(
+                and_(
+                    models.Cargo.status == CargoStatus.COMPLETED_LOADING,
+                    models.Cargo.contract_type == ContractType.FOB
+                ),
+                and_(
+                    models.Cargo.status == CargoStatus.COMPLETED_LOADING,
+                    models.Cargo.contract_type == ContractType.CIF
+                )
             )
         )
-    )
-    
-    # Filter by month/year if provided
-    if month is not None or year is not None:
-        query = query.join(models.MonthlyPlan)
-        if month is not None:
-            query = query.filter(models.MonthlyPlan.month == month)
-        if year is not None:
-            query = query.filter(models.MonthlyPlan.year == year)
-    
-    cargos = query.all()
-    # Backfill port operations for older cargos so completed view can show per-port details.
-    for c in cargos:
-        if (getattr(c, "port_operations", None) is not None) and len(getattr(c, "port_operations")) == 0:
-            _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
-    db.commit()
-    return cargos
+        
+        if month is not None or year is not None:
+            query = query.join(models.MonthlyPlan)
+            if month is not None:
+                query = query.filter(models.MonthlyPlan.month == month)
+            if year is not None:
+                query = query.filter(models.MonthlyPlan.year == year)
+        
+        cargos = query.all()
+        
+        # Batch backfill port operations
+        cargos_needing_ops = [c for c in cargos if not getattr(c, "port_operations", None)]
+        if cargos_needing_ops:
+            for c in cargos_needing_ops:
+                _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
+            db.commit()
+        
+        return cargos
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in read_completed_cargos: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error loading completed cargos")
 
 
 @router.get("/active-loadings", response_model=List[schemas.Cargo])
@@ -363,93 +372,71 @@ def read_active_loadings(db: Session = Depends(get_db)):
     """
     Return cargos that have at least one per-port operation in Loading or Completed Loading,
     regardless of month/year.
-
-    These rows power the top port sections and must not be affected by the Port Movement
-    month/year filter.
     """
-    from sqlalchemy import and_, or_
     try:
         query = db.query(models.Cargo).join(models.CargoPortOperation).filter(
-            models.CargoPortOperation.status.in_(["Loading", "Completed Loading"])
+            models.CargoPortOperation.status.in_([
+                PortOperationStatus.LOADING.value,
+                PortOperationStatus.COMPLETED.value
+            ])
         ).filter(
-            # Do not show cargos that are already fully completed or in-road
             models.Cargo.status.notin_([CargoStatus.COMPLETED_LOADING, CargoStatus.IN_ROAD])
         ).distinct(models.Cargo.id)
 
         cargos = query.all()
 
-        # Backfill port operations for existing cargos that predate this feature
-        for c in cargos:
-            if (getattr(c, "port_operations", None) is not None) and len(getattr(c, "port_operations")) == 0:
+        # Batch backfill port operations
+        cargos_needing_ops = [c for c in cargos if not getattr(c, "port_operations", None)]
+        if cargos_needing_ops:
+            for c in cargos_needing_ops:
                 _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
-        db.commit()
+            db.commit()
+        
         return cargos
-    except Exception as e:
-        import traceback
-        error_msg = f"Error in read_active_loadings: {str(e)}\n{traceback.format_exc()}"
-        print(f"[ERROR] {error_msg}")
-        raise HTTPException(status_code=500, detail=f"Error loading active loadings: {str(e)}")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in read_active_loadings: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error loading active loadings")
+
 
 @router.get("/in-road-cif", response_model=List[schemas.Cargo])
 def read_in_road_cif(db: Session = Depends(get_db)):
     """Get CIF cargos that completed loading but not discharge"""
     try:
         from sqlalchemy import and_
-        
-        # CIF In-Road tab should show cargos after loading completion until discharge completion.
-        # We include both:
-        # - COMPLETED_LOADING (CIF cargo after loading completion)
-        # - IN_ROAD (explicit in-road status, if used)
         query = db.query(models.Cargo).filter(and_(
             models.Cargo.contract_type == ContractType.CIF,
-            models.Cargo.discharge_completion_time.is_(None),  # Pending discharge only
+            models.Cargo.discharge_completion_time.is_(None),
             models.Cargo.status.in_([CargoStatus.COMPLETED_LOADING, CargoStatus.IN_ROAD]),
         ))
         cargos = query.all()
-        
-        # Debug: print to console (will show in backend logs)
-        print(f"[DEBUG] In-Road CIF query found {len(cargos)} cargos")
-        for cargo in cargos:
-            print(f"[DEBUG] Cargo ID: {cargo.id}, Vessel: {cargo.vessel_name}, Status: {cargo.status}, Contract Type: {cargo.contract_type}")
-        
-        # Also check all CIF cargos for debugging
-        all_cif = db.query(models.Cargo).filter(models.Cargo.contract_type == ContractType.CIF).all()
-        print(f"[DEBUG] Total CIF cargos in database: {len(all_cif)}")
-        for cargo in all_cif:
-            status_str = str(cargo.status) if cargo.status else "None"
-            print(f"[DEBUG]   Cargo ID: {cargo.id}, Vessel: {cargo.vessel_name}, Status: '{status_str}' (type: {type(cargo.status).__name__})")
-        
+        logger.debug(f"In-Road CIF query found {len(cargos)} cargos")
         return cargos
-    except Exception as e:
-        import traceback
-        error_msg = f"Error in read_in_road_cif: {str(e)}\n{traceback.format_exc()}"
-        print(f"[ERROR] {error_msg}")
-        raise HTTPException(status_code=500, detail=error_msg)
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in read_in_road_cif: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error loading in-road CIF cargos")
+
 
 @router.get("/completed-in-road-cif", response_model=List[schemas.Cargo])
 def read_completed_in_road_cif(db: Session = Depends(get_db)):
     """Get CIF cargos that are IN_ROAD and have completed discharge"""
     try:
         from sqlalchemy import and_
-        # Completed In-Road CIF tab shows cargos that have completed discharge.
-        # Include both COMPLETED_LOADING and IN_ROAD statuses to support either workflow.
         query = db.query(models.Cargo).filter(and_(
             models.Cargo.contract_type == ContractType.CIF,
-            models.Cargo.discharge_completion_time.is_not(None),  # Completed discharge
+            models.Cargo.discharge_completion_time.is_not(None),
             models.Cargo.status.in_([CargoStatus.COMPLETED_LOADING, CargoStatus.IN_ROAD]),
         ))
         return query.all()
-    except Exception as e:
-        import traceback
-        error_msg = f"Error in read_completed_in_road_cif: {str(e)}\n{traceback.format_exc()}"
-        print(f"[ERROR] {error_msg}")
-        raise HTTPException(status_code=500, detail=error_msg)
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in read_completed_in_road_cif: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error loading completed in-road CIF cargos")
+
 
 @router.get("/{cargo_id}", response_model=schemas.Cargo)
 def read_cargo(cargo_id: int, db: Session = Depends(get_db)):
     cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
     if cargo is None:
-        raise HTTPException(status_code=404, detail="Cargo not found")
+        raise to_http_exception(cargo_not_found(cargo_id))
     return cargo
 
 
@@ -457,7 +444,7 @@ def read_cargo(cargo_id: int, db: Session = Depends(get_db)):
 def list_port_operations(cargo_id: int, db: Session = Depends(get_db)):
     cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
     if cargo is None:
-        raise HTTPException(status_code=404, detail="Cargo not found")
+        raise to_http_exception(cargo_not_found(cargo_id))
     ops = db.query(models.CargoPortOperation).filter(models.CargoPortOperation.cargo_id == cargo_id).all()
     return ops
 
@@ -471,16 +458,16 @@ def upsert_port_operation(
 ):
     port_code = (port_code or "").strip().upper()
     if port_code not in SUPPORTED_LOAD_PORTS:
-        raise HTTPException(status_code=400, detail=f"Invalid port_code: {port_code}. Must be one of: {', '.join(sorted(SUPPORTED_LOAD_PORTS))}")
+        raise to_http_exception(invalid_load_port(port_code, list(SUPPORTED_LOAD_PORTS)))
 
     cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
     if cargo is None:
-        raise HTTPException(status_code=404, detail="Cargo not found")
+        raise to_http_exception(cargo_not_found(cargo_id))
 
     update_data = op.model_dump(exclude_unset=True) if hasattr(op, "model_dump") else op.dict(exclude_unset=True)
     if "status" in update_data and update_data["status"] is not None:
         if update_data["status"] not in PORT_OP_ALLOWED_STATUSES:
-            raise HTTPException(status_code=400, detail=f"Invalid status: {update_data['status']}. Must be one of: {', '.join(sorted(PORT_OP_ALLOWED_STATUSES))}")
+            raise to_http_exception(invalid_status(update_data["status"], list(PORT_OP_ALLOWED_STATUSES)))
 
     db_op = db.query(models.CargoPortOperation).filter(
         models.CargoPortOperation.cargo_id == cargo_id,
@@ -488,7 +475,9 @@ def upsert_port_operation(
     ).first()
 
     if not db_op:
-        db_op = models.CargoPortOperation(cargo_id=cargo_id, port_code=port_code, status="Planned")
+        db_op = models.CargoPortOperation(
+            cargo_id=cargo_id, port_code=port_code, status=PortOperationStatus.PLANNED.value
+        )
         db.add(db_op)
         db.flush()
 
@@ -502,48 +491,28 @@ def upsert_port_operation(
     db.refresh(db_op)
     return db_op
 
+
 @router.put("/{cargo_id}", response_model=schemas.Cargo)
 def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depends(get_db)):
     """Update cargo - handles lc_status conversion from string to enum"""
     try:
         db_cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
         if db_cargo is None:
-            raise HTTPException(status_code=404, detail="Cargo not found")
+            raise to_http_exception(cargo_not_found(cargo_id))
         
-        # Get raw dict to handle status conversion manually
-        # Use model_dump if available (Pydantic v2) or dict (Pydantic v1)
-        try:
-            # First try to get the raw request body to see what we're receiving
-            print(f"[DEBUG] Received cargo update request for cargo_id: {cargo_id}")
-            print(f"[DEBUG] CargoUpdate object: {cargo}")
-            update_data = cargo.model_dump(exclude_unset=True) if hasattr(cargo, 'model_dump') else cargo.dict(exclude_unset=True)
-        except Exception as e:
-            # Fallback to dict if model_dump fails
-            print(f"[WARNING] Error getting update data: {e}")
-            import traceback
-            print(f"[WARNING] Traceback: {traceback.format_exc()}")
-            try:
-                update_data = cargo.dict(exclude_unset=True)
-            except Exception as e2:
-                print(f"[ERROR] Failed to get update data even with dict(): {e2}")
-                import traceback
-                print(f"[ERROR] Traceback: {traceback.format_exc()}")
-                raise HTTPException(status_code=500, detail=f"Error parsing update request: {str(e2)}")
+        update_data = cargo.model_dump(exclude_unset=True) if hasattr(cargo, 'model_dump') else cargo.dict(exclude_unset=True)
+        logger.debug(f"Updating cargo {cargo_id} with data: {update_data}")
         
-        print(f"[DEBUG] Raw update_data from Pydantic: {update_data}")
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Error at start of update_cargo: {e}")
-        import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Error processing update request: {str(e)}")
+        logger.error(f"Error parsing update request for cargo {cargo_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error processing update request")
     
     # Convert status string to enum if present
     if 'status' in update_data and update_data['status'] is not None:
         status_value = update_data['status']
         if isinstance(status_value, str):
-            # Try to find matching enum by value
             status_enum = None
             for enum_item in CargoStatus:
                 if enum_item.value == status_value:
@@ -552,42 +521,26 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
             
             if status_enum:
                 update_data['status'] = status_enum
-                print(f"[DEBUG] Converted status string '{status_value}' to enum: {status_enum}")
             else:
-                # Try direct conversion as fallback
                 try:
                     status_enum = CargoStatus(status_value)
                     update_data['status'] = status_enum
-                    print(f"[DEBUG] Converted status via direct conversion: {status_enum}")
                 except ValueError:
-                    print(f"[ERROR] Invalid status value: {status_value}")
-                    print(f"[DEBUG] Available statuses: {[e.value for e in CargoStatus]}")
-                    raise HTTPException(status_code=400, detail=f"Invalid status value: {status_value}. Valid values: {', '.join([e.value for e in CargoStatus])}")
+                    raise to_http_exception(invalid_status(status_value, [e.value for e in CargoStatus]))
     
     # Convert lc_status to string VALUE (database stores enum VALUE, not enum NAME)
     if 'lc_status' in update_data and update_data['lc_status'] is not None:
         lc_status_value = update_data['lc_status']
-        # Handle empty string as None
         if lc_status_value == '':
             update_data['lc_status'] = None
-            print(f"[DEBUG] lc_status is empty string, converting to None")
         elif isinstance(lc_status_value, LCStatus):
-            # Convert enum object to its value string
             update_data['lc_status'] = lc_status_value.value
-            print(f"[DEBUG] Converted lc_status enum to value: {lc_status_value.value}")
         elif isinstance(lc_status_value, str):
-            # Already a string, should be the enum value
-            # Verify it's a valid enum value
             valid_values = [e.value for e in LCStatus]
             if lc_status_value not in valid_values:
-                raise HTTPException(status_code=400, detail=f"Invalid lc_status value: {lc_status_value}. Valid values: {', '.join(valid_values)}")
-            print(f"[DEBUG] lc_status is already string value: {lc_status_value}")
-    
-    # Debug logging
-    print(f"[DEBUG] Updating cargo {cargo_id} with data: {update_data}")
+                raise to_http_exception(invalid_status(lc_status_value, valid_values))
 
-    # Guardrail: prevent putting a cargo into Loading lifecycle without at least one load port selected.
-    # Otherwise it disappears from the main Port Movement table (filtered out) and has no port lane to show in.
+    # Guardrail: prevent putting a cargo into Loading lifecycle without at least one load port
     def _coerce_load_ports_to_str(val) -> Optional[str]:
         if val is None:
             return None
@@ -615,10 +568,7 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
         selected_ports = _parse_load_ports(intended_load_ports)
 
         if intended_status in {CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING} and len(selected_ports) == 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Please select at least one Load Port before setting status to Loading."
-            )
+            raise to_http_exception(load_port_required_for_loading())
 
         if getattr(db_cargo, "status", None) in {CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING} and "load_ports" in update_data and len(selected_ports) == 0:
             raise HTTPException(
@@ -628,8 +578,7 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
     except HTTPException:
         raise
     except Exception:
-        # Never block updates due to guard computation errors; backend validation above is best-effort.
-        pass
+        pass  # Don't block updates due to guard computation errors
     
     # Store old values for audit logging
     old_monthly_plan_id = db_cargo.monthly_plan_id
@@ -641,7 +590,6 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
     
     # Check if monthly_plan_id is being changed (MOVE action)
     if 'monthly_plan_id' in update_data and update_data['monthly_plan_id'] != old_monthly_plan_id:
-        # This is a MOVE action
         log_cargo_action(
             db=db,
             action='MOVE',
@@ -651,19 +599,11 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
         )
     
     for field, value in update_data.items():
-        # Handle status field specially to ensure enum conversion
         if field == 'status' and value is not None:
             try:
                 old_status = db_cargo.status
                 if isinstance(value, CargoStatus):
-                    print(f"[DEBUG] Setting status to enum: {value} (value: {value.value})")
-                    # For PostgreSQL native enums, we need to ensure we're using the enum value
-                    # SQLAlchemy should handle this automatically for string enums, but let's be explicit
                     db_cargo.status = value
-                    # Verify the value is set correctly
-                    print(f"[DEBUG] Status set to: {db_cargo.status}, type: {type(db_cargo.status)}")
-                    
-                    # Log status change (but not if it's part of a MOVE, already logged)
                     if 'monthly_plan_id' not in update_data or update_data['monthly_plan_id'] == old_monthly_plan_id:
                         if old_status != db_cargo.status:
                             log_cargo_action(
@@ -675,47 +615,32 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
                                 new_value=db_cargo.status.value if db_cargo.status else None
                             )
                 elif isinstance(value, str):
-                    # Should not reach here if conversion above worked, but handle just in case
-                    print(f"[WARNING] Status is still a string, attempting conversion: {value}")
-                    # Try to find matching enum by value
                     status_enum = None
                     for enum_item in CargoStatus:
                         if enum_item.value == value:
                             status_enum = enum_item
                             break
-                    
                     if status_enum:
                         db_cargo.status = status_enum
-                        print(f"[DEBUG] Converted and set status: {status_enum} (value: {status_enum.value})")
                     else:
-                        raise HTTPException(status_code=400, detail=f"Invalid status value: {value}. Valid values: {', '.join([e.value for e in CargoStatus])}")
+                        raise to_http_exception(invalid_status(value, [e.value for e in CargoStatus]))
                 else:
-                    print(f"[ERROR] Status has unexpected type: {type(value)}, value: {value}")
                     raise HTTPException(status_code=400, detail=f"Invalid status type: {type(value)}")
             except HTTPException:
                 raise
             except Exception as e:
-                print(f"[ERROR] Failed to set status: {e}")
-                import traceback
-                print(f"[ERROR] Traceback: {traceback.format_exc()}")
-                raise HTTPException(status_code=500, detail=f"Error setting status: {str(e)}")
+                logger.error(f"Failed to set status: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail="Error setting status")
+                
         elif field == 'lc_status' and value is not None:
-            # CRITICAL: Database stores enum VALUE, not enum NAME
-            # So we need to convert enum object to its value string
             old_lc_status = db_cargo.lc_status
             if isinstance(value, LCStatus):
-                print(f"[DEBUG] Setting lc_status to enum VALUE: {value.value} (from enum: {value})")
-                db_cargo.lc_status = value.value  # Store the enum VALUE, not the enum object
-                print(f"[DEBUG] LC Status set to: {db_cargo.lc_status}, type: {type(db_cargo.lc_status)}")
+                db_cargo.lc_status = value.value
             elif isinstance(value, str):
-                # String should already be the enum value
-                print(f"[DEBUG] Setting lc_status to string value: {value}")
                 db_cargo.lc_status = value
             else:
-                print(f"[ERROR] LC Status has unexpected type: {type(value)}, value: {value}")
                 raise HTTPException(status_code=400, detail=f"Invalid lc_status type: {type(value)}")
             
-            # Log lc_status change (but not if it's part of a MOVE, already logged)
             if 'monthly_plan_id' not in update_data or update_data['monthly_plan_id'] == old_monthly_plan_id:
                 if old_lc_status != db_cargo.lc_status:
                     log_cargo_action(
@@ -727,19 +652,15 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
                         new_value=db_cargo.lc_status
                     )
         elif field == 'monthly_plan_id':
-            # Handle monthly_plan_id update (MOVE action already logged above)
             try:
                 setattr(db_cargo, field, value)
             except Exception as e:
-                print(f"[ERROR] Failed to set monthly_plan_id: {e}")
-                import traceback
-                print(f"[ERROR] Traceback: {traceback.format_exc()}")
-                raise HTTPException(status_code=500, detail=f"Error updating monthly_plan_id: {str(e)}")
+                logger.error(f"Failed to set monthly_plan_id: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail="Error updating monthly_plan_id")
         else:
             try:
                 old_val = old_values.get(field)
                 setattr(db_cargo, field, value)
-                # Log field change (but not if it's part of a MOVE, already logged)
                 if field != 'monthly_plan_id' and (old_val != value):
                     log_cargo_action(
                         db=db,
@@ -750,42 +671,33 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
                         new_value=value
                     )
             except Exception as e:
-                print(f"[ERROR] Failed to set field {field}: {e}")
-                import traceback
-                print(f"[ERROR] Traceback: {traceback.format_exc()}")
-                raise HTTPException(status_code=500, detail=f"Error updating field {field}: {str(e)}")
-    
-    # Status is now manual - user sets it via the UI
-    # No automatic status updates
+                logger.error(f"Failed to set field {field}: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Error updating field {field}")
 
     # Keep per-port operations aligned when load_ports changes
     if 'load_ports' in update_data:
         _sync_port_operations(db, db_cargo, _parse_load_ports(getattr(db_cargo, "load_ports", None)))
 
     # If user sets cargo to "Loading", move all selected port operations into "Loading"
-    # so the cargo appears under the port sections immediately.
     try:
         if 'status' in update_data and db_cargo.status == CargoStatus.LOADING:
             for op in getattr(db_cargo, "port_operations", []) or []:
-                if op.port_code in SUPPORTED_LOAD_PORTS and op.status == "Planned":
-                    op.status = "Loading"
+                if op.port_code in SUPPORTED_LOAD_PORTS and op.status == PortOperationStatus.PLANNED.value:
+                    op.status = PortOperationStatus.LOADING.value
     except Exception:
         pass
     
-    print(f"[DEBUG] Committing cargo {cargo_id} update. Status before commit: {db_cargo.status}, LC Status: {db_cargo.lc_status}")
     try:
-        # Recompute status in case port ops imply completion (e.g., all ports completed)
         _recompute_cargo_status_from_port_ops(db, db_cargo)
         db.commit()
         db.refresh(db_cargo)
-        print(f"[DEBUG] Cargo {cargo_id} updated. Status after refresh: {db_cargo.status}, LC Status: {db_cargo.lc_status}")
+        logger.info(f"Cargo {cargo_id} updated successfully")
         return db_cargo
-    except Exception as e:
+    except SQLAlchemyError as e:
         db.rollback()
-        print(f"[ERROR] Failed to commit cargo update: {e}")
-        import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Error committing cargo update: {str(e)}")
+        logger.error(f"Database error updating cargo {cargo_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error saving cargo update")
+
 
 @router.put("/combi-group/{combi_group_id}/sync")
 def sync_combi_cargo_group(
@@ -799,124 +711,128 @@ def sync_combi_cargo_group(
     
     Only updates fields that are set in the request - individual cargo quantities are preserved.
     """
-    # Find all cargos in the combi group
-    cargos = db.query(models.Cargo).filter(
-        models.Cargo.combi_group_id == combi_group_id
-    ).all()
-    
-    if not cargos:
-        raise HTTPException(status_code=404, detail=f"No cargos found with combi_group_id: {combi_group_id}")
-    
-    # Get update data, excluding fields that should remain individual per cargo
-    update_data = update.model_dump(exclude_unset=True) if hasattr(update, 'model_dump') else update.dict(exclude_unset=True)
-    
-    # Fields that should NOT be synced (they're individual per cargo in a combi)
-    individual_fields = {'cargo_quantity', 'product_name', 'monthly_plan_id'}
-    
-    # Remove individual fields from update
-    for field in individual_fields:
-        update_data.pop(field, None)
-    
-    if not update_data:
-        return {"message": "No shared fields to update", "updated_count": 0, "cargos": []}
-    
-    # Convert status string to enum if present
-    if 'status' in update_data and update_data['status'] is not None:
-        status_value = update_data['status']
-        if isinstance(status_value, str):
-            status_enum = None
-            for enum_item in CargoStatus:
-                if enum_item.value == status_value:
-                    status_enum = enum_item
-                    break
-            if status_enum:
-                update_data['status'] = status_enum
-            else:
-                try:
-                    update_data['status'] = CargoStatus(status_value)
-                except ValueError:
-                    raise HTTPException(status_code=400, detail=f"Invalid status value: {status_value}")
-    
-    # Convert lc_status if present
-    if 'lc_status' in update_data and update_data['lc_status'] is not None:
-        lc_status_value = update_data['lc_status']
-        if lc_status_value == '':
-            update_data['lc_status'] = None
-        elif isinstance(lc_status_value, LCStatus):
-            update_data['lc_status'] = lc_status_value.value
-        elif isinstance(lc_status_value, str):
-            valid_values = [e.value for e in LCStatus]
-            if lc_status_value not in valid_values:
-                raise HTTPException(status_code=400, detail=f"Invalid lc_status value: {lc_status_value}")
-    
-    # Update all cargos in the group
-    updated_cargos = []
-    for cargo in cargos:
-        # Log the update for audit
-        old_values = {}
-        for field in update_data.keys():
-            if hasattr(cargo, field):
-                old_values[field] = getattr(cargo, field)
+    try:
+        # Find all cargos in the combi group
+        cargos = db.query(models.Cargo).filter(
+            models.Cargo.combi_group_id == combi_group_id
+        ).all()
         
-        # Apply updates
-        for field, value in update_data.items():
-            if hasattr(cargo, field):
-                setattr(cargo, field, value)
+        if not cargos:
+            raise to_http_exception(combi_group_not_found(combi_group_id))
         
-        # Sync port operations if load_ports changed
-        if 'load_ports' in update_data:
-            selected_ports = _parse_load_ports(update_data['load_ports'])
-            _sync_port_operations(db, cargo, selected_ports)
+        # Get update data, excluding fields that should remain individual per cargo
+        update_data = update.model_dump(exclude_unset=True) if hasattr(update, 'model_dump') else update.dict(exclude_unset=True)
+        
+        # Fields that should NOT be synced (they're individual per cargo in a combi)
+        individual_fields = {'cargo_quantity', 'product_name', 'monthly_plan_id'}
+        
+        # Remove individual fields from update
+        for field in individual_fields:
+            update_data.pop(field, None)
+        
+        if not update_data:
+            return {"message": "No shared fields to update", "updated_count": 0, "cargos": []}
+        
+        # Convert status string to enum if present
+        if 'status' in update_data and update_data['status'] is not None:
+            status_value = update_data['status']
+            if isinstance(status_value, str):
+                status_enum = None
+                for enum_item in CargoStatus:
+                    if enum_item.value == status_value:
+                        status_enum = enum_item
+                        break
+                if status_enum:
+                    update_data['status'] = status_enum
+                else:
+                    try:
+                        update_data['status'] = CargoStatus(status_value)
+                    except ValueError:
+                        raise to_http_exception(invalid_status(status_value, [e.value for e in CargoStatus]))
+        
+        # Convert lc_status if present
+        if 'lc_status' in update_data and update_data['lc_status'] is not None:
+            lc_status_value = update_data['lc_status']
+            if lc_status_value == '':
+                update_data['lc_status'] = None
+            elif isinstance(lc_status_value, LCStatus):
+                update_data['lc_status'] = lc_status_value.value
+            elif isinstance(lc_status_value, str):
+                valid_values = [e.value for e in LCStatus]
+                if lc_status_value not in valid_values:
+                    raise to_http_exception(invalid_status(lc_status_value, valid_values))
+        
+        # Update all cargos in the group atomically
+        updated_cargos = []
+        for cargo in cargos:
+            for field, value in update_data.items():
+                if hasattr(cargo, field):
+                    setattr(cargo, field, value)
             
-            # Recompute status from port ops if in loading lifecycle
-            if cargo.status in {CargoStatus.PLANNED, CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING}:
-                _recompute_cargo_status_from_port_ops(db, cargo)
+            # Sync port operations if load_ports changed
+            if 'load_ports' in update_data:
+                selected_ports = _parse_load_ports(update_data['load_ports'])
+                _sync_port_operations(db, cargo, selected_ports)
+                
+                if cargo.status in {CargoStatus.PLANNED, CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING}:
+                    _recompute_cargo_status_from_port_ops(db, cargo)
+            
+            # If status changed to Loading, update all port operations to Loading
+            if 'status' in update_data and update_data['status'] == CargoStatus.LOADING:
+                ops = getattr(cargo, "port_operations", None)
+                if ops:
+                    for op in ops:
+                        if op.status == PortOperationStatus.PLANNED.value:
+                            op.status = PortOperationStatus.LOADING.value
+            
+            # If status changed to Completed Loading, update all port operations to Completed Loading
+            if 'status' in update_data and update_data['status'] == CargoStatus.COMPLETED_LOADING:
+                ops = getattr(cargo, "port_operations", None)
+                if ops:
+                    for op in ops:
+                        if op.status in [PortOperationStatus.PLANNED.value, PortOperationStatus.LOADING.value]:
+                            op.status = PortOperationStatus.COMPLETED.value
+            
+            updated_cargos.append({
+                "id": cargo.id,
+                "cargo_id": cargo.cargo_id,
+                "product_name": cargo.product_name,
+                "status": cargo.status.value if cargo.status else None,
+            })
         
-        # If status changed to Loading, update all port operations to Loading
-        if 'status' in update_data and update_data['status'] == CargoStatus.LOADING:
-            ops = getattr(cargo, "port_operations", None)
-            if ops:
-                for op in ops:
-                    if op.status == "Planned":
-                        op.status = "Loading"
+        db.commit()
         
-        # If status changed to Completed Loading, update all port operations to Completed Loading
-        if 'status' in update_data and update_data['status'] == CargoStatus.COMPLETED_LOADING:
-            ops = getattr(cargo, "port_operations", None)
-            if ops:
-                for op in ops:
-                    if op.status in ["Planned", "Loading"]:
-                        op.status = "Completed Loading"
+        # Refresh all cargos
+        for cargo in cargos:
+            db.refresh(cargo)
         
-        updated_cargos.append({
-            "id": cargo.id,
-            "cargo_id": cargo.cargo_id,
-            "product_name": cargo.product_name,
-            "status": cargo.status.value if cargo.status else None,
-        })
-    
-    db.commit()
-    
-    # Refresh all cargos
-    for cargo in cargos:
-        db.refresh(cargo)
-    
-    print(f"[COMBI_SYNC] Updated {len(cargos)} cargos in combi group {combi_group_id}")
-    
-    return {
-        "message": f"Successfully synced {len(cargos)} cargos in combi group",
-        "updated_count": len(cargos),
-        "combi_group_id": combi_group_id,
-        "updated_fields": list(update_data.keys()),
-        "cargos": updated_cargos
-    }
+        logger.info(f"Synced {len(cargos)} cargos in combi group {combi_group_id}")
+        
+        return {
+            "message": f"Successfully synced {len(cargos)} cargos in combi group",
+            "updated_count": len(cargos),
+            "combi_group_id": combi_group_id,
+            "updated_fields": list(update_data.keys()),
+            "cargos": updated_cargos
+        }
+        
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database error syncing combi group {combi_group_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to sync combi cargo group")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error syncing combi group {combi_group_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
 
 
 @router.delete("/{cargo_id}")
 def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
     db_cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
     if db_cargo is None:
-        raise HTTPException(status_code=404, detail="Cargo not found")
+        raise to_http_exception(cargo_not_found(cargo_id))
     
     try:
         # Log the deletion before deleting
@@ -926,10 +842,9 @@ def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
             cargo=db_cargo,
             old_monthly_plan_id=db_cargo.monthly_plan_id
         )
-        db.flush()  # ensure audit log row exists in this transaction
+        db.flush()
 
-        # IMPORTANT: audit log foreign key must NOT block deletions.
-        # Preserve history via cargo_cargo_id + snapshot + stable numeric cargo_db_id, but null the FK reference.
+        # Preserve audit log history by nulling the FK reference
         db.query(models.CargoAuditLog).filter(
             models.CargoAuditLog.cargo_id == db_cargo.id
         ).update(
@@ -939,12 +854,11 @@ def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
     
         db.delete(db_cargo)
         db.commit()
+        logger.info(f"Cargo {cargo_id} deleted successfully")
         return {"message": "Cargo deleted successfully"}
     except HTTPException:
         raise
-    except Exception as e:
+    except SQLAlchemyError as e:
         db.rollback()
-        import traceback
-        print(f"[ERROR] Error deleting cargo: {str(e)}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Error deleting cargo: {str(e)}")
-
+        logger.error(f"Database error deleting cargo {cargo_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error deleting cargo")

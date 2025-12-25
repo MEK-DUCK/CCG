@@ -2,19 +2,20 @@ from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 # PostgreSQL connection string format:
 # postgresql://username:password@host:port/database
 # Example: postgresql://postgres:password@localhost:5432/oil_lifting
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() == "true"  # Default to PostgreSQL now
+USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() == "true"
 
 if USE_SQLITE:
-    # Use SQLite database
     DATABASE_URL = "sqlite:///./oil_lifting.db"
     print("✓ Using SQLite database (oil_lifting.db)")
     print("  To use PostgreSQL, set USE_SQLITE=false and configure DATABASE_URL in .env")
@@ -25,36 +26,30 @@ if USE_SQLITE:
         echo=False
     )
 else:
-    # Try to connect to PostgreSQL
     try:
-        # Test PostgreSQL connection with timeout (5 seconds)
         test_engine = create_engine(
             DATABASE_URL, 
             connect_args={"connect_timeout": 5},
             pool_pre_ping=True
         )
         
-        # Test connection with timeout
         with test_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         
-        # PostgreSQL connection successful
         print(f"✓ Connected to PostgreSQL database")
         
-        # Create engine with PostgreSQL-specific settings
         engine = create_engine(
             DATABASE_URL,
-            pool_pre_ping=True,  # Verify connections before using them
-            pool_size=5,  # Number of connections to maintain
-            max_overflow=10,  # Maximum number of connections beyond pool_size
-            pool_timeout=10,  # Timeout for getting connection from pool
-            pool_recycle=3600,  # Recycle connections after 1 hour
-            connect_args={"connect_timeout": 5},  # Connection timeout
-            echo=False  # Set to True for SQL query logging
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=10,
+            pool_recycle=3600,
+            connect_args={"connect_timeout": 5},
+            echo=False
         )
         
     except Exception as e:
-        # Fallback to SQLite if PostgreSQL connection fails
         print(f"⚠ PostgreSQL connection failed: {str(e)}")
         print("⚠ Falling back to SQLite database (oil_lifting.db)")
         
@@ -69,10 +64,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
+
 def ensure_schema():
     """
     Best-effort additive migrations so existing SQLite/PostgreSQL DBs keep working
     as new nullable columns are introduced.
+    Also adds database constraints and indexes for data integrity and performance.
     """
     try:
         insp = inspect(engine)
@@ -107,7 +104,6 @@ def ensure_schema():
             # Data migration: populate product_name for single-product contracts where it's NULL
             try:
                 with engine.begin() as conn:
-                    # Get quarterly plans with NULL product_name
                     result = conn.execute(text('''
                         SELECT qp.id, c.products 
                         FROM quarterly_plans qp 
@@ -133,7 +129,7 @@ def ensure_schema():
                             except Exception:
                                 pass
             except Exception as e:
-                print(f"[MIGRATION] Failed to populate product_name for quarterly plans: {e}")
+                logger.warning(f"Failed to populate product_name for quarterly plans: {e}")
 
         # Monthly plans migrations - add combi_group_id for combi monthly plans
         if insp.has_table("monthly_plans"):
@@ -144,7 +140,6 @@ def ensure_schema():
                         conn.execute(text('ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS combi_group_id VARCHAR'))
                     else:
                         conn.execute(text('ALTER TABLE monthly_plans ADD COLUMN combi_group_id VARCHAR'))
-                # Add index for combi_group_id
                 try:
                     with engine.begin() as conn:
                         if dialect == "postgresql":
@@ -152,7 +147,7 @@ def ensure_schema():
                         else:
                             conn.execute(text('CREATE INDEX IF NOT EXISTS ix_monthly_plans_combi_group_id ON monthly_plans (combi_group_id)'))
                 except Exception:
-                    pass  # Index may already exist
+                    pass
 
         # Cargos migrations - add combi_group_id for combi cargos
         if insp.has_table("cargos"):
@@ -163,7 +158,6 @@ def ensure_schema():
                         conn.execute(text('ALTER TABLE cargos ADD COLUMN IF NOT EXISTS combi_group_id VARCHAR'))
                     else:
                         conn.execute(text('ALTER TABLE cargos ADD COLUMN combi_group_id VARCHAR'))
-                # Add index for combi_group_id
                 try:
                     with engine.begin() as conn:
                         if dialect == "postgresql":
@@ -171,7 +165,7 @@ def ensure_schema():
                         else:
                             conn.execute(text('CREATE INDEX IF NOT EXISTS ix_cargos_combi_group_id ON cargos (combi_group_id)'))
                 except Exception:
-                    pass  # Index may already exist
+                    pass
             
             # Add five_nd_date for CIF In-Road tracking
             if "five_nd_date" not in cols:
@@ -180,10 +174,103 @@ def ensure_schema():
                         conn.execute(text('ALTER TABLE cargos ADD COLUMN IF NOT EXISTS five_nd_date VARCHAR'))
                     else:
                         conn.execute(text('ALTER TABLE cargos ADD COLUMN five_nd_date VARCHAR'))
+        
+        # =============================================================================
+        # DATABASE CONSTRAINTS (PostgreSQL only)
+        # =============================================================================
+        if dialect == "postgresql":
+            _add_postgresql_constraints()
+            _add_postgresql_indexes()
+            _add_financial_hold_enum()
                     
-    except Exception:
-        # Never block app startup on best-effort migrations
-        return
+    except Exception as e:
+        logger.warning(f"Schema migration warning: {e}")
+
+
+def _add_postgresql_constraints():
+    """Add CHECK constraints for data validation (PostgreSQL only)."""
+    constraints = [
+        # Monthly plans: month must be 1-12
+        ("monthly_plans", "chk_monthly_plans_month", "month >= 1 AND month <= 12"),
+        # Monthly plans: year must be reasonable
+        ("monthly_plans", "chk_monthly_plans_year", "year >= 2020 AND year <= 2100"),
+        # Monthly plans: quantity must be non-negative
+        ("monthly_plans", "chk_monthly_plans_quantity", "month_quantity >= 0"),
+        # Quarterly plans: quantities must be non-negative
+        ("quarterly_plans", "chk_quarterly_q1", "q1_quantity >= 0"),
+        ("quarterly_plans", "chk_quarterly_q2", "q2_quantity >= 0"),
+        ("quarterly_plans", "chk_quarterly_q3", "q3_quantity >= 0"),
+        ("quarterly_plans", "chk_quarterly_q4", "q4_quantity >= 0"),
+        # Cargos: quantity must be positive
+        ("cargos", "chk_cargos_quantity", "cargo_quantity > 0"),
+    ]
+    
+    for table, constraint_name, check_condition in constraints:
+        try:
+            with engine.begin() as conn:
+                # Check if constraint exists
+                result = conn.execute(text(f"""
+                    SELECT 1 FROM pg_constraint 
+                    WHERE conname = :name
+                """), {"name": constraint_name})
+                
+                if not result.fetchone():
+                    conn.execute(text(f"""
+                        ALTER TABLE {table} 
+                        ADD CONSTRAINT {constraint_name} 
+                        CHECK ({check_condition})
+                    """))
+                    logger.info(f"Added constraint {constraint_name} to {table}")
+        except Exception as e:
+            logger.debug(f"Constraint {constraint_name} may already exist or failed: {e}")
+
+
+def _add_postgresql_indexes():
+    """Add performance indexes (PostgreSQL only)."""
+    indexes = [
+        # Weekly comparison query optimization
+        ("idx_monthly_audit_log_comparison", "monthly_plan_audit_logs", "(created_at, contract_id, field_name)"),
+        # Cargo queries by status
+        ("idx_cargos_status", "cargos", "(status)"),
+        # Cargo queries by contract
+        ("idx_cargos_contract_id", "cargos", "(contract_id)"),
+        # Monthly plans by year/month for port movement
+        ("idx_monthly_plans_year_month", "monthly_plans", "(year, month)"),
+        # Port operations by cargo
+        ("idx_cargo_port_ops_cargo", "cargo_port_operations", "(cargo_id)"),
+        # Port operations by status for active loadings
+        ("idx_cargo_port_ops_status", "cargo_port_operations", "(status)"),
+    ]
+    
+    for index_name, table, columns in indexes:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(f"""
+                    CREATE INDEX IF NOT EXISTS {index_name} ON {table} {columns}
+                """))
+        except Exception as e:
+            logger.debug(f"Index {index_name} may already exist or failed: {e}")
+
+
+def _add_financial_hold_enum():
+    """Add Financial Hold to LC status enum if not present (PostgreSQL only)."""
+    try:
+        with engine.begin() as conn:
+            # Check if Financial Hold exists in the enum
+            result = conn.execute(text("""
+                SELECT 1 FROM pg_enum 
+                WHERE enumtypid = 'lcstatus'::regtype 
+                AND enumlabel = 'Financial Hold'
+            """))
+            
+            if not result.fetchone():
+                conn.execute(text("""
+                    ALTER TYPE lcstatus ADD VALUE IF NOT EXISTS 'Financial Hold'
+                """))
+                logger.info("Added 'Financial Hold' to lcstatus enum")
+    except Exception as e:
+        logger.debug(f"Financial Hold enum addition skipped: {e}")
+
 
 def get_db():
     """Dependency for getting database session"""
@@ -192,4 +279,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
