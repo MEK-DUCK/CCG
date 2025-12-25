@@ -1674,29 +1674,14 @@ export default function HomePage() {
                   <TableCell>
                     {cargo.combi_group_id ? (
                       <Box>
-                        {combieCargos.map(c => {
-                          const topupQty = (c as any).authority_topup_quantity || 0
-                          return (
-                            <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
-                              {c.product_name}: {c.cargo_quantity} KT
-                              {topupQty > 0 && (
-                                <span style={{ color: '#10B981', fontSize: '0.75rem', marginLeft: 4 }}>
-                                  (+{topupQty} top-up)
-                                </span>
-                              )}
-                            </Typography>
-                          )
-                        })}
+                        {combieCargos.map(c => (
+                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
+                            {c.product_name}: {c.cargo_quantity} KT
+                          </Typography>
+                        ))}
                       </Box>
                     ) : (
-                      <>
-                        {getProductName(cargo.product_name)}
-                        {((cargo as any).authority_topup_quantity || 0) > 0 && (
-                          <Typography variant="caption" sx={{ display: 'block', color: '#10B981' }}>
-                            (+{(cargo as any).authority_topup_quantity} top-up)
-                          </Typography>
-                        )}
-                      </>
+                      getProductName(cargo.product_name)
                     )}
                   </TableCell>
                   <TableCell>
@@ -1973,29 +1958,14 @@ export default function HomePage() {
                   <TableCell>
                     {cargo.combi_group_id ? (
                       <Box>
-                        {combieCargos.map(c => {
-                          const topupQty = (c as any).authority_topup_quantity || 0
-                          return (
-                            <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
-                              {c.product_name}: {c.cargo_quantity} KT
-                              {topupQty > 0 && (
-                                <span style={{ color: '#10B981', fontSize: '0.75rem', marginLeft: 4 }}>
-                                  (+{topupQty} top-up)
-                                </span>
-                              )}
-                            </Typography>
-                          )
-                        })}
+                        {combieCargos.map(c => (
+                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
+                            {c.product_name}: {c.cargo_quantity} KT
+                          </Typography>
+                        ))}
                       </Box>
                     ) : (
-                      <>
-                        {getProductName(cargo.product_name)}
-                        {((cargo as any).authority_topup_quantity || 0) > 0 && (
-                          <Typography variant="caption" sx={{ display: 'block', color: '#10B981' }}>
-                            (+{(cargo as any).authority_topup_quantity} top-up)
-                          </Typography>
-                        )}
-                      </>
+                      getProductName(cargo.product_name)
                     )}
                   </TableCell>
                   <TableCell>
@@ -2815,19 +2785,11 @@ export default function HomePage() {
                       }}>
                         {isCombi && combiCargos ? (
                           <Box>
-                            {combiCargos.map((c) => {
-                              const topupQty = (c as any).authority_topup_quantity || 0
-                              return (
-                                <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
-                                  {c.product_name}: {c.cargo_quantity} KT
-                                  {topupQty > 0 && (
-                                    <span style={{ color: '#10B981', fontSize: '0.75rem', marginLeft: 4 }}>
-                                      (+{topupQty} top-up)
-                                    </span>
-                                  )}
-                                </Typography>
-                              )
-                            })}
+                            {combiCargos.map((c) => (
+                              <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
+                                {c.product_name}: {c.cargo_quantity} KT
+                              </Typography>
+                            ))}
                           </Box>
                         ) : isCombi && combiMonthlyPlans ? (
                           <Box>
@@ -2835,44 +2797,20 @@ export default function HomePage() {
                               // Get product name from quarterly plan
                               const qp = quarterlyPlansMap.get(mp.quarterly_plan_id)
                               const productName = qp?.product_name || 'Unknown'
-                              const topupQty = (mp as any).authority_topup_quantity || 0
                               return (
                                 <Typography key={mp.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
                                   {productName}: {mp.month_quantity} KT
-                                  {topupQty > 0 && (
-                                    <span style={{ color: '#10B981', fontSize: '0.75rem', marginLeft: 4 }}>
-                                      (+{topupQty} top-up)
-                                    </span>
-                                  )}
                                 </Typography>
                               )
                             })}
                           </Box>
                         ) : (
-                          <>
-                            {cargo ? (
-                              <>
-                                {cargo.product_name}
-                                {((cargo as any).authority_topup_quantity || 0) > 0 && (
-                                  <Typography variant="caption" sx={{ display: 'block', color: '#10B981' }}>
-                                    (+{(cargo as any).authority_topup_quantity} top-up)
-                                  </Typography>
-                                )}
-                              </>
-                            ) : (
-                              // For non-combi monthly plans, get product from quarterly plan
-                              monthlyPlan ? (
-                                <>
-                                  {quarterlyPlansMap.get(monthlyPlan.quarterly_plan_id)?.product_name || '-'}
-                                  {((monthlyPlan as any).authority_topup_quantity || 0) > 0 && (
-                                    <Typography variant="caption" sx={{ display: 'block', color: '#10B981' }}>
-                                      (+{(monthlyPlan as any).authority_topup_quantity} top-up)
-                                    </Typography>
-                                  )}
-                                </>
-                              ) : '-'
-                            )}
-                          </>
+                          cargo ? cargo.product_name : (
+                            // For non-combi monthly plans, get product from quarterly plan
+                            monthlyPlan ? (
+                              quarterlyPlansMap.get(monthlyPlan.quarterly_plan_id)?.product_name || '-'
+                            ) : '-'
+                          )
                         )}
                       </TableCell>
                   <TableCell sx={{ 
@@ -3390,34 +3328,18 @@ export default function HomePage() {
                                     // For combie cargos, show all products in the combie group
                                     // Look in all cargo arrays since not all combie cargos may be in activeLoadings
                                     <Box>
-                                      {(() => {
-                                        const combiCargos = [...portMovement, ...activeLoadings, ...completedCargos, ...inRoadCIF]
-                                          .filter(c => c.combi_group_id === cargo.combi_group_id)
-                                          .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
-                                        return combiCargos.map(c => {
-                                          const topupQty = (c as any).authority_topup_quantity || 0
-                                          return (
-                                            <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
-                                              {c.product_name}: {c.cargo_quantity} KT
-                                              {topupQty > 0 && (
-                                                <span style={{ color: '#10B981', fontSize: '0.75rem', marginLeft: 4 }}>
-                                                  (+{topupQty} top-up)
-                                                </span>
-                                              )}
-                                            </Typography>
-                                          )
-                                        })
-                                      })()}
+                                      {[...portMovement, ...activeLoadings, ...completedCargos, ...inRoadCIF]
+                                        .filter(c => c.combi_group_id === cargo.combi_group_id)
+                                        .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
+                                        .map(c => (
+                                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
+                                            {c.product_name}: {c.cargo_quantity} KT
+                                          </Typography>
+                                        ))
+                                      }
                                     </Box>
                                   ) : (
-                                    <>
-                                      {cargo.product_name || '-'}
-                                      {((cargo as any).authority_topup_quantity || 0) > 0 && (
-                                        <Typography variant="caption" sx={{ display: 'block', color: '#10B981' }}>
-                                          (+{(cargo as any).authority_topup_quantity} top-up)
-                                        </Typography>
-                                      )}
-                                    </>
+                                    cargo.product_name || '-'
                                   )}
                                 </TableCell>
                                 <TableCell sx={{ whiteSpace: 'nowrap' }}>{laycan}</TableCell>
