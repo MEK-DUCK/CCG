@@ -107,6 +107,7 @@ interface MonthlyPlanEntry {
   combi_group_id?: string
   combi_quantities: Record<string, string>  // For combi entries - quantity per product (e.g., { "GASOIL": "45", "JET A-1": "10" })
   _combi_plan_ids?: number[]  // For existing combi entries - all plan IDs in the group
+  _combi_product_plan_map?: Record<string, number>  // Map of product name to plan ID for combi entries
   // Authority top-up tracking
   authority_topup_quantity?: number  // Top-up quantity in KT
   authority_topup_reference?: string  // Reference number
@@ -144,6 +145,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     authority_reference: '',
     reason: '',
     date: new Date().toISOString().split('T')[0],
+    selected_product: '',  // For combie cargos - which product the top-up is for
   })
   const [isAddingTopup, setIsAddingTopup] = useState(false)
 
@@ -286,9 +288,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           // Build combi_quantities from all plans in the group
           const combiQuantities: Record<string, string> = {}
           const combiPlanIds: number[] = []
+          const combiProductPlanMap: Record<string, number> = {}
           combiPlans.forEach((plan: any) => {
             combiQuantities[plan.product_name] = plan.month_quantity.toString()
             combiPlanIds.push(plan.id)
+            combiProductPlanMap[plan.product_name] = plan.id
           })
           
           // Calculate total quantity
@@ -316,9 +320,10 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             combi_quantities: combiQuantities,
             // Store all plan IDs for updates/deletes
             _combi_plan_ids: combiPlanIds,
+            _combi_product_plan_map: combiProductPlanMap,
             authority_topup_quantity: totalTopup,
             authority_topup_reference: firstPlan.authority_topup_reference || '',
-          } as MonthlyPlanEntry & { _combi_plan_ids?: number[] })
+          } as MonthlyPlanEntry & { _combi_plan_ids?: number[]; _combi_product_plan_map?: Record<string, number> })
         })
         
         // Process non-combi plans individually
@@ -1466,6 +1471,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               authority_reference: '',
               reason: '',
               date: new Date().toISOString().split('T')[0],
+              selected_product: '',  // Reset product selection for combie cargos
             })
             setTopupDialogOpen(true)
             handleActionMenuClose()
@@ -1589,6 +1595,26 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            {/* Product selector for combie cargos */}
+            {topupEntry?.entry.is_combi && (
+              <FormControl fullWidth required>
+                <InputLabel>Select Product for Top-Up</InputLabel>
+                <Select
+                  value={topupForm.selected_product}
+                  label="Select Product for Top-Up"
+                  onChange={(e) => setTopupForm({ ...topupForm, selected_product: e.target.value })}
+                >
+                  {Object.keys(topupEntry.entry.combi_quantities || {}).map((productName) => (
+                    <MenuItem key={productName} value={productName}>
+                      {productName} (Current: {topupEntry.entry.combi_quantities[productName] || 0} KT)
+                    </MenuItem>
+                  ))}
+                </Select>
+                <Typography variant="caption" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                  Choose which product this top-up is for
+                </Typography>
+              </FormControl>
+            )}
             <TextField
               label="Top-Up Quantity (KT)"
               type="number"
@@ -1599,7 +1625,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               InputProps={{
                 endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
               }}
-              helperText={topupEntry ? `Current quantity: ${topupEntry.entry.quantity || 0} KT → New: ${(parseFloat(topupEntry.entry.quantity) || 0) + (parseFloat(topupForm.quantity) || 0)} KT` : ''}
+              helperText={topupEntry ? (
+                topupEntry.entry.is_combi && topupForm.selected_product 
+                  ? `Current: ${topupEntry.entry.combi_quantities[topupForm.selected_product] || 0} KT → New: ${(parseFloat(topupEntry.entry.combi_quantities[topupForm.selected_product]) || 0) + (parseFloat(topupForm.quantity) || 0)} KT`
+                  : topupEntry.entry.is_combi 
+                    ? 'Select a product first'
+                    : `Current quantity: ${topupEntry.entry.quantity || 0} KT → New: ${(parseFloat(topupEntry.entry.quantity) || 0) + (parseFloat(topupForm.quantity) || 0)} KT`
+              ) : ''}
             />
             <TextField
               label="Authority Reference"
@@ -1646,6 +1678,12 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 return
               }
               
+              // For combie cargos, require product selection
+              if (topupEntry.entry.is_combi && !topupForm.selected_product) {
+                alert('Please select which product the top-up is for')
+                return
+              }
+              
               setIsAddingTopup(true)
               try {
                 const topupData: MonthlyPlanTopUpRequest = {
@@ -1655,17 +1693,25 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   authorization_date: topupForm.date || undefined,
                 }
                 
-                // For combi entries, apply top-up to all plans in the group
-                if (topupEntry.entry.is_combi && topupEntry.entry._combi_plan_ids) {
-                  // Apply top-up to the first plan (or we could distribute it)
-                  await monthlyPlanAPI.addAuthorityTopup(topupEntry.entry.id, topupData)
+                // Determine which plan ID to use
+                let planIdToUpdate: number
+                if (topupEntry.entry.is_combi && topupEntry.entry._combi_product_plan_map && topupForm.selected_product) {
+                  // For combie entries, use the specific product's plan ID
+                  planIdToUpdate = topupEntry.entry._combi_product_plan_map[topupForm.selected_product]
+                  if (!planIdToUpdate) {
+                    throw new Error(`Could not find plan ID for product ${topupForm.selected_product}`)
+                  }
                 } else {
-                  await monthlyPlanAPI.addAuthorityTopup(topupEntry.entry.id, topupData)
+                  // For single product entries, use the entry's ID
+                  planIdToUpdate = topupEntry.entry.id
                 }
+                
+                await monthlyPlanAPI.addAuthorityTopup(planIdToUpdate, topupData)
                 
                 setTopupDialogOpen(false)
                 setTopupEntry(null)
-                alert(`Authority top-up of ${parseFloat(topupForm.quantity).toLocaleString()} KT added successfully!`)
+                const productInfo = topupEntry.entry.is_combi ? ` for ${topupForm.selected_product}` : ''
+                alert(`Authority top-up of ${parseFloat(topupForm.quantity).toLocaleString()} KT${productInfo} added successfully!`)
                 
                 // Reload data
                 onPlanCreated()
@@ -1677,7 +1723,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 setIsAddingTopup(false)
               }
             }}
-            disabled={isAddingTopup || !topupForm.quantity || !topupForm.authority_reference}
+            disabled={isAddingTopup || !topupForm.quantity || !topupForm.authority_reference || (topupEntry?.entry.is_combi && !topupForm.selected_product)}
             sx={{ 
               bgcolor: '#10B981', 
               '&:hover': { bgcolor: '#059669' } 
