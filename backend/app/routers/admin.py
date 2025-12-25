@@ -147,6 +147,15 @@ def update_contract_admin(
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
     
+    # Prevent editing system-generated IDs
+    protected_fields = ["id", "contract_id", "created_at", "updated_at"]
+    for field in protected_fields:
+        if field in data:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot modify system-generated field: {field}"
+            )
+    
     # Update allowed fields
     allowed_fields = [
         "contract_number", "contract_type", "payment_method", 
@@ -240,6 +249,15 @@ def update_quarterly_plan_admin(
     if not plan:
         raise HTTPException(status_code=404, detail="Quarterly plan not found")
     
+    # Prevent editing system-generated IDs
+    protected_fields = ["id", "created_at", "updated_at"]
+    for field in protected_fields:
+        if field in data:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot modify system-generated field: {field}"
+            )
+    
     allowed_fields = [
         "product_name", "q1_quantity", "q2_quantity", "q3_quantity", "q4_quantity",
         "q1_topup", "q2_topup", "q3_topup", "q4_topup", "contract_id"
@@ -332,6 +350,15 @@ def update_monthly_plan_admin(
     plan = db.query(MonthlyPlan).filter(MonthlyPlan.id == plan_id).first()
     if not plan:
         raise HTTPException(status_code=404, detail="Monthly plan not found")
+    
+    # Prevent editing system-generated IDs
+    protected_fields = ["id", "created_at", "updated_at"]
+    for field in protected_fields:
+        if field in data:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot modify system-generated field: {field}"
+            )
     
     allowed_fields = [
         "month", "year", "month_quantity", "number_of_liftings",
@@ -433,6 +460,15 @@ def update_cargo_admin(
     cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
     if not cargo:
         raise HTTPException(status_code=404, detail="Cargo not found")
+    
+    # Prevent editing system-generated IDs
+    protected_fields = ["id", "cargo_id", "created_at", "updated_at"]
+    for field in protected_fields:
+        if field in data:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot modify system-generated field: {field}"
+            )
     
     allowed_fields = [
         "vessel_name", "product_name", "cargo_quantity", "status",
@@ -721,6 +757,15 @@ def update_customer_admin(
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
+    
+    # Prevent editing system-generated IDs
+    protected_fields = ["id", "customer_id", "created_at", "updated_at"]
+    for field in protected_fields:
+        if field in data:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot modify system-generated field: {field}"
+            )
     
     if "name" in data:
         customer.name = data["name"]

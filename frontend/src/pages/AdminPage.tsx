@@ -140,6 +140,15 @@ export default function AdminPage() {
   })
   const [logTypeFilter, setLogTypeFilter] = useState<string>('all')
 
+  // System-generated fields that cannot be modified (per entity type)
+  const protectedFields: Record<string, string[]> = {
+    'customers': ['id', 'customer_id', 'created_at', 'updated_at'],
+    'contracts': ['id', 'contract_id', 'created_at', 'updated_at'],
+    'quarterly-plans': ['id', 'created_at', 'updated_at'],
+    'monthly-plans': ['id', 'created_at', 'updated_at'],
+    'cargos': ['id', 'cargo_id', 'created_at', 'updated_at'],
+  }
+
   // Fetch functions
   const fetchStats = useCallback(async () => {
     try {
@@ -1054,31 +1063,37 @@ export default function AdminPage() {
           Edit {editDialog.entity.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Alert severity="info" sx={{ mb: 2, mt: 1 }}>
+            <Typography variant="body2">
+              🔒 <strong>Protected fields</strong> (gray background) are system-generated and cannot be modified.
+            </Typography>
+          </Alert>
+          <Grid container spacing={2}>
             {Object.entries(editDialog.data).map(([key, value]) => {
-              // Skip non-editable fields
-              if (['id', 'created_at', 'updated_at', 'customer_name', 'contract_number'].includes(key)) {
-                return (
-                  <Grid item xs={12} sm={6} key={key}>
-                    <TextField
-                      fullWidth
-                      label={key.replace(/_/g, ' ')}
-                      value={value?.toString() || ''}
-                      disabled
-                      size="small"
-                    />
-                  </Grid>
-                )
-              }
+              // Check if this is a protected field
+              const entityProtectedFields = protectedFields[editDialog.entity] || []
+              const isProtected = entityProtectedFields.includes(key)
+              
+              // Also mark lookup fields as read-only (they come from joins)
+              const lookupFields = ['customer_name', 'contract_number', 'product_name']
+              const isLookup = lookupFields.includes(key) && !['contracts', 'quarterly-plans', 'monthly-plans'].includes(editDialog.entity)
+              
+              const isDisabled = isProtected || isLookup
+              
               // Handle JSON fields
               if (typeof value === 'object' && value !== null) {
                 return (
                   <Grid item xs={12} key={key}>
                     <TextField
                       fullWidth
-                      label={key.replace(/_/g, ' ')}
+                      label={
+                        isProtected 
+                          ? `🔒 ${key.replace(/_/g, ' ')} (protected)` 
+                          : key.replace(/_/g, ' ')
+                      }
                       value={JSON.stringify(value, null, 2)}
                       onChange={(e) => {
+                        if (isDisabled) return
                         try {
                           const parsed = JSON.parse(e.target.value)
                           setEditDialog(prev => ({
@@ -1092,6 +1107,15 @@ export default function AdminPage() {
                       multiline
                       rows={4}
                       size="small"
+                      disabled={isDisabled}
+                      sx={{
+                        '& .MuiInputBase-root': {
+                          bgcolor: isDisabled ? '#F1F5F9' : 'white',
+                        },
+                        '& .MuiInputBase-input.Mui-disabled': {
+                          WebkitTextFillColor: '#64748B',
+                        }
+                      }}
                     />
                   </Grid>
                 )
@@ -1100,13 +1124,31 @@ export default function AdminPage() {
                 <Grid item xs={12} sm={6} key={key}>
                   <TextField
                     fullWidth
-                    label={key.replace(/_/g, ' ')}
+                    label={
+                      isProtected 
+                        ? `🔒 ${key.replace(/_/g, ' ')} (protected)` 
+                        : isLookup
+                        ? `${key.replace(/_/g, ' ')} (lookup)`
+                        : key.replace(/_/g, ' ')
+                    }
                     value={value?.toString() || ''}
-                    onChange={(e) => setEditDialog(prev => ({
-                      ...prev,
-                      data: { ...prev.data, [key]: e.target.value }
-                    }))}
+                    onChange={(e) => {
+                      if (isDisabled) return
+                      setEditDialog(prev => ({
+                        ...prev,
+                        data: { ...prev.data, [key]: e.target.value }
+                      }))
+                    }}
                     size="small"
+                    disabled={isDisabled}
+                    sx={{
+                      '& .MuiInputBase-root': {
+                        bgcolor: isDisabled ? '#F1F5F9' : 'white',
+                      },
+                      '& .MuiInputBase-input.Mui-disabled': {
+                        WebkitTextFillColor: '#64748B',
+                      }
+                    }}
                   />
                 </Grid>
               )
