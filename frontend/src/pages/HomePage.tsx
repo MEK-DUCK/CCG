@@ -923,6 +923,19 @@ export default function HomePage() {
                 return c
               })
             }
+            
+            // For combie cargos, add ALL cargos in the group to activeLoadings
+            if (editingCargo.combi_group_id) {
+              const combieCargosInPortMovement = portMovement.filter(
+                c => c.combi_group_id === editingCargo.combi_group_id && c.id !== editingCargo.id
+              )
+              const updatedCombieCargos = combieCargosInPortMovement.map(c => ({
+                ...c,
+                ...sharedFields
+              }))
+              return [...prev, updatedCargo, ...updatedCombieCargos]
+            }
+            
             return [...prev, updatedCargo]
           })
         }
@@ -1386,7 +1399,6 @@ export default function HomePage() {
           }
         }
       case 'LC Memo Issued':
-      default:
         return {
           sx: {
             backgroundColor: '#fff9c4', // Light yellow
@@ -1394,6 +1406,16 @@ export default function HomePage() {
             '&:hover': { backgroundColor: '#fff59d' }
           }
         }
+      case 'Financial Hold':
+        return {
+          sx: {
+            backgroundColor: '#e1bee7', // Light purple
+            color: '#6a1b9a',
+            '&:hover': { backgroundColor: '#ce93d8' }
+          }
+        }
+      default:
+        return {}
     }
   }
 
@@ -1600,9 +1622,9 @@ export default function HomePage() {
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold', bgcolor: '#FEF3C7' }}>5-ND</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>5-ND</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Status</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Payment Status</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Remark</TableCell>
             </TableRow>
           </TableHead>
@@ -1678,7 +1700,6 @@ export default function HomePage() {
                   </TableCell>
                 <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
                   <TableCell 
-                    sx={{ bgcolor: '#FFFBEB' }}
                     onClick={(e) => e.stopPropagation()} // Prevent row click when editing
                   >
                     <TextField
@@ -1698,12 +1719,22 @@ export default function HomePage() {
                   </TableCell>
                   <TableCell>{cargo.discharge_port_location || '-'}</TableCell>
                 <TableCell>
-                  <Chip 
-                    label={cargo.status} 
-                    color={getStatusColor(cargo.status)} 
-                    size="small" 
-                    {...getStatusChipProps(cargo.status)}
-                  />
+                  {(() => {
+                    const contract = contracts.find(c => c.id === cargo.contract_id)
+                    if (contract?.payment_method === 'LC') {
+                      return cargo.lc_status ? (
+                        <Chip 
+                          label={cargo.lc_status} 
+                          size="small"
+                          {...getLCStatusChipProps(cargo.lc_status)}
+                        />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">-</Typography>
+                      )
+                    } else {
+                      return <Typography variant="body2" color="text.secondary">T/T</Typography>
+                    }
+                  })()}
                 </TableCell>
                 <TableCell>{cargo.notes || '-'}</TableCell>
               </TableRow>
@@ -3767,19 +3798,22 @@ export default function HomePage() {
                       sx={isCompletedCargo ? disabledStyle : {}}
                     />
                   </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      label="5-ND (Narrowing Down Due Date)"
-                      type="date"
-                      value={cargoFormData.five_nd_date}
-                      onChange={(e) => setCargoFormData({ ...cargoFormData, five_nd_date: e.target.value })}
-                      fullWidth
-                      disabled={isCompletedCargo}
-                      InputLabelProps={{ shrink: true }}
-                      helperText="Due date for narrowing down delivery window"
-                      sx={isCompletedCargo ? disabledStyle : {}}
-                    />
-                  </Grid>
+                  {/* Only show 5-ND field for In-Road CIF cargos */}
+                  {editingCargo && editingCargo.status === 'In-Road (Pending Discharge)' && (
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        label="5-ND (Narrowing Down Due Date)"
+                        type="date"
+                        value={cargoFormData.five_nd_date}
+                        onChange={(e) => setCargoFormData({ ...cargoFormData, five_nd_date: e.target.value })}
+                        fullWidth
+                        disabled={isCompletedCargo}
+                        InputLabelProps={{ shrink: true }}
+                        helperText="Due date for narrowing down delivery window"
+                        sx={isCompletedCargo ? disabledStyle : {}}
+                      />
+                    </Grid>
+                  )}
                 </>
               )}
               {editingCargo && (
@@ -3853,6 +3887,7 @@ export default function HomePage() {
                       <MenuItem value="LC in Order">LC in Order</MenuItem>
                       <MenuItem value="LC Not in Order">LC Not in Order</MenuItem>
                       <MenuItem value="LC Memo Issued">LC Memo Issued</MenuItem>
+                      <MenuItem value="Financial Hold">Financial Hold</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>

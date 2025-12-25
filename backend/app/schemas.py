@@ -447,6 +447,7 @@ class QuarterlyPlanAuditLog(BaseModel):
     contract_id: Optional[int] = None
     contract_number: Optional[str] = None
     contract_name: Optional[str] = None
+    product_name: Optional[str] = None  # Product name from quarterly plan
     description: Optional[str] = None
     created_at: datetime
     quarterly_plan_snapshot: Optional[str] = None

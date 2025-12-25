@@ -20,6 +20,7 @@ class LCStatus(str, enum.Enum):
     LC_IN_ORDER = "LC in Order"
     LC_NOT_IN_ORDER = "LC Not in Order"
     LC_MEMO_ISSUED = "LC Memo Issued"
+    FINANCIAL_HOLD = "Financial Hold"
 
 class CargoStatus(str, enum.Enum):
     PLANNED = "Planned"

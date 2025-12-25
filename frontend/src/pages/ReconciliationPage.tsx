@@ -559,24 +559,27 @@ export default function ReconciliationPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {isMonthlyPlanLog(log) && log.product_name ? (
-                          <Chip
-                            label={log.product_name}
-                            size="small"
-                            sx={{ 
-                              fontWeight: 500, 
-                              fontSize: '0.75rem',
-                              bgcolor: log.product_name.includes('GASOIL') ? '#FEF3C7' : 
-                                       log.product_name.includes('JET') ? '#DBEAFE' : 
-                                       log.product_name.includes('FUEL') ? '#F3E8FF' : '#F1F5F9',
-                              color: log.product_name.includes('GASOIL') ? '#92400E' : 
-                                     log.product_name.includes('JET') ? '#1E40AF' : 
-                                     log.product_name.includes('FUEL') ? '#6B21A8' : '#475569',
-                            }}
-                          />
-                        ) : (
-                          <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
-                        )}
+                        {(() => {
+                          const productName = isMonthlyPlanLog(log) ? log.product_name : (log as QuarterlyPlanAuditLog).product_name
+                          return productName ? (
+                            <Chip
+                              label={productName}
+                              size="small"
+                              sx={{ 
+                                fontWeight: 500, 
+                                fontSize: '0.75rem',
+                                bgcolor: productName.includes('GASOIL') ? '#FEF3C7' : 
+                                         productName.includes('JET') ? '#DBEAFE' : 
+                                         productName.includes('FUEL') ? '#F3E8FF' : '#F1F5F9',
+                                color: productName.includes('GASOIL') ? '#92400E' : 
+                                       productName.includes('JET') ? '#1E40AF' : 
+                                       productName.includes('FUEL') ? '#6B21A8' : '#475569',
+                              }}
+                            />
+                          ) : (
+                            <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
+                          )
+                        })()}
                       </TableCell>
                       <TableCell>
                         {isMonthlyPlanLog(log) ? (

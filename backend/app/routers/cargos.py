@@ -872,6 +872,22 @@ def sync_combi_cargo_group(
             if cargo.status in {CargoStatus.PLANNED, CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING}:
                 _recompute_cargo_status_from_port_ops(db, cargo)
         
+        # If status changed to Loading, update all port operations to Loading
+        if 'status' in update_data and update_data['status'] == CargoStatus.LOADING:
+            ops = getattr(cargo, "port_operations", None)
+            if ops:
+                for op in ops:
+                    if op.status == "Planned":
+                        op.status = "Loading"
+        
+        # If status changed to Completed Loading, update all port operations to Completed Loading
+        if 'status' in update_data and update_data['status'] == CargoStatus.COMPLETED_LOADING:
+            ops = getattr(cargo, "port_operations", None)
+            if ops:
+                for op in ops:
+                    if op.status in ["Planned", "Loading"]:
+                        op.status = "Completed Loading"
+        
         updated_cargos.append({
             "id": cargo.id,
             "cargo_id": cargo.cargo_id,

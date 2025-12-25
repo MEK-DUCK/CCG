@@ -1,6 +1,6 @@
 export type ContractType = 'FOB' | 'CIF'
 export type PaymentMethod = 'T/T' | 'LC'
-export type LCStatus = 'Pending LC' | 'LC in Order' | 'LC Not in Order' | 'LC Memo Issued'
+export type LCStatus = 'Pending LC' | 'LC in Order' | 'LC Not in Order' | 'LC Memo Issued' | 'Financial Hold'
 
 export type CargoStatus = 
   | 'Planned'
@@ -203,6 +203,7 @@ export interface QuarterlyPlanAuditLog {
   contract_id?: number
   contract_number?: string
   contract_name?: string
+  product_name?: string  // Product name from quarterly plan
   description?: string
   created_at: string
   quarterly_plan_snapshot?: string

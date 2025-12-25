@@ -268,7 +268,14 @@ def get_reconciliation_logs(
         models.Contract.id == models.MonthlyPlanAuditLog.contract_id
     )
     
-    quarterly_query = db.query(models.QuarterlyPlanAuditLog)
+    # Join quarterly plan logs with QuarterlyPlan to get product_name
+    quarterly_query = db.query(
+        models.QuarterlyPlanAuditLog,
+        models.QuarterlyPlan.product_name.label("qp_product_name")
+    ).outerjoin(
+        models.QuarterlyPlan,
+        models.QuarterlyPlan.id == models.QuarterlyPlanAuditLog.quarterly_plan_id
+    )
     
     # Apply filters to monthly plan logs
     if month:
@@ -284,7 +291,7 @@ def get_reconciliation_logs(
     
     # Get results
     monthly_rows = monthly_query.all()
-    quarterly_logs = quarterly_query.all()
+    quarterly_rows = quarterly_query.all()
     
     # Transform monthly logs to include product_name
     monthly_logs_with_product = []
@@ -326,11 +333,21 @@ def get_reconciliation_logs(
         }
         monthly_logs_with_product.append(schemas.MonthlyPlanAuditLog(**log_dict))
     
+    # Transform quarterly logs to include product_name
+    quarterly_logs_with_product = []
+    for row in quarterly_rows:
+        log = row[0]  # QuarterlyPlanAuditLog object
+        qp_product_name = row[1]  # product_name from QuarterlyPlan
+        
+        # Create a modified log object with product_name attribute
+        log.product_name = qp_product_name
+        quarterly_logs_with_product.append(log)
+    
     # Combine and sort by created_at
     all_logs = []
     for log in monthly_logs_with_product:
         all_logs.append(('monthly', log))
-    for log in quarterly_logs:
+    for log in quarterly_logs_with_product:
         all_logs.append(('quarterly', log))
     
     # Sort by created_at descending
