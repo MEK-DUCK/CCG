@@ -3587,17 +3587,6 @@ export default function HomePage() {
                       sx={isCompletedCargo ? disabledStyle : {}}
                     />
                   </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      label="Discharge Completion Time"
-                      type="text"
-                      value={cargoFormData.discharge_completion_time}
-                      onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_completion_time: e.target.value })}
-                      fullWidth
-                      disabled={isCompletedCargo}
-                      sx={isCompletedCargo ? disabledStyle : {}}
-                    />
-                  </Grid>
                 </>
               )}
               {editingCargo && (
