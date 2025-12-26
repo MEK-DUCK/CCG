@@ -45,6 +45,7 @@ interface MonthlyPlanFormProps {
   quarterlyPlans: any[]  // All quarterly plans for this contract
   onPlanCreated: () => void
   onCancel?: () => void
+  isSpotContract?: boolean  // If true, skip quarterly plan requirement
 }
 
 const QUARTER_MONTHS: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', { months: number[], labels: string[] }> = {
@@ -115,7 +116,7 @@ interface MonthlyPlanEntry {
   authority_topup_reference?: string  // Reference number
 }
 
-export default function MonthlyPlanForm({ contractId, contract: propContract, quarterlyPlans, onPlanCreated }: MonthlyPlanFormProps) {
+export default function MonthlyPlanForm({ contractId, contract: propContract, quarterlyPlans, onPlanCreated, isSpotContract = false }: MonthlyPlanFormProps) {
   const [monthEntries, setMonthEntries] = useState<Record<string, MonthlyPlanEntry[]>>({})
   const [existingMonthlyPlans, setExistingMonthlyPlans] = useState<any[]>([])
   const [isSaving, setIsSaving] = useState(false)
@@ -463,7 +464,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     // For single product contracts, always use the first product
     // For multi-product contracts, default to first product unless combi
     const defaultProduct = products[0]?.name || ''
-    const defaultQp = productQuarterlyPlanMap.get(defaultProduct)
+    // For SPOT contracts, there's no quarterly plan - use 0
+    const defaultQp = isSpotContract ? null : productQuarterlyPlanMap.get(defaultProduct)
     
     // Initialize combi quantities with empty values for all products
     const initialCombiQuantities: Record<string, string> = {}
@@ -704,22 +706,30 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   }
 
   const handleSave = async () => {
-    if (isSaving || quarterlyPlans.length === 0) {
+    if (isSaving) {
       alert('Please wait...')
       return
     }
+    
+    // For non-SPOT contracts, require quarterly plans
+    if (!isSpotContract && quarterlyPlans.length === 0) {
+      alert('Please create quarterly plans first.')
+      return
+    }
 
-    // Validate quantities for each product and quarter
-    for (const product of products) {
-      for (let i = 0; i < quarterOrder.length; i++) {
-        const quarter = quarterOrder[i]
-        const quarterlyQuantity = getQuarterlyQuantity(product.name, i)
-        const totalMonthlyQuantity = getTotalEntered(quarter, product.name)
+    // Validate quantities for each product and quarter (skip for SPOT contracts)
+    if (!isSpotContract) {
+      for (const product of products) {
+        for (let i = 0; i < quarterOrder.length; i++) {
+          const quarter = quarterOrder[i]
+          const quarterlyQuantity = getQuarterlyQuantity(product.name, i)
+          const totalMonthlyQuantity = getTotalEntered(quarter, product.name)
 
-        if (totalMonthlyQuantity !== quarterlyQuantity) {
-          const quarterLabel = QUARTER_MONTHS[quarter].labels.join('-')
-          alert(`Error: ${product.name} - Total monthly quantities for Contract Quarter ${i + 1} (${quarter} - ${quarterLabel}) (${totalMonthlyQuantity.toLocaleString()} KT) must equal the quarterly quantity (${quarterlyQuantity.toLocaleString()} KT).`)
-          return
+          if (totalMonthlyQuantity !== quarterlyQuantity) {
+            const quarterLabel = QUARTER_MONTHS[quarter].labels.join('-')
+            alert(`Error: ${product.name} - Total monthly quantities for Contract Quarter ${i + 1} (${quarter} - ${quarterLabel}) (${totalMonthlyQuantity.toLocaleString()} KT) must equal the quarterly quantity (${quarterlyQuantity.toLocaleString()} KT).`)
+            return
+          }
         }
       }
     }
@@ -751,9 +761,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             if (hasQuantity) {
               plansToCreate.push({ month, year, entry })
             }
-          } else if (!entry.is_combi && entry.quarterly_plan_id && parseFloat(entry.quantity || '0') > 0) {
-            // New single product entry
-            plansToCreate.push({ month, year, entry })
+          } else if (!entry.is_combi && parseFloat(entry.quantity || '0') > 0) {
+            // New single product entry - for SPOT contracts, quarterly_plan_id may be 0
+            if (isSpotContract || entry.quarterly_plan_id) {
+              plansToCreate.push({ month, year, entry })
+            }
           }
         })
       })
@@ -873,8 +885,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         } else {
           // Single product entry
           const totalQuantity = parseFloat(entry.quantity || '0')
-          createPromises.push(monthlyPlanAPI.create({
-            quarterly_plan_id: entry.quarterly_plan_id,
+          const createPayload: any = {
             month: month,
             year: year,
             month_quantity: totalQuantity,
@@ -887,7 +898,17 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             delivery_month: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_month || undefined) : undefined,
             delivery_window: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window || undefined) : undefined,
             delivery_window_remark: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window_remark || undefined) : undefined,
-          }))
+          }
+          
+          // For SPOT contracts, use contract_id instead of quarterly_plan_id
+          if (isSpotContract) {
+            createPayload.contract_id = contractId
+            createPayload.product_name = entry.product_name
+          } else {
+            createPayload.quarterly_plan_id = entry.quarterly_plan_id
+          }
+          
+          createPromises.push(monthlyPlanAPI.create(createPayload))
         }
       }
 
@@ -904,7 +925,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     }
   }
 
-  if (!quarterlyPlans || quarterlyPlans.length === 0) {
+  // SPOT contracts don't need quarterly plans
+  if (!isSpotContract && (!quarterlyPlans || quarterlyPlans.length === 0)) {
     return (
       <Paper sx={{ p: 2 }}>
         <Typography color="error" sx={{ mb: 2 }}>
@@ -914,10 +936,212 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     )
   }
 
-  if (!contract || quarterOrder.length === 0) {
+  if (!contract) {
     return (
       <Paper sx={{ p: 2 }}>
         <Typography>Loading contract details...</Typography>
+      </Paper>
+    )
+  }
+  
+  // For SPOT contracts without quarterly plans, skip quarterly-based rendering
+  if (!isSpotContract && quarterOrder.length === 0) {
+    return (
+      <Paper sx={{ p: 2 }}>
+        <Typography>Loading contract details...</Typography>
+      </Paper>
+    )
+  }
+
+  // For SPOT contracts, render a simplified view with just the contract months
+  if (isSpotContract) {
+    return (
+      <Paper sx={{ p: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Typography variant="h6">
+            Spot Contract - Monthly Plan
+          </Typography>
+          {isMultiProduct && (
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              {products.map((p: any) => (
+                <Chip
+                  key={p.name}
+                  label={p.name}
+                  size="small"
+                  sx={{ bgcolor: '#DBEAFE', color: '#1D4ED8' }}
+                />
+              ))}
+            </Box>
+          )}
+        </Box>
+        
+        {/* Contract Period Info */}
+        <Box sx={{ mb: 3, p: 2, bgcolor: '#F8FAFC', borderRadius: 2, border: '1px solid #E2E8F0' }}>
+          <Typography variant="body2" sx={{ color: '#64748B' }}>
+            Contract Period: <strong>{new Date(contract.start_period).toLocaleDateString()} - {new Date(contract.end_period).toLocaleDateString()}</strong>
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748B', mt: 0.5 }}>
+            Products: {products.map((p: any) => `${p.name} (${p.total_quantity} KT)`).join(', ')}
+          </Typography>
+        </Box>
+        
+        {/* Monthly entries for SPOT contract */}
+        <Grid container spacing={2}>
+          {contractMonths.map(({ month, year }) => {
+            const key = `${month}-${year}`
+            const entries = monthEntries[key] || []
+            
+            return (
+              <Grid item xs={12} sm={6} md={4} key={key}>
+                <Box sx={{ 
+                  p: 2, 
+                  bgcolor: '#FFFFFF', 
+                  borderRadius: 2, 
+                  border: '1px solid #E2E8F0',
+                  minHeight: 150
+                }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography variant="subtitle2" fontWeight="bold">
+                      {getMonthName(month)} {year}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => handleAddEntry(month, year)}
+                    >
+                      <Add fontSize="small" />
+                    </IconButton>
+                  </Box>
+                  
+                  {entries.length === 0 && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Add />}
+                      onClick={() => handleAddEntry(month, year)}
+                      fullWidth
+                    >
+                      Add Entry
+                    </Button>
+                  )}
+                  
+                  {entries.map((entry, entryIndex) => {
+                    const quantity = parseFloat(entry.quantity || '0')
+                    const showLaycans = contractType === 'FOB' && quantity > 0
+                    const showCifWindows = contractType === 'CIF' && quantity > 0
+                    
+                    return (
+                      <Box 
+                        key={entryIndex} 
+                        sx={{ 
+                          mb: 1,
+                          p: 1,
+                          bgcolor: '#FAFBFC',
+                          border: '1px solid #E5E7EB',
+                          borderRadius: 1,
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleRemoveEntry(month, year, entryIndex)}
+                            sx={{ color: '#EF4444' }}
+                          >
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Box>
+                        
+                        {/* Product selection for multi-product */}
+                        {isMultiProduct && (
+                          <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+                            <InputLabel>Product</InputLabel>
+                            <Select
+                              value={entry.product_name || ''}
+                              label="Product"
+                              onChange={(e) => handleProductChange(month, year, entryIndex, e.target.value)}
+                            >
+                              {products.map((p: any) => (
+                                <MenuItem key={p.name} value={p.name}>{p.name}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
+                        
+                        {/* Quantity */}
+                        <TextField
+                          size="small"
+                          label="Quantity (KT)"
+                          type="number"
+                          value={entry.quantity}
+                          onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
+                          fullWidth
+                          sx={{ mb: 1 }}
+                        />
+                        
+                        {/* FOB Laycans */}
+                        {showLaycans && (
+                          <>
+                            <TextField
+                              size="small"
+                              label="5-Day Laycan"
+                              value={entry.laycan_5_days}
+                              onChange={(e) => handleLaycanChange(month, year, entryIndex, 'laycan_5_days', e.target.value)}
+                              fullWidth
+                              sx={{ mb: 1 }}
+                            />
+                            <TextField
+                              size="small"
+                              label="2-Day Laycan"
+                              value={entry.laycan_2_days}
+                              onChange={(e) => handleLaycanChange(month, year, entryIndex, 'laycan_2_days', e.target.value)}
+                              fullWidth
+                              sx={{ mb: 1 }}
+                            />
+                          </>
+                        )}
+                        
+                        {/* CIF Windows */}
+                        {showCifWindows && (
+                          <>
+                            <TextField
+                              size="small"
+                              label="Loading Window"
+                              value={entry.loading_window}
+                              onChange={(e) => handleLaycanChange(month, year, entryIndex, 'loading_window', e.target.value)}
+                              fullWidth
+                              sx={{ mb: 1 }}
+                            />
+                            <TextField
+                              size="small"
+                              label="Delivery Window"
+                              value={entry.delivery_window}
+                              onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
+                              fullWidth
+                              sx={{ mb: 1 }}
+                            />
+                          </>
+                        )}
+                      </Box>
+                    )
+                  })}
+                </Box>
+              </Grid>
+            )
+          })}
+        </Grid>
+        
+        {/* Save Button */}
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="contained"
+            startIcon={<Save />}
+            onClick={handleSave}
+            disabled={isSaving}
+            sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' } }}
+          >
+            {isSaving ? 'Saving...' : 'Save All Monthly Plans'}
+          </Button>
+        </Box>
       </Paper>
     )
   }

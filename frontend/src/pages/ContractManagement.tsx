@@ -870,48 +870,71 @@ export default function ContractManagement() {
                   ← Back to all contracts
                 </Button>
               </Box>
-              <Tabs 
-                value={tabValue} 
-                onChange={(_, v) => {
-                  try {
-                    setTabValue(v)
-                } catch (error) {
-                  console.error('Error changing tab:', error)
-                }
-              }}>
-                <Tab label="Quarterly Plan" />
-                <Tab label="Monthly Plan" />
-              </Tabs>
-              <TabPanel value={tabValue} index={0}>
-                {selectedContract && selectedContract.id ? (
-                  <Box>
-                    {/* Always show the QuarterlyPlanForm - it handles both create and edit */}
-                    <QuarterlyPlanForm
+              {/* SPOT contracts skip quarterly plan and go directly to monthly */}
+              {selectedContract?.contract_category === 'SPOT' ? (
+                <>
+                  <Box sx={{ p: 2, bgcolor: '#FEF3C7', borderBottom: '1px solid #FCD34D' }}>
+                    <Typography variant="body2" sx={{ color: '#92400E', fontWeight: 500 }}>
+                      📋 Spot Contract — Monthly plan only (no quarterly planning required)
+                    </Typography>
+                  </Box>
+                  <Box sx={{ p: 2 }}>
+                    <MonthlyPlanForm
+                      key={`monthly-spot-${selectedContract.id}`}
                       contractId={selectedContract.id}
                       contract={selectedContract}
-                      existingPlans={quarterlyPlans || []}
+                      quarterlyPlans={[]}
                       onPlanCreated={handlePlanCreated}
+                      isSpotContract={true}
                     />
                   </Box>
-                ) : (
-                  <Typography color="text.secondary">Please select a contract first</Typography>
-                )}
-              </TabPanel>
-              <TabPanel value={tabValue} index={1}>
-                {quarterlyPlans && quarterlyPlans.length > 0 && selectedContract ? (
-                  <MonthlyPlanForm
-                    key={`monthly-${selectedContract.id}`}
-                    contractId={selectedContract.id}
-                    contract={selectedContract}
-                    quarterlyPlans={quarterlyPlans}
-                    onPlanCreated={handlePlanCreated}
-                  />
-                ) : (
-                  <Typography color="text.secondary" sx={{ p: 2 }}>
-                    Please create a quarterly plan first
-                  </Typography>
-                )}
-              </TabPanel>
+                </>
+              ) : (
+                <>
+                  <Tabs 
+                    value={tabValue} 
+                    onChange={(_, v) => {
+                      try {
+                        setTabValue(v)
+                    } catch (error) {
+                      console.error('Error changing tab:', error)
+                    }
+                  }}>
+                    <Tab label="Quarterly Plan" />
+                    <Tab label="Monthly Plan" />
+                  </Tabs>
+                  <TabPanel value={tabValue} index={0}>
+                    {selectedContract && selectedContract.id ? (
+                      <Box>
+                        {/* Always show the QuarterlyPlanForm - it handles both create and edit */}
+                        <QuarterlyPlanForm
+                          contractId={selectedContract.id}
+                          contract={selectedContract}
+                          existingPlans={quarterlyPlans || []}
+                          onPlanCreated={handlePlanCreated}
+                        />
+                      </Box>
+                    ) : (
+                      <Typography color="text.secondary">Please select a contract first</Typography>
+                    )}
+                  </TabPanel>
+                  <TabPanel value={tabValue} index={1}>
+                    {quarterlyPlans && quarterlyPlans.length > 0 && selectedContract ? (
+                      <MonthlyPlanForm
+                        key={`monthly-${selectedContract.id}`}
+                        contractId={selectedContract.id}
+                        contract={selectedContract}
+                        quarterlyPlans={quarterlyPlans}
+                        onPlanCreated={handlePlanCreated}
+                      />
+                    ) : (
+                      <Typography color="text.secondary" sx={{ p: 2 }}>
+                        Please create a quarterly plan first
+                      </Typography>
+                    )}
+                  </TabPanel>
+                </>
+              )}
             </Paper>
           </Grid>
         ) : null}
