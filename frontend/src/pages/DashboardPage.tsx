@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -15,10 +15,25 @@ import {
   Chip,
   TextField,
   InputAdornment,
+  Grid,
+  Card,
+  CardContent,
+  Divider,
+  Tooltip,
 } from '@mui/material'
 import { Visibility, Search } from '@mui/icons-material'
-import { contractAPI, customerAPI } from '../api/client'
+import client, { contractAPI, customerAPI } from '../api/client'
 import type { Contract, Customer } from '../types'
+
+// Analytics types
+interface AnalyticsData {
+  inspector_stats: Array<{ name: string; cargo_count: number }>
+  port_stats: Array<{ port: string; cargo_count: number }>
+  monthly_trends: Array<{ month: number; year: number; label: string; cargo_count: number }>
+  customer_stats: Array<{ customer: string; cargo_count: number }>
+  status_stats: Array<{ status: string; count: number }>
+  last_updated: string
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -26,10 +41,25 @@ export default function DashboardPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [searchText, setSearchText] = useState('')
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
+
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      setAnalyticsLoading(true)
+      const response = await client.get('/api/admin/analytics')
+      setAnalytics(response.data)
+    } catch (err: any) {
+      console.error('Error fetching analytics:', err)
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     loadData()
-  }, [])
+    fetchAnalytics()
+  }, [fetchAnalytics])
 
   const loadData = async () => {
     try {
@@ -82,9 +112,301 @@ export default function DashboardPage() {
 
   return (
     <Box sx={{ p: 3 }}>
+      {/* Analytics Dashboard */}
+      <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+        📊 Analytics Dashboard
+      </Typography>
+      
+      {analyticsLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+          <CircularProgress size={32} />
+        </Box>
+      ) : (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          {/* Inspector Usage Statistics */}
+          <Grid item xs={12} md={6}>
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: '#1E40AF' }}>
+                  🔍 Inspector Usage
+                </Typography>
+                {analytics?.inspector_stats && analytics.inspector_stats.length > 0 ? (
+                  <Box>
+                    {analytics.inspector_stats.map((stat, idx) => {
+                      const maxCount = Math.max(...analytics.inspector_stats.map(s => s.cargo_count))
+                      const percentage = maxCount > 0 ? (stat.cargo_count / maxCount) * 100 : 0
+                      return (
+                        <Box key={idx} sx={{ mb: 2 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                              {stat.name}
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 700, color: '#1E40AF' }}>
+                              {stat.cargo_count} cargos
+                            </Typography>
+                          </Box>
+                          <Box sx={{ 
+                            height: 8, 
+                            bgcolor: '#E0E7FF', 
+                            borderRadius: 1,
+                            overflow: 'hidden'
+                          }}>
+                            <Box sx={{ 
+                              height: '100%', 
+                              width: `${percentage}%`,
+                              bgcolor: '#3B82F6',
+                              borderRadius: 1,
+                              transition: 'width 0.5s ease-in-out'
+                            }} />
+                          </Box>
+                        </Box>
+                      )
+                    })}
+                    <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #E5E7EB' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Total inspections: {analytics.inspector_stats.reduce((sum, s) => sum + s.cargo_count, 0)}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Typography color="text.secondary">No inspector data available</Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Port Usage Statistics */}
+          <Grid item xs={12} md={6}>
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: '#047857' }}>
+                  🚢 Load Port Usage
+                </Typography>
+                {analytics?.port_stats && analytics.port_stats.length > 0 ? (
+                  <Box>
+                    {analytics.port_stats.map((stat, idx) => {
+                      const maxCount = Math.max(...analytics.port_stats.map(s => s.cargo_count))
+                      const percentage = maxCount > 0 ? (stat.cargo_count / maxCount) * 100 : 0
+                      return (
+                        <Box key={idx} sx={{ mb: 2 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                              {stat.port}
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 700, color: '#047857' }}>
+                              {stat.cargo_count} cargos
+                            </Typography>
+                          </Box>
+                          <Box sx={{ 
+                            height: 8, 
+                            bgcolor: '#D1FAE5', 
+                            borderRadius: 1,
+                            overflow: 'hidden'
+                          }}>
+                            <Box sx={{ 
+                              height: '100%', 
+                              width: `${percentage}%`,
+                              bgcolor: '#10B981',
+                              borderRadius: 1,
+                              transition: 'width 0.5s ease-in-out'
+                            }} />
+                          </Box>
+                        </Box>
+                      )
+                    })}
+                    <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #E5E7EB' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Total port calls: {analytics.port_stats.reduce((sum, s) => sum + s.cargo_count, 0)}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Typography color="text.secondary">No port data available</Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Customer Distribution */}
+          <Grid item xs={12} md={6}>
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: '#7C3AED' }}>
+                  👥 Cargos by Customer
+                </Typography>
+                {analytics?.customer_stats && analytics.customer_stats.length > 0 ? (
+                  <Box>
+                    {analytics.customer_stats.map((stat, idx) => {
+                      const maxCount = Math.max(...analytics.customer_stats.map(s => s.cargo_count))
+                      const percentage = maxCount > 0 ? (stat.cargo_count / maxCount) * 100 : 0
+                      return (
+                        <Box key={idx} sx={{ mb: 2 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                              {stat.customer}
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 700, color: '#7C3AED' }}>
+                              {stat.cargo_count} cargos
+                            </Typography>
+                          </Box>
+                          <Box sx={{ 
+                            height: 8, 
+                            bgcolor: '#EDE9FE', 
+                            borderRadius: 1,
+                            overflow: 'hidden'
+                          }}>
+                            <Box sx={{ 
+                              height: '100%', 
+                              width: `${percentage}%`,
+                              bgcolor: '#8B5CF6',
+                              borderRadius: 1,
+                              transition: 'width 0.5s ease-in-out'
+                            }} />
+                          </Box>
+                        </Box>
+                      )
+                    })}
+                  </Box>
+                ) : (
+                  <Typography color="text.secondary">No customer data available</Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Cargo Status Distribution */}
+          <Grid item xs={12} md={6}>
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: '#DC2626' }}>
+                  📦 Cargo Status Distribution
+                </Typography>
+                {analytics?.status_stats && analytics.status_stats.length > 0 ? (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                    {analytics.status_stats.map((stat, idx) => {
+                      const statusColors: Record<string, { bg: string; text: string; border: string }> = {
+                        'PENDING': { bg: '#FEF3C7', text: '#B45309', border: '#F59E0B' },
+                        'SCHEDULED': { bg: '#DBEAFE', text: '#1E40AF', border: '#3B82F6' },
+                        'LOADING': { bg: '#FEE2E2', text: '#B91C1C', border: '#EF4444' },
+                        'COMPLETED': { bg: '#D1FAE5', text: '#047857', border: '#10B981' },
+                        'CANCELLED': { bg: '#F1F5F9', text: '#475569', border: '#94A3B8' },
+                      }
+                      const colors = statusColors[stat.status] || { bg: '#F1F5F9', text: '#475569', border: '#94A3B8' }
+                      return (
+                        <Card 
+                          key={idx} 
+                          sx={{ 
+                            minWidth: 100, 
+                            bgcolor: colors.bg, 
+                            border: `2px solid ${colors.border}`,
+                            flex: '1 1 auto'
+                          }}
+                        >
+                          <CardContent sx={{ textAlign: 'center', py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                            <Typography variant="h5" sx={{ fontWeight: 700, color: colors.text }}>
+                              {stat.count}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: colors.text, fontWeight: 500 }}>
+                              {stat.status}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </Box>
+                ) : (
+                  <Typography color="text.secondary">No status data available</Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Monthly Cargo Trends */}
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: '#0891B2' }}>
+                  📈 Monthly Cargo Trends (Last 12 Months)
+                </Typography>
+                {analytics?.monthly_trends && analytics.monthly_trends.length > 0 ? (
+                  <Box>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'flex-end', 
+                      gap: 1, 
+                      height: 180,
+                      pt: 2
+                    }}>
+                      {analytics.monthly_trends.map((trend, idx) => {
+                        const maxCount = Math.max(...analytics.monthly_trends.map(t => t.cargo_count), 1)
+                        const heightPercent = (trend.cargo_count / maxCount) * 100
+                        return (
+                          <Tooltip key={idx} title={`${trend.label}: ${trend.cargo_count} cargos`} arrow>
+                            <Box sx={{ 
+                              flex: 1, 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              alignItems: 'center',
+                              height: '100%',
+                              justifyContent: 'flex-end'
+                            }}>
+                              <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 600, color: '#0891B2', fontSize: '0.7rem' }}>
+                                {trend.cargo_count > 0 ? trend.cargo_count : ''}
+                              </Typography>
+                              <Box sx={{ 
+                                width: '100%', 
+                                height: `${Math.max(heightPercent, 5)}%`,
+                                bgcolor: '#06B6D4',
+                                borderRadius: '4px 4px 0 0',
+                                minHeight: 4,
+                                transition: 'height 0.5s ease-in-out',
+                                '&:hover': {
+                                  bgcolor: '#0891B2'
+                                }
+                              }} />
+                              <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                  mt: 1, 
+                                  fontSize: '0.6rem',
+                                  color: 'text.secondary',
+                                  writingMode: 'vertical-rl',
+                                  textOrientation: 'mixed',
+                                  transform: 'rotate(180deg)',
+                                  height: 45
+                                }}
+                              >
+                                {trend.label}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
+                        )
+                      })}
+                    </Box>
+                    <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Total cargos (12 months): {analytics.monthly_trends.reduce((sum, t) => sum + t.cargo_count, 0)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Last updated: {analytics.last_updated ? new Date(analytics.last_updated).toLocaleString() : '-'}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Typography color="text.secondary">No trend data available</Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      <Divider sx={{ my: 4 }} />
+
+      {/* Contract Dashboards Section */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 600 }}>
-          Contract Dashboards
+          📋 Contract Dashboards
         </Typography>
         <TextField
           placeholder="Search contracts..."
