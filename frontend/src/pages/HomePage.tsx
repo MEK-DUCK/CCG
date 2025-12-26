@@ -2733,7 +2733,10 @@ export default function HomePage() {
                           }}
                         />
                       )}
-                      {contract?.contract_category === 'SPOT' && (
+                      {/* SPOT contracts: check contract_category OR if monthly plan has direct contract_id (no quarterly_plan_id) */}
+                      {(contract?.contract_category === 'SPOT' || 
+                        (contract && contracts.find(c => c.id === contract.id)?.contract_category === 'SPOT') ||
+                        (monthlyPlan && monthlyPlan.contract_id && !monthlyPlan.quarterly_plan_id)) && (
                         <Chip 
                           label="Spot" 
                           size="small" 
