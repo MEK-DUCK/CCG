@@ -122,17 +122,27 @@ export default function ContractSummaryPage() {
     }, {} as Record<number, string>)
   }, [customers])
 
-  const quarterTotalsByContractId = useMemo(() => {
-    const acc: Record<number, { q1: number; q2: number; q3: number; q4: number }> = {}
+  // Group quarterly plans by contract_id and contract_year
+  const quarterTotalsByContractIdAndYear = useMemo(() => {
+    const acc: Record<number, Record<number, { q1: number; q2: number; q3: number; q4: number }>> = {}
     for (const p of quarterlyPlans) {
-      if (!acc[p.contract_id]) acc[p.contract_id] = { q1: 0, q2: 0, q3: 0, q4: 0 }
-      acc[p.contract_id].q1 += Number(p.q1_quantity) || 0
-      acc[p.contract_id].q2 += Number(p.q2_quantity) || 0
-      acc[p.contract_id].q3 += Number(p.q3_quantity) || 0
-      acc[p.contract_id].q4 += Number(p.q4_quantity) || 0
+      if (!acc[p.contract_id]) acc[p.contract_id] = {}
+      const year = p.contract_year || 1
+      if (!acc[p.contract_id][year]) acc[p.contract_id][year] = { q1: 0, q2: 0, q3: 0, q4: 0 }
+      acc[p.contract_id][year].q1 += Number(p.q1_quantity) || 0
+      acc[p.contract_id][year].q2 += Number(p.q2_quantity) || 0
+      acc[p.contract_id][year].q3 += Number(p.q3_quantity) || 0
+      acc[p.contract_id][year].q4 += Number(p.q4_quantity) || 0
     }
     return acc
   }, [quarterlyPlans])
+
+  // Helper to get sorted years for a contract
+  const getContractYears = (contractId: number): number[] => {
+    const yearData = quarterTotalsByContractIdAndYear[contractId]
+    if (!yearData) return [1]
+    return Object.keys(yearData).map(Number).sort((a, b) => a - b)
+  }
 
   const availableYears = useMemo(() => {
     const years = new Set<number>()
@@ -200,31 +210,38 @@ export default function ContractSummaryPage() {
 
   const handleExportToExcel = () => {
     import('xlsx').then((XLSX) => {
-      const exportData = filteredContracts.map((c) => {
+      const exportData = filteredContracts.flatMap((c) => {
         const customerName = customerNameById[c.customer_id] || '-'
-        const qt = quarterTotalsByContractId[c.id] || { q1: 0, q2: 0, q3: 0, q4: 0 }
+        const years = getContractYears(c.id)
         const productsLabel = c.products.length === 0 ? '-' : c.products.map((p) => p.name).filter(Boolean).join(', ')
         const jetA1Selected = c.products.some((p) => p.name === 'JET A-1')
 
-        return {
-          'Customer': customerName,
-          'Contract #': c.contract_number,
-          'Contract Period': formatDateRange(c.start_period, c.end_period),
-          'Product(s)': productsLabel,
-          'Firm Total': firmTotalFor(c),
-          'Type': c.contract_type,
-          'Payment': c.payment_method || '-',
-          'Q1': qt.q1,
-          'Q2': qt.q2,
-          'Q3': qt.q3,
-          'Q4': qt.q4,
-          'Optional Qty': optionalTotalFor(c),
-          'Discharge Ranges': c.discharge_ranges || '-',
-          'Fax Received': formatDateOnly(c.fax_received_date),
-          'Concluded Memo': formatDateOnly(c.concluded_memo_received_date),
-          'Additives Required': !jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-',
-          'Remarks': c.remarks || '',
-        }
+        // For multi-year contracts, create a row per year
+        return years.map((year, idx) => {
+          const qt = quarterTotalsByContractIdAndYear[c.id]?.[year] || { q1: 0, q2: 0, q3: 0, q4: 0 }
+          const yearLabel = years.length > 1 ? ` (Year ${year})` : ''
+          
+          return {
+            'Customer': idx === 0 ? customerName : '',
+            'Contract #': idx === 0 ? c.contract_number : '',
+            'Contract Period': idx === 0 ? formatDateRange(c.start_period, c.end_period) : '',
+            'Product(s)': idx === 0 ? productsLabel : '',
+            'Firm Total': idx === 0 ? firmTotalFor(c) : '',
+            'Type': idx === 0 ? c.contract_type : '',
+            'Payment': idx === 0 ? (c.payment_method || '-') : '',
+            'Year': years.length > 1 ? `Year ${year}` : '',
+            'Q1': qt.q1,
+            'Q2': qt.q2,
+            'Q3': qt.q3,
+            'Q4': qt.q4,
+            'Optional Qty': idx === 0 ? optionalTotalFor(c) : '',
+            'Discharge Ranges': idx === 0 ? (c.discharge_ranges || '-') : '',
+            'Fax Received': idx === 0 ? formatDateOnly(c.fax_received_date) : '',
+            'Concluded Memo': idx === 0 ? formatDateOnly(c.concluded_memo_received_date) : '',
+            'Additives Required': idx === 0 ? (!jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-') : '',
+            'Remarks': idx === 0 ? (c.remarks || '') : '',
+          }
+        })
       })
 
       const ws = XLSX.utils.json_to_sheet(exportData)
@@ -255,27 +272,32 @@ export default function ContractSummaryPage() {
       doc.setFontSize(16)
       doc.text(`Contract Summary - ${selectedYear}`, 14, 15)
 
-      const tableData = filteredContracts.map((c) => {
+      const tableData = filteredContracts.flatMap((c) => {
         const customerName = customerNameById[c.customer_id] || '-'
-        const qt = quarterTotalsByContractId[c.id] || { q1: 0, q2: 0, q3: 0, q4: 0 }
+        const years = getContractYears(c.id)
         const productsLabel = c.products.length === 0 ? '-' : c.products.map((p) => p.name).filter(Boolean).join(', ')
         const jetA1Selected = c.products.some((p) => p.name === 'JET A-1')
 
-        return [
-          customerName,
-          c.contract_number,
-          formatDateRange(c.start_period, c.end_period),
-          productsLabel,
-          firmTotalFor(c).toString(),
-          c.contract_type,
-          c.payment_method || '-',
-          `Q1:${qt.q1} Q2:${qt.q2} Q3:${qt.q3} Q4:${qt.q4}`,
-          optionalTotalFor(c).toString(),
-          c.discharge_ranges || '-',
-          `Fax: ${formatDateOnly(c.fax_received_date)}\nMemo: ${formatDateOnly(c.concluded_memo_received_date)}`,
-          !jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-',
-          c.remarks || '',
-        ]
+        return years.map((year, idx) => {
+          const qt = quarterTotalsByContractIdAndYear[c.id]?.[year] || { q1: 0, q2: 0, q3: 0, q4: 0 }
+          const yearPrefix = years.length > 1 ? `Y${year}: ` : ''
+          
+          return [
+            idx === 0 ? customerName : '',
+            idx === 0 ? c.contract_number : '',
+            idx === 0 ? formatDateRange(c.start_period, c.end_period) : '',
+            idx === 0 ? productsLabel : '',
+            idx === 0 ? firmTotalFor(c).toString() : '',
+            idx === 0 ? c.contract_type : '',
+            idx === 0 ? (c.payment_method || '-') : '',
+            `${yearPrefix}Q1:${qt.q1} Q2:${qt.q2} Q3:${qt.q3} Q4:${qt.q4}`,
+            idx === 0 ? optionalTotalFor(c).toString() : '',
+            idx === 0 ? (c.discharge_ranges || '-') : '',
+            idx === 0 ? `Fax: ${formatDateOnly(c.fax_received_date)}\nMemo: ${formatDateOnly(c.concluded_memo_received_date)}` : '',
+            idx === 0 ? (!jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-') : '',
+            idx === 0 ? (c.remarks || '') : '',
+          ]
+        })
       })
 
       autoTable(doc, {
@@ -424,7 +446,6 @@ export default function ContractSummaryPage() {
             <TableBody>
               {filteredContracts.map((c) => {
                 const customerName = customerNameById[c.customer_id] || '-'
-                const qt = quarterTotalsByContractId[c.id] || { q1: 0, q2: 0, q3: 0, q4: 0 }
                 const productsLabel =
                   c.products.length === 0 ? '-' : c.products.map((p) => p.name).filter(Boolean).join(', ')
                 const jetA1Selected = c.products.some((p) => p.name === 'JET A-1')
@@ -459,11 +480,35 @@ export default function ContractSummaryPage() {
                       <Chip label={c.payment_method || '-'} size="small" {...getPaymentMethodChipProps(c.payment_method)} />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                        <Typography variant="body2">Q1: {qt.q1}</Typography>
-                        <Typography variant="body2">Q2: {qt.q2}</Typography>
-                        <Typography variant="body2">Q3: {qt.q3}</Typography>
-                        <Typography variant="body2">Q4: {qt.q4}</Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        {getContractYears(c.id).map((year) => {
+                          const yearData = quarterTotalsByContractIdAndYear[c.id]?.[year] || { q1: 0, q2: 0, q3: 0, q4: 0 }
+                          const years = getContractYears(c.id)
+                          const showYearLabel = years.length > 1
+                          return (
+                            <Box key={year} sx={{ 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: 0.25,
+                              ...(showYearLabel && { 
+                                borderLeft: '2px solid', 
+                                borderColor: 'primary.main',
+                                pl: 1,
+                                mb: 0.5
+                              })
+                            }}>
+                              {showYearLabel && (
+                                <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                                  Year {year}
+                                </Typography>
+                              )}
+                              <Typography variant="body2">Q1: {yearData.q1}</Typography>
+                              <Typography variant="body2">Q2: {yearData.q2}</Typography>
+                              <Typography variant="body2">Q3: {yearData.q3}</Typography>
+                              <Typography variant="body2">Q4: {yearData.q4}</Typography>
+                            </Box>
+                          )
+                        })}
                       </Box>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
