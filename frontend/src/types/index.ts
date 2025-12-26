@@ -1,4 +1,5 @@
 export type ContractType = 'FOB' | 'CIF'
+export type ContractCategory = 'TERM' | 'SEMI_TERM' | 'SPOT'
 export type PaymentMethod = 'T/T' | 'LC'
 export type LCStatus = 'Pending LC' | 'LC in Order' | 'LC Not in Order' | 'LC Memo Issued' | 'Financial Hold'
 
@@ -30,9 +31,11 @@ export interface Contract {
   contract_id: string
   contract_number: string
   contract_type: ContractType
+  contract_category?: ContractCategory  // TERM, SEMI_TERM, or SPOT
   payment_method?: PaymentMethod  // T/T or LC
   start_period: string
   end_period: string
+  fiscal_start_month?: number  // 1-12, when Q1 starts for this contract
   products: ContractProduct[]  // List of products with quantities
   discharge_ranges?: string
   additives_required?: boolean
@@ -49,6 +52,7 @@ export interface Contract {
 export interface QuarterlyPlan {
   id: number
   product_name?: string  // Product name - makes quarterly plan product-specific for multi-product contracts
+  contract_year?: number  // Which year of the contract (1, 2, etc.)
   q1_quantity: number
   q2_quantity: number
   q3_quantity: number
@@ -74,7 +78,9 @@ export interface MonthlyPlan {
   delivery_window?: string  // For CIF contracts only
   delivery_window_remark?: string
   combi_group_id?: string  // UUID to link combi monthly plans (multiple products, same vessel/laycan)
-  quarterly_plan_id: number
+  product_name?: string  // Product name for SPOT contracts
+  quarterly_plan_id?: number  // Optional for SPOT contracts
+  contract_id?: number  // Direct link for SPOT contracts
   created_at: string
   updated_at?: string
 }

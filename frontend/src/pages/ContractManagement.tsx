@@ -82,9 +82,11 @@ export default function ContractManagement() {
     customer_id: '',
     contract_number: '',
     contract_type: 'FOB' as 'FOB' | 'CIF',
+    contract_category: 'TERM' as 'TERM' | 'SEMI_TERM' | 'SPOT',
     payment_method: '' as '' | 'T/T' | 'LC',
     start_period: '',
     end_period: '',
+    fiscal_start_month: '' as '' | number,  // When Q1 starts (1-12), auto-detected from start_period
     products: [] as ContractProduct[],  // Array of products with quantities
     discharge_ranges: '',
     additives_required: '' as '' | 'yes' | 'no',
@@ -167,9 +169,11 @@ export default function ContractManagement() {
         customer_id: contract.customer_id.toString(),
         contract_number: contract.contract_number,
         contract_type: contract.contract_type,
+        contract_category: contract.contract_category || 'TERM',
         payment_method: contract.payment_method || '',
         start_period: contract.start_period,
         end_period: contract.end_period,
+        fiscal_start_month: contract.fiscal_start_month || '',
         products: contract.products || [],
         discharge_ranges: contract.discharge_ranges || '',
         additives_required: contract.additives_required === true ? 'yes' : contract.additives_required === false ? 'no' : '',
@@ -184,9 +188,11 @@ export default function ContractManagement() {
         customer_id: '',
         contract_number: '',
         contract_type: 'FOB',
+        contract_category: 'TERM',
         payment_method: '',
         start_period: '',
         end_period: '',
+        fiscal_start_month: '',
         products: [],
         discharge_ranges: '',
         additives_required: '',
@@ -227,9 +233,11 @@ export default function ContractManagement() {
       customer_id: '',
       contract_number: '',
       contract_type: 'FOB',
+      contract_category: 'TERM',
       payment_method: '' as '' | 'T/T' | 'LC',
       start_period: '',
       end_period: '',
+      fiscal_start_month: '',
       products: [],
       discharge_ranges: '',
       additives_required: '',
@@ -271,9 +279,11 @@ export default function ContractManagement() {
         customer_id: parseInt(formData.customer_id),
         contract_number: formData.contract_number,
         contract_type: formData.contract_type,
+        contract_category: formData.contract_category,
         payment_method: formData.payment_method || undefined,
         start_period: formData.start_period,
         end_period: formData.end_period,
+        fiscal_start_month: formData.fiscal_start_month || undefined,
         products: formData.products.map(p => ({
           name: p.name,
           total_quantity: p.total_quantity,
@@ -832,17 +842,40 @@ export default function ContractManagement() {
               required
               fullWidth
             />
-            <TextField
-              label="Contract Type"
-              value={formData.contract_type}
-              onChange={(e) => setFormData({ ...formData, contract_type: e.target.value as 'FOB' | 'CIF' })}
-              select
-              required
-              fullWidth
-            >
-              <MenuItem value="FOB">FOB</MenuItem>
-              <MenuItem value="CIF">CIF</MenuItem>
-            </TextField>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Contract Type"
+                  value={formData.contract_type}
+                  onChange={(e) => setFormData({ ...formData, contract_type: e.target.value as 'FOB' | 'CIF' })}
+                  select
+                  required
+                  fullWidth
+                >
+                  <MenuItem value="FOB">FOB</MenuItem>
+                  <MenuItem value="CIF">CIF</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Contract Category"
+                  value={formData.contract_category}
+                  onChange={(e) => setFormData({ ...formData, contract_category: e.target.value as 'TERM' | 'SEMI_TERM' | 'SPOT' })}
+                  select
+                  required
+                  fullWidth
+                  helperText={
+                    formData.contract_category === 'TERM' ? '1-2 years, full quarterly planning' :
+                    formData.contract_category === 'SEMI_TERM' ? '3-9 months, partial year' :
+                    formData.contract_category === 'SPOT' ? 'Single cargo, 1 month or less' : ''
+                  }
+                >
+                  <MenuItem value="TERM">Term (1-2 years)</MenuItem>
+                  <MenuItem value="SEMI_TERM">Semi-Term (3-9 months)</MenuItem>
+                  <MenuItem value="SPOT">Spot (Single cargo)</MenuItem>
+                </TextField>
+              </Grid>
+            </Grid>
             <TextField
               label="Payment Method"
               value={formData.payment_method}
@@ -857,18 +890,27 @@ export default function ContractManagement() {
               <MenuItem value="LC">LC</MenuItem>
             </TextField>
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
                 <TextField
                   label="Start Period"
                   type="date"
                   value={formData.start_period}
-                  onChange={(e) => setFormData({ ...formData, start_period: e.target.value })}
+                  onChange={(e) => {
+                    const newStartPeriod = e.target.value
+                    // Auto-detect fiscal start month from start period
+                    const startMonth = newStartPeriod ? new Date(newStartPeriod).getMonth() + 1 : ''
+                    setFormData({ 
+                      ...formData, 
+                      start_period: newStartPeriod,
+                      fiscal_start_month: formData.fiscal_start_month || startMonth
+                    })
+                  }}
                   required
                   fullWidth
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
                 <TextField
                   label="End Period"
                   type="date"
@@ -878,6 +920,31 @@ export default function ContractManagement() {
                   fullWidth
                   InputLabelProps={{ shrink: true }}
                 />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                {formData.contract_category !== 'SPOT' && (
+                  <TextField
+                    label="Q1 Starts In"
+                    value={formData.fiscal_start_month}
+                    onChange={(e) => setFormData({ ...formData, fiscal_start_month: e.target.value ? parseInt(e.target.value) : '' })}
+                    select
+                    fullWidth
+                    helperText="When does Q1 start for this contract?"
+                  >
+                    <MenuItem value={1}>January</MenuItem>
+                    <MenuItem value={2}>February</MenuItem>
+                    <MenuItem value={3}>March</MenuItem>
+                    <MenuItem value={4}>April</MenuItem>
+                    <MenuItem value={5}>May</MenuItem>
+                    <MenuItem value={6}>June</MenuItem>
+                    <MenuItem value={7}>July</MenuItem>
+                    <MenuItem value={8}>August</MenuItem>
+                    <MenuItem value={9}>September</MenuItem>
+                    <MenuItem value={10}>October</MenuItem>
+                    <MenuItem value={11}>November</MenuItem>
+                    <MenuItem value={12}>December</MenuItem>
+                  </TextField>
+                )}
               </Grid>
             </Grid>
 

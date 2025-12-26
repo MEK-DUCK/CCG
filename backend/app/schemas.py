@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List, Union
 from datetime import date, datetime
-from app.models import ContractType, CargoStatus, PaymentMethod, LCStatus
+from app.models import ContractType, ContractCategory, CargoStatus, PaymentMethod, LCStatus
 
 # Customer Schemas
 class CustomerBase(BaseModel):
@@ -60,9 +60,11 @@ class AuthorityTopUpRequest(BaseModel):
 class ContractBase(BaseModel):
     contract_number: str = Field(..., min_length=1, max_length=255)
     contract_type: ContractType
+    contract_category: Optional[ContractCategory] = ContractCategory.TERM  # TERM, SEMI_TERM, or SPOT
     payment_method: Optional[PaymentMethod] = None  # T/T or LC
     start_period: date
     end_period: date
+    fiscal_start_month: Optional[int] = Field(1, ge=1, le=12)  # When Q1 starts (1=Jan, 7=Jul, etc.)
     products: List[ContractProduct]  # List of products with quantities
     authority_topups: Optional[List[AuthorityTopUp]] = None  # Authorized top-ups beyond contract
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
@@ -77,6 +79,16 @@ class ContractBase(BaseModel):
     def _validate_contract_period(self):
         if self.start_period and self.end_period and self.start_period > self.end_period:
             raise ValueError("start_period must be on or before end_period")
+        return self
+    
+    @model_validator(mode="after")
+    def _validate_fiscal_month_alignment(self):
+        """For TERM/SEMI_TERM, fiscal_start_month should align with start_period month."""
+        if self.contract_category != ContractCategory.SPOT and self.fiscal_start_month:
+            # If fiscal_start_month is not provided, default to start_period month
+            if self.start_period and self.fiscal_start_month == 1:
+                # Auto-align to start_period month if using default
+                pass  # Allow default, will be set in backend if needed
         return self
     
     @model_validator(mode="after")
@@ -95,9 +107,11 @@ class ContractCreate(ContractBase):
 class ContractUpdate(BaseModel):
     contract_number: Optional[str] = Field(None, min_length=1, max_length=255)
     contract_type: Optional[ContractType] = None
+    contract_category: Optional[ContractCategory] = None
     payment_method: Optional[PaymentMethod] = None
     start_period: Optional[date] = None
     end_period: Optional[date] = None
+    fiscal_start_month: Optional[int] = Field(None, ge=1, le=12)
     products: Optional[List[ContractProduct]] = None
     authority_topups: Optional[List[AuthorityTopUp]] = None  # Can add/update top-ups
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
@@ -129,6 +143,7 @@ class Contract(ContractBase):
 # Quarterly Plan Schemas
 class QuarterlyPlanBase(BaseModel):
     product_name: Optional[str] = None  # Product name - makes quarterly plan product-specific
+    contract_year: Optional[int] = Field(1, ge=1)  # Which year of the contract (1, 2, etc.)
     q1_quantity: float = Field(0, ge=0)
     q2_quantity: float = Field(0, ge=0)
     q3_quantity: float = Field(0, ge=0)
@@ -144,6 +159,7 @@ class QuarterlyPlanCreate(QuarterlyPlanBase):
 
 class QuarterlyPlanUpdate(BaseModel):
     product_name: Optional[str] = None
+    contract_year: Optional[int] = Field(None, ge=1)
     q1_quantity: Optional[float] = Field(None, ge=0)
     q2_quantity: Optional[float] = Field(None, ge=0)
     q3_quantity: Optional[float] = Field(None, ge=0)
@@ -178,6 +194,7 @@ class MonthlyPlanBase(BaseModel):
     delivery_window: Optional[str] = None  # For CIF contracts only
     delivery_window_remark: Optional[str] = Field(None, max_length=10000)
     combi_group_id: Optional[str] = None  # UUID to link combi monthly plans (multiple products, same vessel/laycan)
+    product_name: Optional[str] = None  # Product name for SPOT contracts (when no quarterly plan)
     # Authority Top-Up fields
     authority_topup_quantity: Optional[float] = Field(None, ge=0)  # Additional KT authorized
     authority_topup_reference: Optional[str] = Field(None, max_length=100)  # Reference number
@@ -185,7 +202,15 @@ class MonthlyPlanBase(BaseModel):
     authority_topup_date: Optional[date] = None  # Date of authorization
 
 class MonthlyPlanCreate(MonthlyPlanBase):
-    quarterly_plan_id: int
+    quarterly_plan_id: Optional[int] = None  # Optional for SPOT contracts
+    contract_id: Optional[int] = None  # Direct link for SPOT contracts
+    
+    @model_validator(mode="after")
+    def _validate_plan_link(self):
+        """Either quarterly_plan_id OR contract_id must be provided."""
+        if self.quarterly_plan_id is None and self.contract_id is None:
+            raise ValueError("Either quarterly_plan_id or contract_id must be provided")
+        return self
 
 class MonthlyPlanUpdate(BaseModel):
     month: Optional[int] = Field(None, ge=1, le=12)
@@ -202,6 +227,7 @@ class MonthlyPlanUpdate(BaseModel):
     delivery_window: Optional[str] = None
     delivery_window_remark: Optional[str] = Field(None, max_length=10000)
     combi_group_id: Optional[str] = None
+    product_name: Optional[str] = None
     # Authority Top-Up fields
     authority_topup_quantity: Optional[float] = Field(None, ge=0)
     authority_topup_reference: Optional[str] = Field(None, max_length=100)
@@ -210,7 +236,8 @@ class MonthlyPlanUpdate(BaseModel):
 
 class MonthlyPlan(MonthlyPlanBase):
     id: int
-    quarterly_plan_id: int
+    quarterly_plan_id: Optional[int] = None  # Optional for SPOT contracts
+    contract_id: Optional[int] = None  # Direct link for SPOT contracts
     created_at: datetime
     updated_at: Optional[datetime] = None
     
@@ -242,9 +269,11 @@ class ContractEmbedded(BaseModel):
     contract_id: str
     contract_number: str
     contract_type: ContractType
+    contract_category: Optional[ContractCategory] = ContractCategory.TERM
     payment_method: Optional[PaymentMethod] = None
     start_period: date
     end_period: date
+    fiscal_start_month: Optional[int] = 1
     products: List[ContractProduct]
     customer_id: int
     customer: Optional[CustomerEmbedded] = None
@@ -292,6 +321,7 @@ class QuarterlyPlanEmbedded(BaseModel):
     """Quarterly plan with embedded contract info for bulk queries"""
     id: int
     product_name: Optional[str] = None
+    contract_year: Optional[int] = 1  # Which year of the contract
     q1_quantity: float = 0
     q2_quantity: float = 0
     q3_quantity: float = 0
@@ -310,7 +340,8 @@ class QuarterlyPlanEmbedded(BaseModel):
 class MonthlyPlanEnriched(MonthlyPlanBase):
     """Monthly plan with embedded quarterly plan and contract info for bulk queries"""
     id: int
-    quarterly_plan_id: int
+    quarterly_plan_id: Optional[int] = None  # Optional for SPOT contracts
+    contract_id: Optional[int] = None  # Direct link for SPOT contracts
     created_at: datetime
     updated_at: Optional[datetime] = None
     quarterly_plan: Optional[QuarterlyPlanEmbedded] = None

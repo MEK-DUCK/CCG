@@ -18,6 +18,13 @@ class ContractType(str, enum.Enum):
     CIF = "CIF"
 
 
+class ContractCategory(str, enum.Enum):
+    """Contract duration category."""
+    TERM = "TERM"           # 1-2 years, full quarterly planning
+    SEMI_TERM = "SEMI_TERM" # 3-9 months, partial year
+    SPOT = "SPOT"           # Single cargo, 1 month or less
+
+
 class PaymentMethod(str, enum.Enum):
     TT = "T/T"
     LC = "LC"
@@ -75,6 +82,14 @@ class Contract(Base):
     start_period = Column(Date, nullable=False)
     end_period = Column(Date, nullable=False)
     
+    # Fiscal year support - when does Q1 start for this contract?
+    # Default 1 (January) for backward compatibility
+    fiscal_start_month = Column(Integer, nullable=True, default=1)  # 1-12
+    
+    # Contract category for different planning needs
+    # Default TERM for backward compatibility
+    contract_category = Column(Enum(ContractCategory), nullable=True, default=ContractCategory.TERM)
+    
     # Products as JSON array: [{"name": "JET A-1", "total_quantity": 1000, "optional_quantity": 200}]
     # Using Text for SQLite compatibility, but PostgreSQL can use JSONB natively
     products = Column(Text, nullable=False)
@@ -108,11 +123,17 @@ class QuarterlyPlan(Base):
     """
     Quarterly allocation plan for a contract.
     For multi-product contracts, there's one plan per product.
+    Each QuarterlyPlan represents one contract year with 4 quarters.
     """
     __tablename__ = "quarterly_plans"
     
     id = Column(Integer, primary_key=True, index=True)
     product_name = Column(String, nullable=True)  # For multi-product contracts
+    
+    # Contract year: 1, 2, etc. (which year of the contract)
+    # Default 1 for backward compatibility
+    contract_year = Column(Integer, nullable=True, default=1)
+    
     q1_quantity = Column(Float, default=0)
     q2_quantity = Column(Float, default=0)
     q3_quantity = Column(Float, default=0)
@@ -134,6 +155,7 @@ class MonthlyPlan(Base):
     """
     Monthly cargo plan within a quarterly plan.
     Contains laycan windows and delivery details.
+    For SPOT contracts, can link directly to contract without quarterly plan.
     """
     __tablename__ = "monthly_plans"
     
@@ -166,11 +188,21 @@ class MonthlyPlan(Base):
     authority_topup_reason = Column(Text, nullable=True)  # Reason for the top-up
     authority_topup_date = Column(Date, nullable=True)  # Date of authorization
     
-    quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=False)
+    # Nullable for SPOT contracts that skip quarterly planning
+    quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=True)
+    
+    # Direct contract link for SPOT contracts (when quarterly_plan_id is null)
+    # Also useful for quick lookups without joining through quarterly_plan
+    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True)
+    
+    # Product name for SPOT contracts (when no quarterly plan to get it from)
+    product_name = Column(String, nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     quarterly_plan = relationship("QuarterlyPlan", back_populates="monthly_plans")
+    contract = relationship("Contract", foreign_keys=[contract_id])
     cargos = relationship("Cargo", back_populates="monthly_plan", cascade="all, delete-orphan")
 
 

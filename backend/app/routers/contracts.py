@@ -4,9 +4,13 @@ from sqlalchemy import inspect
 from typing import List
 from app.database import get_db
 from app import models, schemas
+from app.models import ContractCategory
+from app.utils.fiscal_year import calculate_contract_years, generate_quarterly_plan_periods, generate_monthly_plan_periods
 import uuid
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 def _contracts_has_column(db: Session, column_name: str) -> bool:
     """Backward-compatible guard for deployments where DB schema lags behind code."""
@@ -48,13 +52,25 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         if contract.authority_topups:
             authority_topups_json = json.dumps([t.dict() for t in contract.authority_topups], default=str)
         
+        # Determine fiscal start month (default to contract start month if not provided)
+        fiscal_start_month = getattr(contract, "fiscal_start_month", None)
+        if fiscal_start_month is None:
+            fiscal_start_month = contract.start_period.month
+        
+        # Determine contract category
+        contract_category = getattr(contract, "contract_category", None)
+        if contract_category is None:
+            contract_category = ContractCategory.TERM
+        
         db_contract = models.Contract(
             contract_id=contract_id,
             contract_number=contract.contract_number,
             contract_type=contract.contract_type,
+            contract_category=contract_category,
             payment_method=contract.payment_method,
             start_period=contract.start_period,
             end_period=contract.end_period,
+            fiscal_start_month=fiscal_start_month,
             products=products_json,
             authority_topups=authority_topups_json,
             discharge_ranges=getattr(contract, "discharge_ranges", None),
@@ -72,15 +88,38 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         db.commit()
         db.refresh(db_contract)
         
+        # Auto-generate quarterly plans for TERM and SEMI_TERM contracts
+        if contract_category != ContractCategory.SPOT:
+            num_years = calculate_contract_years(contract.start_period, contract.end_period)
+            logger.info(f"Auto-generating {num_years} year(s) of quarterly plans for contract {db_contract.id}")
+            
+            for product in contract.products:
+                for contract_year in range(1, num_years + 1):
+                    db_quarterly = models.QuarterlyPlan(
+                        contract_id=db_contract.id,
+                        product_name=product.name,
+                        contract_year=contract_year,
+                        q1_quantity=0,
+                        q2_quantity=0,
+                        q3_quantity=0,
+                        q4_quantity=0
+                    )
+                    db.add(db_quarterly)
+            
+            db.commit()
+            logger.info(f"Created quarterly plans for contract {db_contract.id}")
+        
         # Convert products JSON string to list for response
         contract_dict = {
             "id": db_contract.id,
             "contract_id": db_contract.contract_id,
             "contract_number": db_contract.contract_number,
             "contract_type": db_contract.contract_type,
+            "contract_category": db_contract.contract_category,
             "payment_method": db_contract.payment_method,
             "start_period": db_contract.start_period,
             "end_period": db_contract.end_period,
+            "fiscal_start_month": db_contract.fiscal_start_month,
             "products": json.loads(db_contract.products) if db_contract.products else [],
             "authority_topups": json.loads(db_contract.authority_topups) if db_contract.authority_topups else None,
             "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
@@ -100,7 +139,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
     except Exception as e:
         db.rollback()
         import traceback
-        print(f"[ERROR] Error creating contract: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error creating contract: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error creating contract: {str(e)}")
 
 @router.get("/", response_model=List[schemas.Contract])
@@ -148,9 +187,11 @@ def read_contracts(
                 "contract_id": contract.contract_id,
                 "contract_number": contract.contract_number,
                 "contract_type": contract.contract_type,
+                "contract_category": getattr(contract, "contract_category", ContractCategory.TERM),
                 "payment_method": contract.payment_method,
                 "start_period": contract.start_period,
                 "end_period": contract.end_period,
+                "fiscal_start_month": getattr(contract, "fiscal_start_month", 1),
                 "products": products,
                 "authority_topups": authority_topups,
                 "discharge_ranges": getattr(contract, "discharge_ranges", None),
@@ -169,7 +210,7 @@ def read_contracts(
         return result
     except Exception as e:
         import traceback
-        print(f"[ERROR] Error reading contracts: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error reading contracts: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error loading contracts: {str(e)}")
 
 @router.get("/{contract_id}", response_model=schemas.Contract)
@@ -211,9 +252,11 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
             "contract_id": contract.contract_id,
             "contract_number": contract.contract_number,
             "contract_type": contract.contract_type,
+            "contract_category": getattr(contract, "contract_category", ContractCategory.TERM),
             "payment_method": contract.payment_method,
             "start_period": contract.start_period,
             "end_period": contract.end_period,
+            "fiscal_start_month": getattr(contract, "fiscal_start_month", 1),
             "products": products_list,
             "authority_topups": authority_topups_list,
             "discharge_ranges": getattr(contract, "discharge_ranges", None),
@@ -233,7 +276,7 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         import traceback
         error_msg = f"Error loading contract {contract_id}: {str(e)}\n{traceback.format_exc()}"
-        print(f"[ERROR] {error_msg}")
+        logger.error(error_msg)
         raise HTTPException(status_code=500, detail=f"Error loading contract: {str(e)}")
 
 @router.put("/{contract_id}", response_model=schemas.Contract)

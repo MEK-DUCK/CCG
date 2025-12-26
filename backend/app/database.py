@@ -216,6 +216,56 @@ def ensure_schema():
                     else:
                         conn.execute(text('ALTER TABLE contracts ADD COLUMN authority_topups TEXT'))
                 logger.info("Added authority_topups column to contracts table")
+            
+            # Add fiscal year support fields
+            fiscal_cols = [
+                ("fiscal_start_month", "INTEGER DEFAULT 1"),
+                ("contract_category", "VARCHAR DEFAULT 'TERM'"),
+            ]
+            for col_name, col_type in fiscal_cols:
+                if col_name not in cols:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text(f'ALTER TABLE contracts ADD COLUMN IF NOT EXISTS {col_name} {col_type}'))
+                        else:
+                            conn.execute(text(f'ALTER TABLE contracts ADD COLUMN {col_name} {col_type}'))
+                    logger.info(f"Added {col_name} column to contracts table")
+        
+        # Quarterly plans migrations - add contract_year for multi-year contracts
+        if insp.has_table("quarterly_plans"):
+            cols = [c.get("name") for c in insp.get_columns("quarterly_plans")]
+            if "contract_year" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN IF NOT EXISTS contract_year INTEGER DEFAULT 1'))
+                    else:
+                        conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN contract_year INTEGER DEFAULT 1'))
+                logger.info("Added contract_year column to quarterly_plans table")
+        
+        # Monthly plans migrations - add direct contract link for SPOT contracts
+        if insp.has_table("monthly_plans"):
+            cols = [c.get("name") for c in insp.get_columns("monthly_plans")]
+            spot_cols = [
+                ("contract_id", "INTEGER REFERENCES contracts(id)"),
+                ("product_name", "VARCHAR"),
+            ]
+            for col_name, col_type in spot_cols:
+                if col_name not in cols:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS {col_name} {col_type.split(" ")[0]}'))
+                        else:
+                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col_name} {col_type.split(" ")[0]}'))
+                    logger.info(f"Added {col_name} column to monthly_plans table")
+            
+            # Make quarterly_plan_id nullable for SPOT contracts (PostgreSQL)
+            if dialect == "postgresql":
+                try:
+                    with engine.begin() as conn:
+                        conn.execute(text('ALTER TABLE monthly_plans ALTER COLUMN quarterly_plan_id DROP NOT NULL'))
+                    logger.info("Made quarterly_plan_id nullable in monthly_plans table")
+                except Exception:
+                    pass  # Already nullable or constraint doesn't exist
         
         # Create contract_audit_logs table if not exists
         if not insp.has_table("contract_audit_logs"):
