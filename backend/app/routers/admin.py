@@ -223,124 +223,33 @@ def get_analytics(db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Error getting status stats: {e}")
     
-    # Product volume analytics
+    # Product volume analytics - COMPLETED cargos only
     product_stats = []
-    product_planned_vs_actual = []
     try:
-        # Get product volumes from monthly plans (planned quantities)
-        product_planned_query = db.query(
-            MonthlyPlan.product_name,
-            func.sum(MonthlyPlan.month_quantity).label('planned_quantity'),
-            func.count(MonthlyPlan.id).label('plan_count')
-        ).filter(
-            MonthlyPlan.product_name.isnot(None),
-            MonthlyPlan.product_name != ''
-        ).group_by(MonthlyPlan.product_name).all()
-        
-        planned_by_product = {}
-        for row in product_planned_query:
-            planned_by_product[row.product_name] = {
-                "planned_quantity": float(row.planned_quantity or 0),
-                "plan_count": row.plan_count
-            }
-        
-        # Get actual lifted quantities from cargos
-        # Join cargos -> monthly_plans to get product name and actual cargo quantity
-        actual_query = db.execute(text('''
+        # Get completed cargo quantities per product
+        completed_query = db.execute(text('''
             SELECT 
                 mp.product_name,
-                SUM(ca.cargo_quantity) as actual_quantity,
+                SUM(ca.cargo_quantity) as completed_quantity,
                 COUNT(ca.id) as cargo_count
             FROM cargos ca
             JOIN monthly_plans mp ON ca.monthly_plan_id = mp.id
-            WHERE mp.product_name IS NOT NULL AND mp.product_name != ''
+            WHERE mp.product_name IS NOT NULL 
+            AND mp.product_name != ''
+            AND ca.status = 'COMPLETED'
             GROUP BY mp.product_name
-            ORDER BY actual_quantity DESC
+            ORDER BY completed_quantity DESC
         ''')).fetchall()
         
-        actual_by_product = {}
-        for row in actual_query:
-            actual_by_product[row[0]] = {
-                "actual_quantity": float(row[1] or 0),
-                "cargo_count": row[2]
-            }
-        
-        # Combine planned and actual data
-        all_products = set(planned_by_product.keys()) | set(actual_by_product.keys())
-        for product in sorted(all_products):
-            planned = planned_by_product.get(product, {"planned_quantity": 0, "plan_count": 0})
-            actual = actual_by_product.get(product, {"actual_quantity": 0, "cargo_count": 0})
-            
+        for row in completed_query:
             product_stats.append({
-                "product": product,
-                "planned_quantity": planned["planned_quantity"],
-                "actual_quantity": actual["actual_quantity"],
-                "cargo_count": actual["cargo_count"],
-                "plan_count": planned["plan_count"],
-                "utilization": round((actual["actual_quantity"] / planned["planned_quantity"] * 100), 1) if planned["planned_quantity"] > 0 else 0
+                "product": row[0],
+                "completed_quantity": float(row[1] or 0),
+                "cargo_count": row[2]
             })
-        
-        # Sort by actual quantity descending
-        product_stats.sort(key=lambda x: x["actual_quantity"], reverse=True)
         
     except Exception as e:
         print(f"Error getting product stats: {e}")
-    
-    # Product mix (pie chart data) - percentage of total volume
-    product_mix = []
-    try:
-        total_actual = sum(p["actual_quantity"] for p in product_stats)
-        if total_actual > 0:
-            for p in product_stats:
-                if p["actual_quantity"] > 0:
-                    product_mix.append({
-                        "product": p["product"],
-                        "quantity": p["actual_quantity"],
-                        "percentage": round((p["actual_quantity"] / total_actual * 100), 1)
-                    })
-    except Exception as e:
-        print(f"Error getting product mix: {e}")
-    
-    # Monthly product trends (last 6 months by product)
-    monthly_product_trends = []
-    try:
-        from datetime import date
-        from dateutil.relativedelta import relativedelta
-        
-        today = date.today()
-        
-        # Get unique products
-        products = [p["product"] for p in product_stats[:5]]  # Top 5 products
-        
-        for i in range(5, -1, -1):
-            month_date = today - relativedelta(months=i)
-            month = month_date.month
-            year = month_date.year
-            
-            month_data = {
-                "month": month,
-                "year": year,
-                "label": month_date.strftime("%b %Y"),
-                "products": {}
-            }
-            
-            # Get cargo quantities per product for this month
-            for product in products:
-                qty_query = db.execute(text('''
-                    SELECT COALESCE(SUM(ca.cargo_quantity), 0) as qty
-                    FROM cargos ca
-                    JOIN monthly_plans mp ON ca.monthly_plan_id = mp.id
-                    WHERE mp.product_name = :product
-                    AND EXTRACT(MONTH FROM ca.created_at) = :month
-                    AND EXTRACT(YEAR FROM ca.created_at) = :year
-                '''), {"product": product, "month": month, "year": year}).fetchone()
-                
-                month_data["products"][product] = float(qty_query[0]) if qty_query else 0
-            
-            monthly_product_trends.append(month_data)
-            
-    except Exception as e:
-        print(f"Error getting monthly product trends: {e}")
     
     return {
         "inspector_stats": inspector_stats,
@@ -349,8 +258,6 @@ def get_analytics(db: Session = Depends(get_db)):
         "customer_stats": customer_stats,
         "status_stats": status_stats,
         "product_stats": product_stats,
-        "product_mix": product_mix,
-        "monthly_product_trends": monthly_product_trends,
         "last_updated": datetime.utcnow().isoformat()
     }
 

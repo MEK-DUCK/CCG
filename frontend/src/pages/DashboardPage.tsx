@@ -34,18 +34,8 @@ interface AnalyticsData {
   status_stats: Array<{ status: string; count: number }>
   product_stats: Array<{
     product: string
-    planned_quantity: number
-    actual_quantity: number
+    completed_quantity: number
     cargo_count: number
-    plan_count: number
-    utilization: number
-  }>
-  product_mix: Array<{ product: string; quantity: number; percentage: number }>
-  monthly_product_trends: Array<{
-    month: number
-    year: number
-    label: string
-    products: Record<string, number>
   }>
   last_updated: string
 }
@@ -336,67 +326,55 @@ export default function DashboardPage() {
             </Card>
           </Grid>
 
-          {/* Product Volume Analytics Section Header */}
-          <Grid item xs={12}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mt: 2, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              🛢️ Product Volume Analytics
-            </Typography>
-          </Grid>
-
-          {/* Product Volumes - Planned vs Actual */}
-          <Grid item xs={12} md={8}>
+          {/* Product Volume Analytics - Completed Cargos */}
+          <Grid item xs={12} md={6}>
             <Card sx={{ height: '100%' }}>
               <CardContent>
                 <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: '#B45309' }}>
-                  📊 Planned vs Actual Quantities (KT)
+                  🛢️ Completed Cargo Volumes (KT)
                 </Typography>
                 {analytics?.product_stats && analytics.product_stats.length > 0 ? (
                   <Box>
                     {analytics.product_stats.map((stat, idx) => {
-                      const maxQty = Math.max(...analytics.product_stats.map(s => Math.max(s.planned_quantity, s.actual_quantity)))
-                      const plannedPercent = maxQty > 0 ? (stat.planned_quantity / maxQty) * 100 : 0
-                      const actualPercent = maxQty > 0 ? (stat.actual_quantity / maxQty) * 100 : 0
+                      const maxQty = Math.max(...analytics.product_stats.map(s => s.completed_quantity))
+                      const percentage = maxQty > 0 ? (stat.completed_quantity / maxQty) * 100 : 0
+                      const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
+                      const color = colors[idx % colors.length]
                       return (
-                        <Box key={idx} sx={{ mb: 3 }}>
+                        <Box key={idx} sx={{ mb: 2 }}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {stat.product}
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 2 }}>
-                              <Typography variant="body2" sx={{ color: '#6B7280' }}>
-                                Planned: <strong>{stat.planned_quantity.toLocaleString()} KT</strong>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Box sx={{ width: 12, height: 12, bgcolor: color, borderRadius: '50%' }} />
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {stat.product}
                               </Typography>
-                              <Typography variant="body2" sx={{ color: '#059669' }}>
-                                Actual: <strong>{stat.actual_quantity.toLocaleString()} KT</strong>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 700, color }}>
+                                {stat.completed_quantity.toLocaleString()} KT
                               </Typography>
                               <Chip 
-                                label={`${stat.utilization}%`}
+                                label={`${stat.cargo_count} cargos`}
                                 size="small"
                                 sx={{ 
-                                  bgcolor: stat.utilization >= 90 ? '#D1FAE5' : stat.utilization >= 50 ? '#FEF3C7' : '#FEE2E2',
-                                  color: stat.utilization >= 90 ? '#047857' : stat.utilization >= 50 ? '#B45309' : '#B91C1C',
-                                  fontWeight: 600,
+                                  bgcolor: '#F3F4F6',
+                                  color: '#6B7280',
+                                  fontWeight: 500,
                                   fontSize: '0.7rem'
                                 }}
                               />
                             </Box>
                           </Box>
-                          {/* Stacked bar showing planned (gray) and actual (green) */}
-                          <Box sx={{ position: 'relative', height: 12, bgcolor: '#F3F4F6', borderRadius: 1, overflow: 'hidden' }}>
-                            {/* Planned bar (background) */}
+                          <Box sx={{ 
+                            height: 10, 
+                            bgcolor: '#F3F4F6', 
+                            borderRadius: 1,
+                            overflow: 'hidden'
+                          }}>
                             <Box sx={{ 
-                              position: 'absolute',
                               height: '100%', 
-                              width: `${plannedPercent}%`,
-                              bgcolor: '#D1D5DB',
-                              borderRadius: 1,
-                            }} />
-                            {/* Actual bar (foreground) */}
-                            <Box sx={{ 
-                              position: 'absolute',
-                              height: '100%', 
-                              width: `${actualPercent}%`,
-                              bgcolor: '#10B981',
+                              width: `${percentage}%`,
+                              bgcolor: color,
                               borderRadius: 1,
                               transition: 'width 0.5s ease-in-out'
                             }} />
@@ -404,198 +382,14 @@ export default function DashboardPage() {
                         </Box>
                       )
                     })}
-                    <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #E5E7EB', display: 'flex', gap: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width: 12, height: 12, bgcolor: '#D1D5DB', borderRadius: 0.5 }} />
-                        <Typography variant="caption" color="text.secondary">Planned</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width: 12, height: 12, bgcolor: '#10B981', borderRadius: 0.5 }} />
-                        <Typography variant="caption" color="text.secondary">Actual Lifted</Typography>
-                      </Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-                        Total Planned: {analytics.product_stats.reduce((sum, s) => sum + s.planned_quantity, 0).toLocaleString()} KT | 
-                        Total Lifted: {analytics.product_stats.reduce((sum, s) => sum + s.actual_quantity, 0).toLocaleString()} KT
-                      </Typography>
-                    </Box>
-                  </Box>
-                ) : (
-                  <Typography color="text.secondary">No product data available</Typography>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Product Mix Pie Chart */}
-          <Grid item xs={12} md={4}>
-            <Card sx={{ height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: '#7C3AED' }}>
-                  🥧 Product Mix
-                </Typography>
-                {analytics?.product_mix && analytics.product_mix.length > 0 ? (
-                  <Box>
-                    {/* Simple visual representation */}
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                      {analytics.product_mix.map((item, idx) => {
-                        const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
-                        const color = colors[idx % colors.length]
-                        return (
-                          <Box key={idx}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Box sx={{ width: 12, height: 12, bgcolor: color, borderRadius: '50%' }} />
-                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                  {item.product}
-                                </Typography>
-                              </Box>
-                              <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                                {item.percentage}%
-                              </Typography>
-                            </Box>
-                            <Box sx={{ 
-                              height: 8, 
-                              bgcolor: '#F3F4F6', 
-                              borderRadius: 1,
-                              overflow: 'hidden'
-                            }}>
-                              <Box sx={{ 
-                                height: '100%', 
-                                width: `${item.percentage}%`,
-                                bgcolor: color,
-                                borderRadius: 1,
-                                transition: 'width 0.5s ease-in-out'
-                              }} />
-                            </Box>
-                          </Box>
-                        )
-                      })}
-                    </Box>
                     <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #E5E7EB' }}>
                       <Typography variant="body2" color="text.secondary">
-                        Total Volume: {analytics.product_mix.reduce((sum, p) => sum + p.quantity, 0).toLocaleString()} KT
+                        Total Completed: <strong>{analytics.product_stats.reduce((sum, s) => sum + s.completed_quantity, 0).toLocaleString()} KT</strong> ({analytics.product_stats.reduce((sum, s) => sum + s.cargo_count, 0)} cargos)
                       </Typography>
                     </Box>
                   </Box>
                 ) : (
-                  <Typography color="text.secondary">No product mix data available</Typography>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Monthly Product Trends */}
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: '#0369A1' }}>
-                  📈 Product Trends (Last 6 Months)
-                </Typography>
-                {analytics?.monthly_product_trends && analytics.monthly_product_trends.length > 0 ? (
-                  <Box>
-                    {/* Get all product names */}
-                    {(() => {
-                      const allProducts = new Set<string>()
-                      analytics.monthly_product_trends.forEach(m => {
-                        Object.keys(m.products).forEach(p => allProducts.add(p))
-                      })
-                      const products = Array.from(allProducts)
-                      const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
-                      
-                      return (
-                        <>
-                          <Box sx={{ 
-                            display: 'flex', 
-                            alignItems: 'flex-end', 
-                            gap: 2, 
-                            height: 200,
-                            pt: 2
-                          }}>
-                            {analytics.monthly_product_trends.map((trend, idx) => {
-                              const totalForMonth = Object.values(trend.products).reduce((a, b) => a + b, 0)
-                              const maxTotal = Math.max(...analytics.monthly_product_trends.map(t => 
-                                Object.values(t.products).reduce((a, b) => a + b, 0)
-                              ), 1)
-                              
-                              return (
-                                <Tooltip 
-                                  key={idx} 
-                                  title={
-                                    <Box>
-                                      <Typography variant="caption" sx={{ fontWeight: 600 }}>{trend.label}</Typography>
-                                      {products.map((product, pIdx) => (
-                                        <Typography key={pIdx} variant="caption" display="block">
-                                          {product}: {(trend.products[product] || 0).toLocaleString()} KT
-                                        </Typography>
-                                      ))}
-                                    </Box>
-                                  } 
-                                  arrow
-                                >
-                                  <Box sx={{ 
-                                    flex: 1, 
-                                    display: 'flex', 
-                                    flexDirection: 'column', 
-                                    alignItems: 'center',
-                                    height: '100%',
-                                    justifyContent: 'flex-end'
-                                  }}>
-                                    {/* Stacked bar */}
-                                    <Box sx={{ 
-                                      width: '100%', 
-                                      display: 'flex',
-                                      flexDirection: 'column-reverse',
-                                      height: `${Math.max((totalForMonth / maxTotal) * 100, 5)}%`,
-                                      minHeight: 4,
-                                      borderRadius: '4px 4px 0 0',
-                                      overflow: 'hidden'
-                                    }}>
-                                      {products.map((product, pIdx) => {
-                                        const qty = trend.products[product] || 0
-                                        const heightPercent = totalForMonth > 0 ? (qty / totalForMonth) * 100 : 0
-                                        return (
-                                          <Box 
-                                            key={pIdx}
-                                            sx={{ 
-                                              width: '100%', 
-                                              height: `${heightPercent}%`,
-                                              bgcolor: colors[pIdx % colors.length],
-                                              transition: 'height 0.5s ease-in-out'
-                                            }} 
-                                          />
-                                        )
-                                      })}
-                                    </Box>
-                                    <Typography 
-                                      variant="caption" 
-                                      sx={{ 
-                                        mt: 1, 
-                                        fontSize: '0.65rem',
-                                        color: 'text.secondary',
-                                      }}
-                                    >
-                                      {trend.label.split(' ')[0]}
-                                    </Typography>
-                                  </Box>
-                                </Tooltip>
-                              )
-                            })}
-                          </Box>
-                          {/* Legend */}
-                          <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #E5E7EB', display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                            {products.map((product, pIdx) => (
-                              <Box key={pIdx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <Box sx={{ width: 10, height: 10, bgcolor: colors[pIdx % colors.length], borderRadius: 0.5 }} />
-                                <Typography variant="caption" color="text.secondary">{product}</Typography>
-                              </Box>
-                            ))}
-                          </Box>
-                        </>
-                      )
-                    })()}
-                  </Box>
-                ) : (
-                  <Typography color="text.secondary">No monthly product trends available</Typography>
+                  <Typography color="text.secondary">No completed cargo data available</Typography>
                 )}
               </CardContent>
             </Card>
