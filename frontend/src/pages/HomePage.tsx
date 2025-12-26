@@ -4042,8 +4042,7 @@ export default function HomePage() {
                       value={cargoFormData.eta_discharge_port}
                       onChange={(e) => setCargoFormData({ ...cargoFormData, eta_discharge_port: e.target.value })}
                       fullWidth
-                      disabled={isCompletedCargo}
-                      sx={isCompletedCargo ? disabledStyle : {}}
+                      placeholder="Enter ETA to discharge port"
                     />
                   </Grid>
                   <Grid item xs={12} md={6}>
@@ -4052,8 +4051,7 @@ export default function HomePage() {
                       value={cargoFormData.discharge_port_location}
                       onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_port_location: e.target.value })}
                       fullWidth
-                      disabled={isCompletedCargo}
-                      sx={isCompletedCargo ? disabledStyle : {}}
+                      placeholder="Enter discharge port location"
                     />
                   </Grid>
                   {/* Only show 5-ND field for In-Road CIF cargos */}
