@@ -29,8 +29,10 @@ import {
   ListItemText,
   useMediaQuery,
   useTheme,
+  InputAdornment,
+  IconButton,
 } from '@mui/material'
-import { FileDownload, Search, Description } from '@mui/icons-material'
+import { FileDownload, Search, Description, Clear } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
 import { format } from 'date-fns'
 import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, quarterlyPlanAPI, documentsAPI } from '../api/client'
