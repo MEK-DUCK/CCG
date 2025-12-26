@@ -193,9 +193,13 @@ def get_monthly_plans_bulk(
                 raise HTTPException(status_code=400, detail=f"Invalid month: {m}")
         
         # Build query with eager loading of all related data
+        # Load both quarterly_plan->contract path AND direct contract for SPOT contracts
         query = db.query(models.MonthlyPlan).options(
             joinedload(models.MonthlyPlan.quarterly_plan)
             .joinedload(models.QuarterlyPlan.contract)
+            .joinedload(models.Contract.customer),
+            # Also load direct contract relationship for SPOT contracts
+            joinedload(models.MonthlyPlan.contract)
             .joinedload(models.Contract.customer)
         ).filter(
             models.MonthlyPlan.month.in_(month_list),

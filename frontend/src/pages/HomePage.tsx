@@ -169,7 +169,7 @@ export default function HomePage() {
               contract && contract.payment_method === 'LC' && cargo && cargo.lc_status ? cargo.lc_status : '-',
             Product:
               cargo ? cargo.product_name : (
-                monthlyPlan ? (quarterlyPlansMap.get(monthlyPlan.quarterly_plan_id)?.product_name || '-') : '-'
+                monthlyPlan ? getProductNameForMonthlyPlan(monthlyPlan) : '-'
               ),
             Quantity: cargo ? cargo.cargo_quantity : monthlyPlan ? monthlyPlan.month_quantity : '-',
             'Load Port': cargo ? cargo.load_ports || '-' : contract ? contract.allowed_load_ports || '-' : '-',
@@ -732,15 +732,30 @@ export default function HomePage() {
       }
     }
     
-    // Find the contract for this monthly plan through quarterly plan
-    const qpId = monthlyPlan.quarterly_plan_id || (monthlyPlan as any).quarterlyPlanId
-    const quarterlyPlan = quarterlyPlansMap.get(qpId)
-    if (!quarterlyPlan || !quarterlyPlan.contract) {
+    // Find the contract for this monthly plan
+    // For SPOT contracts: use direct contract_id
+    // For regular contracts: use quarterly_plan relationship
+    let contract: any = null
+    
+    if (monthlyPlan.contract) {
+      // SPOT contract - has direct contract object from bulk endpoint
+      contract = monthlyPlan.contract
+    } else if (monthlyPlan.contract_id) {
+      // SPOT contract - has direct contract_id, find in contracts list
+      contract = contracts.find(c => c.id === monthlyPlan.contract_id)
+    } else {
+      // Regular contract - find through quarterly plan
+      const qpId = monthlyPlan.quarterly_plan_id || (monthlyPlan as any).quarterlyPlanId
+      const quarterlyPlan = quarterlyPlansMap.get(qpId)
+      if (quarterlyPlan && quarterlyPlan.contract) {
+        contract = quarterlyPlan.contract
+      }
+    }
+    
+    if (!contract) {
       alert('Could not find contract for this monthly plan')
       return
     }
-
-    const contract = quarterlyPlan.contract
     
     // Get the first product from contract's products list (user will select which product when creating cargo)
     // For now, we'll use the first product, but ideally we should let user select
@@ -802,9 +817,29 @@ export default function HomePage() {
   }
 
   const getContractForMonthlyPlan = (monthlyPlan: MonthlyPlan & { quarterlyPlanId?: number }) => {
+    // SPOT contracts have direct contract object or contract_id
+    if (monthlyPlan.contract) {
+      return monthlyPlan.contract
+    }
+    if (monthlyPlan.contract_id) {
+      return contracts.find(c => c.id === monthlyPlan.contract_id)
+    }
+    // Regular contracts - find through quarterly plan
     const qpId = monthlyPlan.quarterly_plan_id || (monthlyPlan as any).quarterlyPlanId
     const quarterlyPlan = quarterlyPlansMap.get(qpId)
     return quarterlyPlan?.contract
+  }
+
+  // Get product name for a monthly plan (handles both SPOT and regular contracts)
+  const getProductNameForMonthlyPlan = (monthlyPlan: MonthlyPlan & { quarterlyPlanId?: number }): string => {
+    // SPOT contracts have product_name directly on the plan
+    if (monthlyPlan.product_name) {
+      return monthlyPlan.product_name
+    }
+    // Regular contracts - get from quarterly plan
+    const qpId = monthlyPlan.quarterly_plan_id || (monthlyPlan as any).quarterlyPlanId
+    const quarterlyPlan = quarterlyPlansMap.get(qpId)
+    return quarterlyPlan?.product_name || '-'
   }
 
   const handleCargoSubmit = async () => {
@@ -1117,11 +1152,8 @@ export default function HomePage() {
         
         // Create optimistic cargos for all plans
         const optimisticCargos: Cargo[] = plansToCreate.map((plan, index) => {
-          // Get product name from quarterly plan (MonthlyPlan doesn't have product_name directly)
-          // Try both quarterly_plan_id (from API) and quarterlyPlanId (added in loadData)
-          const qpId = plan.quarterly_plan_id || (plan as any).quarterlyPlanId
-          const qp = quarterlyPlansMap.get(qpId)
-          const productName = qp?.product_name || (plan as any).product_name || cargoProductName
+          // Get product name - SPOT contracts have it directly, regular contracts get from quarterly plan
+          const productName = getProductNameForMonthlyPlan(plan) || cargoProductName
           
           return {
             id: Date.now() + index,
@@ -1152,11 +1184,8 @@ export default function HomePage() {
           const createdCargos: Cargo[] = []
           
           for (const plan of plansToCreate) {
-            // Get product name from quarterly plan (MonthlyPlan doesn't have product_name directly)
-            // Try both quarterly_plan_id (from API) and quarterlyPlanId (added in loadData)
-            const qpId = plan.quarterly_plan_id || (plan as any).quarterlyPlanId
-            const qp = quarterlyPlansMap.get(qpId)
-            const productName = qp?.product_name || (plan as any).product_name || cargoProductName
+            // Get product name - SPOT contracts have it directly, regular contracts get from quarterly plan
+            const productName = getProductNameForMonthlyPlan(plan) || cargoProductName
             
           const payload: any = {
             customer_id: contract.customer_id,
@@ -2794,9 +2823,8 @@ export default function HomePage() {
                         ) : isCombi && combiMonthlyPlans ? (
                           <Box>
                             {combiMonthlyPlans.map((mp: MonthlyPlan) => {
-                              // Get product name from quarterly plan
-                              const qp = quarterlyPlansMap.get(mp.quarterly_plan_id)
-                              const productName = qp?.product_name || 'Unknown'
+                              // Get product name - SPOT contracts have it directly
+                              const productName = getProductNameForMonthlyPlan(mp)
                               return (
                                 <Typography key={mp.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
                                   {productName}: {mp.month_quantity} KT
@@ -2806,10 +2834,8 @@ export default function HomePage() {
                           </Box>
                         ) : (
                           cargo ? cargo.product_name : (
-                            // For non-combi monthly plans, get product from quarterly plan
-                            monthlyPlan ? (
-                              quarterlyPlansMap.get(monthlyPlan.quarterly_plan_id)?.product_name || '-'
-                            ) : '-'
+                            // For non-combi monthly plans
+                            monthlyPlan ? getProductNameForMonthlyPlan(monthlyPlan) : '-'
                           )
                         )}
                       </TableCell>
@@ -3635,9 +3661,7 @@ export default function HomePage() {
                         Combie Cargo Products:
                           </Typography>
                       {combiMonthlyPlansForCargo.map((mp) => {
-                        const qpId = mp.quarterly_plan_id || (mp as any).quarterlyPlanId
-                        const qp = quarterlyPlansMap.get(qpId)
-                        const productName = qp?.product_name || 'Unknown'
+                        const productName = getProductNameForMonthlyPlan(mp)
                         const topupQty = (mp as any).authority_topup_quantity || 0
                         const originalQty = mp.month_quantity - topupQty
                         return (

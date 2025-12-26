@@ -89,6 +89,7 @@ export interface MonthlyPlan {
   product_name?: string  // Product name for SPOT contracts
   quarterly_plan_id?: number  // Optional for SPOT contracts
   contract_id?: number  // Direct link for SPOT contracts
+  contract?: Contract  // Direct contract object for SPOT contracts (from bulk endpoint)
   created_at: string
   updated_at?: string
 }
