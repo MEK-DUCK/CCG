@@ -183,6 +183,7 @@ def seed_default_load_ports(db: Session = Depends(get_db)):
             {"code": "MAA", "name": "Mina Al Ahmadi", "country": "Kuwait", "description": "Main oil export terminal", "sort_order": 1},
             {"code": "MAB", "name": "Mina Abdullah", "country": "Kuwait", "description": "Secondary oil terminal", "sort_order": 2},
             {"code": "SHU", "name": "Shuaiba", "country": "Kuwait", "description": "Industrial port", "sort_order": 3},
+            {"code": "ZOR", "name": "Zour", "country": "Kuwait", "description": "Al Zour LNG terminal", "sort_order": 4},
         ]
         
         for p in default_ports:

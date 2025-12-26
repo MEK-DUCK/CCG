@@ -344,6 +344,7 @@ def ensure_schema():
                     ("MAA", "Mina Al Ahmadi", "Kuwait", "Main oil export terminal", 1),
                     ("MAB", "Mina Abdullah", "Kuwait", "Secondary oil terminal", 2),
                     ("SHU", "Shuaiba", "Kuwait", "Industrial port", 3),
+                    ("ZOR", "Zour", "Kuwait", "Al Zour LNG terminal", 4),
                 ]
                 for code, name, country, desc, order in default_ports:
                     conn.execute(text(
