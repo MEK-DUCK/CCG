@@ -386,6 +386,7 @@ export default function HomePage() {
   const [cargoDialogOpen, setCargoDialogOpen] = useState(false)
   const [editingCargo, setEditingCargo] = useState<Cargo | null>(null)
   const [cargoMonthlyPlanId, setCargoMonthlyPlanId] = useState<number | null>(null)
+  const [cargoMonthlyPlan, setCargoMonthlyPlan] = useState<MonthlyPlan | null>(null) // Fetched monthly plan for editing
   const [cargoContractId, setCargoContractId] = useState<number | null>(null)
   const [cargoContract, setCargoContract] = useState<Contract | null>(null)
   const [cargoProductName, setCargoProductName] = useState<string | null>(null)
@@ -606,6 +607,7 @@ export default function HomePage() {
   const handleEditCargo = async (cargo: Cargo) => {
     setEditingCargo(cargo)
     setCargoMonthlyPlanId(cargo.monthly_plan_id)
+    setCargoMonthlyPlan(null) // Reset before fetching
     setNewCargoMonthlyPlanId(cargo.monthly_plan_id) // Initialize for potential move
     setCargoContractId(cargo.contract_id)
     setCargoProductName(cargo.product_name)
@@ -616,6 +618,7 @@ export default function HomePage() {
     try {
       const monthlyPlanRes = await monthlyPlanAPI.getById(cargo.monthly_plan_id)
       const monthlyPlan = monthlyPlanRes.data
+      setCargoMonthlyPlan(monthlyPlan) // Store the fetched monthly plan
       
       // Get laycan window from monthly plan:
       // - CIF: use loading_window
@@ -786,6 +789,7 @@ export default function HomePage() {
     setEditingCargo(null)
     // Store monthly plan ID, contract ID, contract object, and product name in separate state
     setCargoMonthlyPlanId(monthlyPlan.id)
+    setCargoMonthlyPlan(monthlyPlan) // Store the monthly plan for dialog display
     setCargoContractId(contract.id)
     setCargoContract(contract)
     setCargoProductName(defaultProductName)
@@ -3731,8 +3735,7 @@ export default function HomePage() {
                         Product:
                       </Typography>
                       {(() => {
-                        const mp = monthlyPlans.find(m => m.id === cargoMonthlyPlanId)
-                        const topupQty = (mp as any)?.authority_topup_quantity || 0
+                        const topupQty = (cargoMonthlyPlan as any)?.authority_topup_quantity || 0
                         const totalQty = parseFloat(cargoFormData.cargo_quantity) || 0
                         const originalQty = totalQty - topupQty
                         return (
@@ -3958,10 +3961,7 @@ export default function HomePage() {
                   <Grid item xs={12} md={6}>
                     <TextField
                       label="Delivery Window (from Monthly Plan)"
-                      value={(() => {
-                        const mp = monthlyPlans.find(m => m.id === cargoMonthlyPlanId)
-                        return mp?.delivery_window || '-'
-                      })()}
+                      value={cargoMonthlyPlan?.delivery_window || '-'}
                       fullWidth
                       disabled
                       sx={{
