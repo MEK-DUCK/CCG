@@ -20,28 +20,38 @@ interface QuarterlyPlanFormProps {
   onCancel?: () => void
 }
 
-// Determine quarter order based on contract start month
-const getQuarterOrder = (startMonth: number): ('Q1' | 'Q2' | 'Q3' | 'Q4')[] => {
-  if (startMonth >= 1 && startMonth <= 3) {
-    return ['Q1', 'Q2', 'Q3', 'Q4']
-  } else if (startMonth >= 4 && startMonth <= 6) {
-    return ['Q2', 'Q3', 'Q4', 'Q1']
-  } else if (startMonth >= 7 && startMonth <= 9) {
-    return ['Q3', 'Q4', 'Q1', 'Q2']
-  } else {
-    return ['Q4', 'Q1', 'Q2', 'Q3']
-  }
+// Month names for display
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// Quarters are always in order Q1-Q4, but their calendar months are determined by fiscal_start_month
+// This function is kept for backward compatibility but no longer reorders quarters
+const getQuarterOrder = (_startMonth: number): ('Q1' | 'Q2' | 'Q3' | 'Q4')[] => {
+  return ['Q1', 'Q2', 'Q3', 'Q4']
 }
 
-// Get quarter label with months
-const getQuarterLabel = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): string => {
-  const labels: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', string> = {
-    Q1: 'Jan-Mar',
-    Q2: 'Apr-Jun',
-    Q3: 'Jul-Sep',
-    Q4: 'Oct-Dec',
-  }
-  return labels[quarter]
+// Get the month range for a quarter based on fiscal start month
+const getQuarterMonths = (fiscalStartMonth: number, quarter: number): { months: [number, number, number], label: string } => {
+  // Calculate the first month of this quarter
+  const baseMonth = fiscalStartMonth + (quarter - 1) * 3
+  const month1 = ((baseMonth - 1) % 12) + 1
+  const month2 = (baseMonth % 12) + 1
+  const month3 = ((baseMonth + 1) % 12) + 1
+  
+  const label = `${MONTH_NAMES[month1 - 1]}-${MONTH_NAMES[month3 - 1]}`
+  return { months: [month1, month2, month3], label }
+}
+
+// Get quarter label with actual months based on fiscal year
+const getQuarterLabel = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', fiscalStartMonth: number = 1): string => {
+  const quarterNum = parseInt(quarter.replace('Q', ''))
+  const { label } = getQuarterMonths(fiscalStartMonth, quarterNum)
+  return label
+}
+
+// Get display label for quarter (e.g., "Q1 (Jul-Sep)")
+const getQuarterDisplayLabel = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', fiscalStartMonth: number = 1): string => {
+  const monthLabel = getQuarterLabel(quarter, fiscalStartMonth)
+  return `${quarter} (${monthLabel})`
 }
 
 interface ProductPlanData {
@@ -61,12 +71,14 @@ interface ProductPlanData {
 }
 
 export default function QuarterlyPlanForm({ contractId, contract, existingPlans = [], onPlanCreated, onCancel }: QuarterlyPlanFormProps) {
-  const [quarterOrder, setQuarterOrder] = useState<('Q1' | 'Q2' | 'Q3' | 'Q4')[]>(['Q1', 'Q2', 'Q3', 'Q4'])
   const [contractData, setContractData] = useState<any>(contract)
   const [productPlans, setProductPlans] = useState<ProductPlanData[]>([])
   const [isSaving, setIsSaving] = useState(false)
+  
+  // Get fiscal start month from contract, default to 1 (January)
+  const fiscalStartMonth = contractData?.fiscal_start_month || 1
 
-  // Load contract and determine quarter order
+  // Load contract
   useEffect(() => {
     const loadContract = async () => {
       let contractToUse = contract
@@ -80,13 +92,6 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
         }
       } else {
         setContractData(contractToUse)
-      }
-
-      if (contractToUse && contractToUse.start_period) {
-        const startDate = new Date(contractToUse.start_period)
-        const startMonth = startDate.getMonth() + 1
-        const order = getQuarterOrder(startMonth)
-        setQuarterOrder(order)
       }
     }
     loadContract()
@@ -383,7 +388,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
 
                   {/* Quarter Inputs */}
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {quarterOrder.map((quarter) => {
+                    {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map((quarter) => {
                       const fieldKey = `q${['Q1', 'Q2', 'Q3', 'Q4'].indexOf(quarter) + 1}` as 'q1' | 'q2' | 'q3' | 'q4'
                       const topupKey = `${fieldKey}_topup` as 'q1_topup' | 'q2_topup' | 'q3_topup' | 'q4_topup'
                       const topupQty = plan[topupKey] || 0
@@ -393,7 +398,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                       return (
                         <Box key={quarter}>
                         <TextField
-                          label={`${quarter} (${getQuarterLabel(quarter)})`}
+                          label={getQuarterDisplayLabel(quarter, fiscalStartMonth)}
                           type="number"
                           size="small"
                           value={plan[fieldKey]}
