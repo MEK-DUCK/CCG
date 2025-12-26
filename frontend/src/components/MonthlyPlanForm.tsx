@@ -1535,7 +1535,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                 <>
                                 <TextField
                                   label={!isMultiProduct 
-                                      ? `${getMonthName(month)} ${year}${entries.length > 1 ? ` (${entryIndex + 1})` : ''} *`
+                                      ? `${getMonthName(month)} ${year}${entries.length > 1 ? ` (${entryIndex + 1})` : ''}`
                                     : 'Quantity (KT)'
                                   }
                                   type="number"
