@@ -309,6 +309,90 @@ def ensure_schema():
                     ), {"code": code, "name": name, "desc": desc, "active": True, "order": order})
                 logger.info("Seeded default products")
         
+        # Create load_ports table if not exists (for admin-managed port configuration)
+        if not insp.has_table("load_ports"):
+            with engine.begin() as conn:
+                conn.execute(text('''
+                    CREATE TABLE load_ports (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        code VARCHAR(10) UNIQUE NOT NULL,
+                        name VARCHAR(100) UNIQUE NOT NULL,
+                        country VARCHAR(50),
+                        description VARCHAR(255),
+                        is_active BOOLEAN DEFAULT 1,
+                        sort_order INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP
+                    )
+                ''' if dialect == "sqlite" else '''
+                    CREATE TABLE IF NOT EXISTS load_ports (
+                        id SERIAL PRIMARY KEY,
+                        code VARCHAR(10) UNIQUE NOT NULL,
+                        name VARCHAR(100) UNIQUE NOT NULL,
+                        country VARCHAR(50),
+                        description VARCHAR(255),
+                        is_active BOOLEAN DEFAULT TRUE,
+                        sort_order INTEGER DEFAULT 0,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE
+                    )
+                '''))
+                logger.info("Created load_ports table")
+                
+                # Seed default load ports
+                default_ports = [
+                    ("MAA", "Mina Al Ahmadi", "Kuwait", "Main oil export terminal", 1),
+                    ("MAB", "Mina Abdullah", "Kuwait", "Secondary oil terminal", 2),
+                    ("SHU", "Shuaiba", "Kuwait", "Industrial port", 3),
+                ]
+                for code, name, country, desc, order in default_ports:
+                    conn.execute(text(
+                        "INSERT INTO load_ports (code, name, country, description, is_active, sort_order) VALUES (:code, :name, :country, :desc, :active, :order)"
+                    ), {"code": code, "name": name, "country": country, "desc": desc, "active": True, "order": order})
+                logger.info("Seeded default load ports")
+        
+        # Create inspectors table if not exists (for admin-managed inspector configuration)
+        if not insp.has_table("inspectors"):
+            with engine.begin() as conn:
+                conn.execute(text('''
+                    CREATE TABLE inspectors (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        code VARCHAR(20) UNIQUE NOT NULL,
+                        name VARCHAR(100) UNIQUE NOT NULL,
+                        description VARCHAR(255),
+                        is_active BOOLEAN DEFAULT 1,
+                        sort_order INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP
+                    )
+                ''' if dialect == "sqlite" else '''
+                    CREATE TABLE IF NOT EXISTS inspectors (
+                        id SERIAL PRIMARY KEY,
+                        code VARCHAR(20) UNIQUE NOT NULL,
+                        name VARCHAR(100) UNIQUE NOT NULL,
+                        description VARCHAR(255),
+                        is_active BOOLEAN DEFAULT TRUE,
+                        sort_order INTEGER DEFAULT 0,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE
+                    )
+                '''))
+                logger.info("Created inspectors table")
+                
+                # Seed default inspectors
+                default_inspectors = [
+                    ("SGS", "SGS", "SGS SA - Global inspection company", 1),
+                    ("INTERTEK", "Intertek", "Intertek Group plc", 2),
+                    ("SAYBOLT", "Saybolt", "Core Laboratories - Saybolt", 3),
+                    ("BUREAU", "Bureau Veritas", "Bureau Veritas SA", 4),
+                    ("AMSPEC", "AmSpec", "AmSpec LLC", 5),
+                ]
+                for code, name, desc, order in default_inspectors:
+                    conn.execute(text(
+                        "INSERT INTO inspectors (code, name, description, is_active, sort_order) VALUES (:code, :name, :desc, :active, :order)"
+                    ), {"code": code, "name": name, "desc": desc, "active": True, "order": order})
+                logger.info("Seeded default inspectors")
+        
         # Create contract_audit_logs table if not exists
         if not insp.has_table("contract_audit_logs"):
             with engine.begin() as conn:

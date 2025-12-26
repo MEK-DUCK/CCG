@@ -71,6 +71,41 @@ class Product(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class LoadPort(Base):
+    """
+    Load port configuration - defines available loading ports.
+    Admin can add/edit/delete ports through the admin interface.
+    """
+    __tablename__ = "load_ports"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(10), unique=True, nullable=False, index=True)  # Short code e.g., "MAA"
+    name = Column(String(100), unique=True, nullable=False)  # Full name e.g., "Mina Al Ahmadi"
+    country = Column(String(50), nullable=True)  # Country name
+    description = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class Inspector(Base):
+    """
+    Inspector/Surveyor configuration - defines available inspection companies.
+    Admin can add/edit/delete inspectors through the admin interface.
+    """
+    __tablename__ = "inspectors"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(20), unique=True, nullable=False, index=True)  # Short code e.g., "SGS"
+    name = Column(String(100), unique=True, nullable=False)  # Full name e.g., "SGS SA"
+    description = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 # =============================================================================
 # CORE MODELS
 # =============================================================================

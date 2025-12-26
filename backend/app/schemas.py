@@ -30,6 +30,62 @@ class Product(ProductBase):
         from_attributes = True
 
 
+# Load Port Schemas (for admin-managed port configuration)
+class LoadPortBase(BaseModel):
+    code: str = Field(..., min_length=1, max_length=10, description="Short code e.g., MAA")
+    name: str = Field(..., min_length=1, max_length=100, description="Full name e.g., Mina Al Ahmadi")
+    country: Optional[str] = Field(None, max_length=50)
+    description: Optional[str] = Field(None, max_length=255)
+    is_active: bool = Field(True, description="Whether port is available for selection")
+    sort_order: int = Field(0, ge=0, description="Display order in dropdowns")
+
+class LoadPortCreate(LoadPortBase):
+    pass
+
+class LoadPortUpdate(BaseModel):
+    code: Optional[str] = Field(None, min_length=1, max_length=10)
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    country: Optional[str] = Field(None, max_length=50)
+    description: Optional[str] = Field(None, max_length=255)
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+
+class LoadPort(LoadPortBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+# Inspector Schemas (for admin-managed inspector configuration)
+class InspectorBase(BaseModel):
+    code: str = Field(..., min_length=1, max_length=20, description="Short code e.g., SGS")
+    name: str = Field(..., min_length=1, max_length=100, description="Full name e.g., SGS SA")
+    description: Optional[str] = Field(None, max_length=255)
+    is_active: bool = Field(True, description="Whether inspector is available for selection")
+    sort_order: int = Field(0, ge=0, description="Display order in dropdowns")
+
+class InspectorCreate(InspectorBase):
+    pass
+
+class InspectorUpdate(BaseModel):
+    code: Optional[str] = Field(None, min_length=1, max_length=20)
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=255)
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+
+class Inspector(InspectorBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
 # Customer Schemas
 class CustomerBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)

@@ -120,6 +120,29 @@ interface Product {
   updated_at?: string
 }
 
+interface LoadPort {
+  id: number
+  code: string
+  name: string
+  country?: string
+  description?: string
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at?: string
+}
+
+interface Inspector {
+  id: number
+  code: string
+  name: string
+  description?: string
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at?: string
+}
+
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -134,6 +157,8 @@ export default function AdminPage() {
   const [cargos, setCargos] = useState<any[]>([])
   const [customers, setCustomers] = useState<any[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [loadPorts, setLoadPorts] = useState<LoadPort[]>([])
+  const [inspectors, setInspectors] = useState<Inspector[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
   const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[]>([])
   const [integrityStats, setIntegrityStats] = useState<any>(null)
@@ -158,6 +183,29 @@ export default function AdminPage() {
     editing: null
   })
   const [productForm, setProductForm] = useState({
+    code: '',
+    name: '',
+    description: '',
+    is_active: true,
+    sort_order: 0
+  })
+  const [loadPortDialog, setLoadPortDialog] = useState<{ open: boolean; editing: LoadPort | null }>({
+    open: false,
+    editing: null
+  })
+  const [loadPortForm, setLoadPortForm] = useState({
+    code: '',
+    name: '',
+    country: '',
+    description: '',
+    is_active: true,
+    sort_order: 0
+  })
+  const [inspectorDialog, setInspectorDialog] = useState<{ open: boolean; editing: Inspector | null }>({
+    open: false,
+    editing: null
+  })
+  const [inspectorForm, setInspectorForm] = useState({
     code: '',
     name: '',
     description: '',
@@ -239,6 +287,24 @@ export default function AdminPage() {
     }
   }, [])
 
+  const fetchLoadPorts = useCallback(async () => {
+    try {
+      const response = await client.get('/api/load-ports?include_inactive=true')
+      setLoadPorts(response.data)
+    } catch (err: any) {
+      console.error('Error fetching load ports:', err)
+    }
+  }, [])
+
+  const fetchInspectors = useCallback(async () => {
+    try {
+      const response = await client.get('/api/inspectors?include_inactive=true')
+      setInspectors(response.data)
+    } catch (err: any) {
+      console.error('Error fetching inspectors:', err)
+    }
+  }, [])
+
   const fetchAuditLogs = useCallback(async () => {
     try {
       const params = logTypeFilter !== 'all' ? { log_type: logTypeFilter } : {}
@@ -271,6 +337,8 @@ export default function AdminPage() {
         fetchCargos(),
         fetchCustomers(),
         fetchProducts(),
+        fetchLoadPorts(),
+        fetchInspectors(),
         fetchAuditLogs(),
         fetchIntegrityCheck()
       ])
@@ -432,6 +500,150 @@ export default function AdminPage() {
       await fetchProducts()
     } catch (err: any) {
       setError(`Failed to update product: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Load Port handlers
+  const handleOpenLoadPortDialog = (port?: LoadPort) => {
+    if (port) {
+      setLoadPortForm({
+        code: port.code,
+        name: port.name,
+        country: port.country || '',
+        description: port.description || '',
+        is_active: port.is_active,
+        sort_order: port.sort_order
+      })
+      setLoadPortDialog({ open: true, editing: port })
+    } else {
+      setLoadPortForm({
+        code: '',
+        name: '',
+        country: '',
+        description: '',
+        is_active: true,
+        sort_order: loadPorts.length + 1
+      })
+      setLoadPortDialog({ open: true, editing: null })
+    }
+  }
+
+  const handleSaveLoadPort = async () => {
+    setLoading(true)
+    try {
+      if (loadPortDialog.editing) {
+        await client.put(`/api/load-ports/${loadPortDialog.editing.id}`, loadPortForm)
+        setSuccess('Load port updated successfully')
+      } else {
+        await client.post('/api/load-ports', loadPortForm)
+        setSuccess('Load port created successfully')
+      }
+      setLoadPortDialog({ open: false, editing: null })
+      await fetchLoadPorts()
+    } catch (err: any) {
+      setError(`Failed to save load port: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteLoadPort = async (port: LoadPort) => {
+    if (!confirm(`Are you sure you want to delete "${port.name}"? This cannot be undone.`)) {
+      return
+    }
+    setLoading(true)
+    try {
+      await client.delete(`/api/load-ports/${port.id}`)
+      setSuccess('Load port deleted successfully')
+      await fetchLoadPorts()
+    } catch (err: any) {
+      setError(`Failed to delete load port: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleToggleLoadPortActive = async (port: LoadPort) => {
+    setLoading(true)
+    try {
+      await client.put(`/api/load-ports/${port.id}`, { is_active: !port.is_active })
+      setSuccess(`Load port ${port.is_active ? 'deactivated' : 'activated'} successfully`)
+      await fetchLoadPorts()
+    } catch (err: any) {
+      setError(`Failed to update load port: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Inspector handlers
+  const handleOpenInspectorDialog = (inspector?: Inspector) => {
+    if (inspector) {
+      setInspectorForm({
+        code: inspector.code,
+        name: inspector.name,
+        description: inspector.description || '',
+        is_active: inspector.is_active,
+        sort_order: inspector.sort_order
+      })
+      setInspectorDialog({ open: true, editing: inspector })
+    } else {
+      setInspectorForm({
+        code: '',
+        name: '',
+        description: '',
+        is_active: true,
+        sort_order: inspectors.length + 1
+      })
+      setInspectorDialog({ open: true, editing: null })
+    }
+  }
+
+  const handleSaveInspector = async () => {
+    setLoading(true)
+    try {
+      if (inspectorDialog.editing) {
+        await client.put(`/api/inspectors/${inspectorDialog.editing.id}`, inspectorForm)
+        setSuccess('Inspector updated successfully')
+      } else {
+        await client.post('/api/inspectors', inspectorForm)
+        setSuccess('Inspector created successfully')
+      }
+      setInspectorDialog({ open: false, editing: null })
+      await fetchInspectors()
+    } catch (err: any) {
+      setError(`Failed to save inspector: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteInspector = async (inspector: Inspector) => {
+    if (!confirm(`Are you sure you want to delete "${inspector.name}"? This cannot be undone.`)) {
+      return
+    }
+    setLoading(true)
+    try {
+      await client.delete(`/api/inspectors/${inspector.id}`)
+      setSuccess('Inspector deleted successfully')
+      await fetchInspectors()
+    } catch (err: any) {
+      setError(`Failed to delete inspector: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleToggleInspectorActive = async (inspector: Inspector) => {
+    setLoading(true)
+    try {
+      await client.put(`/api/inspectors/${inspector.id}`, { is_active: !inspector.is_active })
+      setSuccess(`Inspector ${inspector.is_active ? 'deactivated' : 'activated'} successfully`)
+      await fetchInspectors()
+    } catch (err: any) {
+      setError(`Failed to update inspector: ${err.response?.data?.detail || err.message}`)
     } finally {
       setLoading(false)
     }
@@ -1282,6 +1494,415 @@ export default function AdminPage() {
     </Box>
   )
 
+  const renderLoadPortsTable = () => (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">
+          Load Ports Configuration ({loadPorts.length} total)
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={() => handleOpenLoadPortDialog()}
+          sx={{ bgcolor: '#0EA5E9', '&:hover': { bgcolor: '#0284C7' } }}
+        >
+          Add Load Port
+        </Button>
+      </Box>
+      
+      <Alert severity="info" sx={{ mb: 2 }}>
+        <Typography variant="body2">
+          Load ports defined here will be available for selection when creating cargos.
+          Deactivated ports won't appear in dropdowns but existing data using them will remain intact.
+        </Typography>
+      </Alert>
+
+      <TableContainer component={Paper}>
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+              <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Code</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Country</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loadPorts.map((port) => (
+              <TableRow 
+                key={port.id} 
+                hover
+                sx={{ 
+                  bgcolor: port.is_active ? 'white' : '#F8FAFC',
+                  opacity: port.is_active ? 1 : 0.7
+                }}
+              >
+                <TableCell>{port.sort_order}</TableCell>
+                <TableCell>
+                  <Chip 
+                    label={port.code} 
+                    size="small" 
+                    sx={{ 
+                      fontFamily: 'monospace', 
+                      fontWeight: 600,
+                      bgcolor: '#E0F2FE',
+                      color: '#0369A1'
+                    }} 
+                  />
+                </TableCell>
+                <TableCell sx={{ fontWeight: 500 }}>{port.name}</TableCell>
+                <TableCell>{port.country || '-'}</TableCell>
+                <TableCell sx={{ color: 'text.secondary', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {port.description || '-'}
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={port.is_active ? 'Active' : 'Inactive'}
+                    size="small"
+                    color={port.is_active ? 'success' : 'default'}
+                    onClick={() => handleToggleLoadPortActive(port)}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                </TableCell>
+                <TableCell align="right">
+                  <Tooltip title="Edit">
+                    <IconButton size="small" onClick={() => handleOpenLoadPortDialog(port)}>
+                      <Edit fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete">
+                    <IconButton size="small" color="error" onClick={() => handleDeleteLoadPort(port)}>
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            ))}
+            {loadPorts.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                  <Typography color="text.secondary">No load ports configured</Typography>
+                  <Button 
+                    variant="outlined" 
+                    size="small" 
+                    sx={{ mt: 1 }}
+                    onClick={async () => {
+                      try {
+                        await client.post('/api/load-ports/seed-defaults')
+                        setSuccess('Default load ports seeded successfully')
+                        await fetchLoadPorts()
+                      } catch (err: any) {
+                        setError(`Failed to seed load ports: ${err.response?.data?.detail || err.message}`)
+                      }
+                    }}
+                  >
+                    Seed Default Load Ports
+                  </Button>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Load Port Edit/Create Dialog */}
+      <Dialog
+        open={loadPortDialog.open}
+        onClose={() => setLoadPortDialog({ open: false, editing: null })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {loadPortDialog.editing ? 'Edit Load Port' : 'Add New Load Port'}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Port Code"
+                value={loadPortForm.code}
+                onChange={(e) => setLoadPortForm({ ...loadPortForm, code: e.target.value.toUpperCase() })}
+                helperText="Short identifier (e.g., MAA)"
+                required
+                inputProps={{ maxLength: 10 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Sort Order"
+                type="number"
+                value={loadPortForm.sort_order}
+                onChange={(e) => setLoadPortForm({ ...loadPortForm, sort_order: parseInt(e.target.value) || 0 })}
+                helperText="Display order in lists"
+              />
+            </Grid>
+            <Grid item xs={12} sm={8}>
+              <TextField
+                fullWidth
+                label="Port Name"
+                value={loadPortForm.name}
+                onChange={(e) => setLoadPortForm({ ...loadPortForm, name: e.target.value })}
+                helperText="Full name (e.g., Mina Al Ahmadi)"
+                required
+                inputProps={{ maxLength: 100 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                label="Country"
+                value={loadPortForm.country}
+                onChange={(e) => setLoadPortForm({ ...loadPortForm, country: e.target.value })}
+                inputProps={{ maxLength: 50 }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Description"
+                value={loadPortForm.description}
+                onChange={(e) => setLoadPortForm({ ...loadPortForm, description: e.target.value })}
+                helperText="Optional description"
+                multiline
+                rows={2}
+                inputProps={{ maxLength: 255 }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={loadPortForm.is_active ? 'active' : 'inactive'}
+                  label="Status"
+                  onChange={(e) => setLoadPortForm({ ...loadPortForm, is_active: e.target.value === 'active' })}
+                >
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="inactive">Inactive</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLoadPortDialog({ open: false, editing: null })}>
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSaveLoadPort} 
+            disabled={loading || !loadPortForm.code || !loadPortForm.name}
+          >
+            {loadPortDialog.editing ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+
+  const renderInspectorsTable = () => (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">
+          Inspectors Configuration ({inspectors.length} total)
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={() => handleOpenInspectorDialog()}
+          sx={{ bgcolor: '#F59E0B', '&:hover': { bgcolor: '#D97706' } }}
+        >
+          Add Inspector
+        </Button>
+      </Box>
+      
+      <Alert severity="info" sx={{ mb: 2 }}>
+        <Typography variant="body2">
+          Inspectors defined here will be available for selection when creating cargos.
+          Deactivated inspectors won't appear in dropdowns but existing data using them will remain intact.
+        </Typography>
+      </Alert>
+
+      <TableContainer component={Paper}>
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+              <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Code</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {inspectors.map((inspector) => (
+              <TableRow 
+                key={inspector.id} 
+                hover
+                sx={{ 
+                  bgcolor: inspector.is_active ? 'white' : '#F8FAFC',
+                  opacity: inspector.is_active ? 1 : 0.7
+                }}
+              >
+                <TableCell>{inspector.sort_order}</TableCell>
+                <TableCell>
+                  <Chip 
+                    label={inspector.code} 
+                    size="small" 
+                    sx={{ 
+                      fontFamily: 'monospace', 
+                      fontWeight: 600,
+                      bgcolor: '#FEF3C7',
+                      color: '#92400E'
+                    }} 
+                  />
+                </TableCell>
+                <TableCell sx={{ fontWeight: 500 }}>{inspector.name}</TableCell>
+                <TableCell sx={{ color: 'text.secondary', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {inspector.description || '-'}
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={inspector.is_active ? 'Active' : 'Inactive'}
+                    size="small"
+                    color={inspector.is_active ? 'success' : 'default'}
+                    onClick={() => handleToggleInspectorActive(inspector)}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                </TableCell>
+                <TableCell align="right">
+                  <Tooltip title="Edit">
+                    <IconButton size="small" onClick={() => handleOpenInspectorDialog(inspector)}>
+                      <Edit fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete">
+                    <IconButton size="small" color="error" onClick={() => handleDeleteInspector(inspector)}>
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            ))}
+            {inspectors.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                  <Typography color="text.secondary">No inspectors configured</Typography>
+                  <Button 
+                    variant="outlined" 
+                    size="small" 
+                    sx={{ mt: 1 }}
+                    onClick={async () => {
+                      try {
+                        await client.post('/api/inspectors/seed-defaults')
+                        setSuccess('Default inspectors seeded successfully')
+                        await fetchInspectors()
+                      } catch (err: any) {
+                        setError(`Failed to seed inspectors: ${err.response?.data?.detail || err.message}`)
+                      }
+                    }}
+                  >
+                    Seed Default Inspectors
+                  </Button>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Inspector Edit/Create Dialog */}
+      <Dialog
+        open={inspectorDialog.open}
+        onClose={() => setInspectorDialog({ open: false, editing: null })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {inspectorDialog.editing ? 'Edit Inspector' : 'Add New Inspector'}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Inspector Code"
+                value={inspectorForm.code}
+                onChange={(e) => setInspectorForm({ ...inspectorForm, code: e.target.value.toUpperCase() })}
+                helperText="Short identifier (e.g., SGS)"
+                required
+                inputProps={{ maxLength: 20 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Sort Order"
+                type="number"
+                value={inspectorForm.sort_order}
+                onChange={(e) => setInspectorForm({ ...inspectorForm, sort_order: parseInt(e.target.value) || 0 })}
+                helperText="Display order in lists"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Inspector Name"
+                value={inspectorForm.name}
+                onChange={(e) => setInspectorForm({ ...inspectorForm, name: e.target.value })}
+                helperText="Full name (e.g., SGS SA)"
+                required
+                inputProps={{ maxLength: 100 }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Description"
+                value={inspectorForm.description}
+                onChange={(e) => setInspectorForm({ ...inspectorForm, description: e.target.value })}
+                helperText="Optional description"
+                multiline
+                rows={2}
+                inputProps={{ maxLength: 255 }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={inspectorForm.is_active ? 'active' : 'inactive'}
+                  label="Status"
+                  onChange={(e) => setInspectorForm({ ...inspectorForm, is_active: e.target.value === 'active' })}
+                >
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="inactive">Inactive</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setInspectorDialog({ open: false, editing: null })}>
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSaveInspector} 
+            disabled={loading || !inspectorForm.code || !inspectorForm.name}
+          >
+            {inspectorDialog.editing ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+
   return (
     <Box>
       {/* Header */}
@@ -1337,6 +1958,8 @@ export default function AdminPage() {
         >
           <Tab label="Overview" icon={<Storage />} iconPosition="start" />
           <Tab label="Products" icon={<Inventory />} iconPosition="start" />
+          <Tab label="Load Ports" icon={<LocalShipping />} iconPosition="start" />
+          <Tab label="Inspectors" icon={<People />} iconPosition="start" />
           <Tab label="Customers" icon={<People />} iconPosition="start" />
           <Tab label="Contracts" icon={<Description />} iconPosition="start" />
           <Tab label="Quarterly Plans" icon={<CalendarMonth />} iconPosition="start" />
@@ -1351,13 +1974,15 @@ export default function AdminPage() {
       <Box>
         {activeTab === 0 && renderOverview()}
         {activeTab === 1 && renderProductsTable()}
-        {activeTab === 2 && renderCustomersTable()}
-        {activeTab === 3 && renderContractsTable()}
-        {activeTab === 4 && renderQuarterlyPlansTable()}
-        {activeTab === 5 && renderMonthlyPlansTable()}
-        {activeTab === 6 && renderCargosTable()}
-        {activeTab === 7 && renderAuditLogs()}
-        {activeTab === 8 && renderIntegrityCheck()}
+        {activeTab === 2 && renderLoadPortsTable()}
+        {activeTab === 3 && renderInspectorsTable()}
+        {activeTab === 4 && renderCustomersTable()}
+        {activeTab === 5 && renderContractsTable()}
+        {activeTab === 6 && renderQuarterlyPlansTable()}
+        {activeTab === 7 && renderMonthlyPlansTable()}
+        {activeTab === 8 && renderCargosTable()}
+        {activeTab === 9 && renderAuditLogs()}
+        {activeTab === 10 && renderIntegrityCheck()}
       </Box>
 
       {/* Edit Dialog */}

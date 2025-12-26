@@ -33,7 +33,7 @@ import {
 import { FileDownload, Search, Description } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
 import { format } from 'date-fns'
-import { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, quarterlyPlanAPI, documentsAPI } from '../api/client'
+import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, quarterlyPlanAPI, documentsAPI } from '../api/client'
 import type { Cargo, Customer, Contract, MonthlyPlan, CargoStatus, ContractProduct, LCStatus, CargoPortOperation, PortOperationStatus } from '../types'
 import { parseLaycanDate } from '../utils/laycanParser'
 import { getLaycanAlertSeverity, getAlertColor, getAlertMessage } from '../utils/alertUtils'
@@ -107,8 +107,13 @@ export default function HomePage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
-  const LOAD_PORT_OPTIONS = ['MAA', 'MAB', 'SHU', 'ZOR'] as const
-  const PORT_SECTIONS = ['MAA', 'MAB', 'SHU', 'ZOR'] as const
+  // Dynamic load ports and inspectors from API
+  const [loadPortOptions, setLoadPortOptions] = useState<string[]>(['MAA', 'MAB', 'SHU'])
+  const [inspectorOptions, setInspectorOptions] = useState<string[]>(['SGS', 'Intertek', 'Saybolt'])
+  
+  // Fallback constants for port sections (used for display grouping)
+  const DEFAULT_LOAD_PORTS = ['MAA', 'MAB', 'SHU'] as const
+  const PORT_SECTIONS = loadPortOptions.length > 0 ? loadPortOptions : [...DEFAULT_LOAD_PORTS]
   const PORT_OP_STATUSES: PortOperationStatus[] = ['Planned', 'Loading', 'Completed Loading']
 
   const parseLoadPorts = (value: unknown): string[] => {
@@ -489,13 +494,15 @@ export default function HomePage() {
   const loadData = async () => {
     try {
       setLoading(true)
-      // Load customers and contracts in parallel - they're independent
-      const [customersRes, contractsRes, completedRes, inRoadRes, completedInRoadRes] = await Promise.all([
+      // Load customers, contracts, and config data in parallel - they're independent
+      const [customersRes, contractsRes, completedRes, inRoadRes, completedInRoadRes, loadPortsRes, inspectorsRes] = await Promise.all([
         customerAPI.getAll().catch(() => ({ data: [] })),
         contractAPI.getAll().catch(() => ({ data: [] })),
         cargoAPI.getCompletedCargos(completedMonth || undefined, completedYear || undefined).catch(() => ({ data: [] })),
         cargoAPI.getInRoadCIF().catch(() => ({ data: [] })),
         cargoAPI.getCompletedInRoadCIF().catch(() => ({ data: [] })),
+        client.get('/api/load-ports/codes').catch(() => ({ data: ['MAA', 'MAB', 'SHU'] })),
+        client.get('/api/inspectors/names').catch(() => ({ data: ['SGS', 'Intertek', 'Saybolt'] })),
       ])
       
       setCustomers(customersRes.data || [])
@@ -503,6 +510,14 @@ export default function HomePage() {
       setCompletedCargos(completedRes.data || [])
       setInRoadCIF(inRoadRes.data || [])
       setCompletedInRoadCIF(completedInRoadRes.data || [])
+      
+      // Update dynamic options
+      if (loadPortsRes.data && loadPortsRes.data.length > 0) {
+        setLoadPortOptions(loadPortsRes.data)
+      }
+      if (inspectorsRes.data && inspectorsRes.data.length > 0) {
+        setInspectorOptions(inspectorsRes.data)
+      }
     } catch (error: any) {
       console.error('Error loading data:', error)
     } finally {
@@ -745,8 +760,8 @@ export default function HomePage() {
       contract = contracts.find(c => c.id === monthlyPlan.contract_id)
     } else {
       // Regular contract - find through quarterly plan
-      const qpId = monthlyPlan.quarterly_plan_id || (monthlyPlan as any).quarterlyPlanId
-      const quarterlyPlan = quarterlyPlansMap.get(qpId)
+    const qpId = monthlyPlan.quarterly_plan_id || (monthlyPlan as any).quarterlyPlanId
+    const quarterlyPlan = quarterlyPlansMap.get(qpId)
       if (quarterlyPlan && quarterlyPlan.contract) {
         contract = quarterlyPlan.contract
       }
@@ -3841,7 +3856,7 @@ export default function HomePage() {
                       )
                     }}
                   >
-                    {Array.from(new Set([...LOAD_PORT_OPTIONS, ...(cargoFormData.load_ports || [])])).map((port) => (
+                    {Array.from(new Set([...loadPortOptions, ...(cargoFormData.load_ports || [])])).map((port) => (
                       <MenuItem key={port} value={port}>
                         <Checkbox checked={(cargoFormData.load_ports || []).includes(port)} />
                         <ListItemText primary={port} />
@@ -3901,12 +3916,9 @@ export default function HomePage() {
                         <MenuItem value="">
                           <em>None</em>
                         </MenuItem>
-                        <MenuItem value="SGS">SGS</MenuItem>
-                        <MenuItem value="SAYBOLT">SAYBOLT</MenuItem>
-                        <MenuItem value="AMSPEC">AMSPEC</MenuItem>
-                        <MenuItem value="INSPECTORATE-BV">INSPECTORATE-BV</MenuItem>
-                        <MenuItem value="INTERTEK-CB">INTERTEK-CB</MenuItem>
-                        <MenuItem value="GEO-CHEM">GEO-CHEM</MenuItem>
+                        {Array.from(new Set([...inspectorOptions, cargoFormData.inspector_name].filter(Boolean))).map((inspector) => (
+                          <MenuItem key={inspector} value={inspector}>{inspector}</MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
               </Grid>
