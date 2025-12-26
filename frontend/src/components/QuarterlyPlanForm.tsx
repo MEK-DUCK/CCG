@@ -50,10 +50,26 @@ const getQuarterLabel = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', fiscalStartMonth: n
   return label
 }
 
-// Get display label for quarter (e.g., "Q1 (Jul-Sep)")
-const getQuarterDisplayLabel = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', fiscalStartMonth: number = 1): string => {
-  const monthLabel = getQuarterLabel(quarter, fiscalStartMonth)
-  return `${quarter} (${monthLabel})`
+// Get display label for quarter (e.g., "Q1 (Jul-Sep 2025)")
+const getQuarterDisplayLabel = (
+  quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', 
+  fiscalStartMonth: number = 1,
+  contractStartYear?: number,
+  contractYear: number = 1
+): string => {
+  const quarterNum = parseInt(quarter.replace('Q', ''))
+  const { label } = getQuarterMonths(fiscalStartMonth, quarterNum)
+  
+  // If we have start year info, include the calendar year
+  if (contractStartYear) {
+    // Calculate which calendar year this quarter falls in
+    const baseYear = contractStartYear + (contractYear - 1)
+    const quarterStartMonth = fiscalStartMonth + (quarterNum - 1) * 3
+    const calendarYear = quarterStartMonth > 12 ? baseYear + 1 : baseYear
+    return `${quarter} (${label} ${calendarYear})`
+  }
+  
+  return `${quarter} (${label})`
 }
 
 interface ProductPlanData {
@@ -376,11 +392,12 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                       const topupQty = plan[topupKey] || 0
                       const totalQty = parseFloat(plan[fieldKey]) || 0
                       const originalQty = totalQty - topupQty
+                      const contractStartYear = contractData?.start_period ? new Date(contractData.start_period).getFullYear() : undefined
                       
                       return (
                         <Box key={quarter}>
                         <TextField
-                          label={getQuarterDisplayLabel(quarter, fiscalStartMonth)}
+                          label={getQuarterDisplayLabel(quarter, fiscalStartMonth, contractStartYear, plan.contractYear)}
                           type="number"
                           size="small"
                           value={plan[fieldKey]}
