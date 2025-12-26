@@ -670,6 +670,7 @@ export default function ContractManagement() {
                 <TableRow>
                   <TableCell>Contract Number</TableCell>
                   <TableCell>Customer</TableCell>
+                  <TableCell>Contract Category</TableCell>
                   <TableCell>Type</TableCell>
                   <TableCell>Payment</TableCell>
                   <TableCell>Products</TableCell>
@@ -680,7 +681,7 @@ export default function ContractManagement() {
               <TableBody>
                 {filteredContracts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
+                    <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
                       <Box sx={{ 
                         width: 56, 
                         height: 56, 
@@ -745,6 +746,23 @@ export default function ContractManagement() {
                       <Typography variant="body2" sx={{ color: '#475569' }}>
                         {getCustomerName(contract.customer_id)}
                       </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={contract.contract_category === 'SEMI_TERM' ? 'Semi-Term' : 
+                               contract.contract_category === 'SPOT' ? 'Spot' : 'Term'}
+                        size="small"
+                        sx={{ 
+                          fontWeight: 600,
+                          bgcolor: contract.contract_category === 'TERM' ? '#DBEAFE' :
+                                   contract.contract_category === 'SEMI_TERM' ? '#FEF3C7' : '#DCFCE7',
+                          color: contract.contract_category === 'TERM' ? '#1E40AF' :
+                                 contract.contract_category === 'SEMI_TERM' ? '#92400E' : '#166534',
+                          border: '1px solid',
+                          borderColor: contract.contract_category === 'TERM' ? '#93C5FD' :
+                                       contract.contract_category === 'SEMI_TERM' ? '#FCD34D' : '#86EFAC',
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       <Chip
