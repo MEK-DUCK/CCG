@@ -23,8 +23,10 @@ import {
   Menu,
   ListItemIcon,
   ListItemText,
+  Tabs,
+  Tab,
 } from '@mui/material'
-import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp } from '@mui/icons-material'
+import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp, CalendarMonth } from '@mui/icons-material'
 import { monthlyPlanAPI, contractAPI, MonthlyPlanTopUpRequest } from '../api/client'
 import { MonthlyPlanStatus } from '../types'
 
@@ -124,6 +126,30 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const [planStatuses, setPlanStatuses] = useState<Record<number, MonthlyPlanStatus>>({})
   const autosaveTimersRef = useRef<Record<string, number>>({})
   
+  // Year tab state for multi-year contracts
+  const [selectedYear, setSelectedYear] = useState(1)
+  
+  // Calculate number of contract years and filter quarterly plans by year
+  const getContractYears = (): number => {
+    if (!contract?.start_period || !contract?.end_period) return 1
+    const start = new Date(contract.start_period)
+    const end = new Date(contract.end_period)
+    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1
+    return Math.max(1, Math.ceil(months / 12))
+  }
+  const numContractYears = getContractYears()
+  
+  // Filter quarterly plans for selected year
+  const yearQuarterlyPlans = quarterlyPlans.filter(qp => (qp.contract_year || 1) === selectedYear)
+  
+  // Get year label for tabs
+  const getYearLabel = (contractYear: number): string => {
+    if (!contract?.start_period) return `Year ${contractYear}`
+    const startYear = new Date(contract.start_period).getFullYear()
+    const calendarYear = startYear + (contractYear - 1)
+    return `Year ${contractYear} (${calendarYear})`
+  }
+  
   // Move dialog state
   const [moveDialogOpen, setMoveDialogOpen] = useState(false)
   const [moveAction, setMoveAction] = useState<'DEFER' | 'ADVANCE' | null>(null)
@@ -153,16 +179,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const products = contract?.products ? (Array.isArray(contract.products) ? contract.products : JSON.parse(contract.products)) : []
   const isMultiProduct = products.length > 1
 
-  // Map product names to their quarterly plans
+  // Map product names to their quarterly plans for the selected year
   const productQuarterlyPlanMap = new Map<string, any>()
-  quarterlyPlans.forEach(qp => {
+  yearQuarterlyPlans.forEach(qp => {
     if (qp.product_name) {
       productQuarterlyPlanMap.set(qp.product_name, qp)
     }
   })
   // For single product contracts, map the first product to the first quarterly plan
-  if (!isMultiProduct && products.length === 1 && quarterlyPlans.length > 0) {
-    productQuarterlyPlanMap.set(products[0].name, quarterlyPlans[0])
+  if (!isMultiProduct && products.length === 1 && yearQuarterlyPlans.length > 0) {
+    productQuarterlyPlanMap.set(products[0].name, yearQuarterlyPlans[0])
   }
 
   const scheduleAutosave = (planId: number, data: any, keySuffix: string) => {
@@ -915,6 +941,29 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           </Box>
         )}
       </Box>
+      
+      {/* Year Tabs for multi-year contracts */}
+      {numContractYears > 1 && (
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+          <Tabs 
+            value={selectedYear} 
+            onChange={(_, newValue) => setSelectedYear(newValue)}
+            variant="scrollable"
+            scrollButtons="auto"
+          >
+            {Array.from({ length: numContractYears }, (_, i) => i + 1).map(year => (
+              <Tab 
+                key={year} 
+                value={year} 
+                label={getYearLabel(year)}
+                icon={<CalendarMonth fontSize="small" />}
+                iconPosition="start"
+                sx={{ minHeight: 48 }}
+              />
+            ))}
+          </Tabs>
+        </Box>
+      )}
       
       {/* Quarterly Plan Summary - Modern Card Design */}
       <Box sx={{ 

@@ -865,12 +865,12 @@ export default function ContractManagement() {
                   required
                   fullWidth
                   helperText={
-                    formData.contract_category === 'TERM' ? '1-2 years, full quarterly planning' :
+                    formData.contract_category === 'TERM' ? 'Long-term, full quarterly planning by year' :
                     formData.contract_category === 'SEMI_TERM' ? '3-9 months, partial year' :
                     formData.contract_category === 'SPOT' ? 'Single cargo, 1 month or less' : ''
                   }
                 >
-                  <MenuItem value="TERM">Term (1-2 years)</MenuItem>
+                  <MenuItem value="TERM">Term (Long-term)</MenuItem>
                   <MenuItem value="SEMI_TERM">Semi-Term (3-9 months)</MenuItem>
                   <MenuItem value="SPOT">Spot (Single cargo)</MenuItem>
                 </TextField>
