@@ -151,6 +151,30 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     return `Year ${contractYear} (${calendarYear})`
   }
   
+  // Filter contract months for the selected contract year
+  // A contract year runs from fiscal_start_month to fiscal_start_month + 11 months
+  const getYearContractMonths = (): Array<{ month: number, year: number }> => {
+    if (!contract?.start_period || contractMonths.length === 0) return contractMonths
+    
+    const fiscalStartMonth = contract.fiscal_start_month || new Date(contract.start_period).getMonth() + 1
+    const contractStartYear = new Date(contract.start_period).getFullYear()
+    
+    // Calculate the start and end dates for the selected contract year
+    const yearStartCalendarYear = contractStartYear + (selectedYear - 1)
+    
+    // Contract year starts at fiscal_start_month of yearStartCalendarYear
+    // and ends at fiscal_start_month - 1 of the next calendar year (or same year if fiscal starts in Jan)
+    const yearStartDate = new Date(yearStartCalendarYear, fiscalStartMonth - 1, 1)
+    const yearEndDate = new Date(yearStartCalendarYear + 1, fiscalStartMonth - 1, 0) // Last day of month before fiscal start
+    
+    return contractMonths.filter(cm => {
+      const monthDate = new Date(cm.year, cm.month - 1, 15) // Use middle of month for comparison
+      return monthDate >= yearStartDate && monthDate <= yearEndDate
+    })
+  }
+  
+  const yearContractMonths = getYearContractMonths()
+  
   // Move dialog state
   const [moveDialogOpen, setMoveDialogOpen] = useState(false)
   const [moveAction, setMoveAction] = useState<'DEFER' | 'ADVANCE' | null>(null)
@@ -646,7 +670,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
 
   const getQuarterMonths = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): Array<{ month: number, year: number }> => {
     const quarterMonths = QUARTER_MONTHS[quarter].months
-    return contractMonths.filter(cm => quarterMonths.includes(cm.month))
+    // Use yearContractMonths to only show months for the selected contract year
+    return yearContractMonths.filter(cm => quarterMonths.includes(cm.month))
   }
 
   // Get quarterly quantity for a product and quarter position
