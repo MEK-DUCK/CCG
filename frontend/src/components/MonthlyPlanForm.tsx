@@ -152,24 +152,33 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   }
   
   // Filter contract months for the selected contract year
-  // A contract year runs from fiscal_start_month to fiscal_start_month + 11 months
+  // A contract year runs from fiscal_start_month for 12 months
+  // Example: Feb start -> Year 1 = Feb 2026 to Jan 2027, Year 2 = Feb 2027 to Jan 2028
   const getYearContractMonths = (): Array<{ month: number, year: number }> => {
     if (!contract?.start_period || contractMonths.length === 0) return contractMonths
     
     const fiscalStartMonth = contract.fiscal_start_month || new Date(contract.start_period).getMonth() + 1
     const contractStartYear = new Date(contract.start_period).getFullYear()
     
-    // Calculate the start and end dates for the selected contract year
-    const yearStartCalendarYear = contractStartYear + (selectedYear - 1)
+    // For the selected contract year, calculate which 12 calendar months it covers
+    // Year 1 starts at contract start, Year 2 starts 12 months later, etc.
+    const baseYear = contractStartYear + (selectedYear - 1)
     
-    // Contract year starts at fiscal_start_month of yearStartCalendarYear
-    // and ends at fiscal_start_month - 1 of the next calendar year (or same year if fiscal starts in Jan)
-    const yearStartDate = new Date(yearStartCalendarYear, fiscalStartMonth - 1, 1)
-    const yearEndDate = new Date(yearStartCalendarYear + 1, fiscalStartMonth - 1, 0) // Last day of month before fiscal start
+    // Generate the 12 months for this contract year
+    const yearMonths: Array<{ month: number, year: number }> = []
+    for (let i = 0; i < 12; i++) {
+      let month = fiscalStartMonth + i
+      let year = baseYear
+      if (month > 12) {
+        month -= 12
+        year += 1
+      }
+      yearMonths.push({ month, year })
+    }
     
+    // Filter contractMonths to only include months that are in this contract year
     return contractMonths.filter(cm => {
-      const monthDate = new Date(cm.year, cm.month - 1, 15) // Use middle of month for comparison
-      return monthDate >= yearStartDate && monthDate <= yearEndDate
+      return yearMonths.some(ym => ym.month === cm.month && ym.year === cm.year)
     })
   }
   
