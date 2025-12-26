@@ -267,6 +267,48 @@ def ensure_schema():
                 except Exception:
                     pass  # Already nullable or constraint doesn't exist
         
+        # Create products table if not exists (for admin-managed product configuration)
+        if not insp.has_table("products"):
+            with engine.begin() as conn:
+                conn.execute(text('''
+                    CREATE TABLE products (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        code VARCHAR(20) UNIQUE NOT NULL,
+                        name VARCHAR(64) UNIQUE NOT NULL,
+                        description VARCHAR(255),
+                        is_active BOOLEAN DEFAULT 1,
+                        sort_order INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP
+                    )
+                ''' if dialect == "sqlite" else '''
+                    CREATE TABLE IF NOT EXISTS products (
+                        id SERIAL PRIMARY KEY,
+                        code VARCHAR(20) UNIQUE NOT NULL,
+                        name VARCHAR(64) UNIQUE NOT NULL,
+                        description VARCHAR(255),
+                        is_active BOOLEAN DEFAULT TRUE,
+                        sort_order INTEGER DEFAULT 0,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE
+                    )
+                '''))
+                logger.info("Created products table")
+                
+                # Seed default products
+                default_products = [
+                    ("JETA1", "JET A-1", "Aviation turbine fuel", 1),
+                    ("GASOIL", "GASOIL", "Diesel fuel", 2),
+                    ("GASOIL10", "GASOIL 10PPM", "Ultra-low sulfur diesel (10ppm)", 3),
+                    ("HFO", "HFO", "Heavy fuel oil", 4),
+                    ("LSFO", "LSFO", "Low sulfur fuel oil", 5),
+                ]
+                for code, name, desc, order in default_products:
+                    conn.execute(text(
+                        "INSERT INTO products (code, name, description, is_active, sort_order) VALUES (:code, :name, :desc, :active, :order)"
+                    ), {"code": code, "name": name, "desc": desc, "active": True, "order": order})
+                logger.info("Seeded default products")
+        
         # Create contract_audit_logs table if not exists
         if not insp.has_table("contract_audit_logs"):
             with engine.begin() as conn:

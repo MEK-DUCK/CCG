@@ -3,6 +3,33 @@ from typing import Optional, List, Union
 from datetime import date, datetime
 from app.models import ContractType, ContractCategory, CargoStatus, PaymentMethod, LCStatus
 
+# Product Schemas (for admin-managed product configuration)
+class ProductBase(BaseModel):
+    code: str = Field(..., min_length=1, max_length=20, description="Short code e.g., JETA1")
+    name: str = Field(..., min_length=1, max_length=64, description="Display name e.g., JET A-1")
+    description: Optional[str] = Field(None, max_length=255)
+    is_active: bool = Field(True, description="Whether product is available for new contracts")
+    sort_order: int = Field(0, ge=0, description="Display order in dropdowns")
+
+class ProductCreate(ProductBase):
+    pass
+
+class ProductUpdate(BaseModel):
+    code: Optional[str] = Field(None, min_length=1, max_length=20)
+    name: Optional[str] = Field(None, min_length=1, max_length=64)
+    description: Optional[str] = Field(None, max_length=255)
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+
+class Product(ProductBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
 # Customer Schemas
 class CustomerBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)

@@ -30,8 +30,15 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         if not customer:
             raise HTTPException(status_code=404, detail="Customer not found")
         
-        # Validate products
-        valid_products = ["JET A-1", "GASOIL", "GASOIL 10PPM", "HFO", "LSFO"]
+        # Validate products against database
+        # Fetch valid product names from database, or fall back to defaults if table doesn't exist yet
+        try:
+            db_products = db.query(models.Product).filter(models.Product.is_active == True).all()
+            valid_products = [p.name for p in db_products] if db_products else ["JET A-1", "GASOIL", "GASOIL 10PPM", "HFO", "LSFO"]
+        except Exception:
+            # Products table might not exist yet
+            valid_products = ["JET A-1", "GASOIL", "GASOIL 10PPM", "HFO", "LSFO"]
+        
         for product in contract.products:
             if product.name not in valid_products:
                 raise HTTPException(status_code=400, detail=f"Invalid product: {product.name}. Must be one of: {', '.join(valid_products)}")

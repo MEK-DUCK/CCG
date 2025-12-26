@@ -51,6 +51,27 @@ class CargoStatus(str, enum.Enum):
 
 
 # =============================================================================
+# CONFIGURATION MODELS
+# =============================================================================
+
+class Product(Base):
+    """
+    Product configuration - defines available products for contracts and cargos.
+    Admin can add/edit/delete products through the admin interface.
+    """
+    __tablename__ = "products"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(20), unique=True, nullable=False, index=True)  # Short code e.g., "JETA1"
+    name = Column(String(64), unique=True, nullable=False)  # Display name e.g., "JET A-1"
+    description = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)  # Can be deactivated instead of deleted
+    sort_order = Column(Integer, default=0)  # For display ordering
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+# =============================================================================
 # CORE MODELS
 # =============================================================================
 

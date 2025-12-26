@@ -6,7 +6,7 @@ import os
 
 from app.database import engine, Base, ensure_schema
 from app.routers import customers, contracts, quarterly_plans, monthly_plans, cargos, audit_logs, documents
-from app.routers import config_router, admin
+from app.routers import config_router, admin, products
 from app.errors import AppError, handle_app_error, handle_unexpected_error
 
 # Configure logging
@@ -108,6 +108,7 @@ app.include_router(cargos.router, prefix="/api/cargos", tags=["cargos"])
 app.include_router(audit_logs.router, prefix="/api/audit-logs", tags=["audit-logs"])
 app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
 app.include_router(config_router.router, prefix="/api/config", tags=["config"])
+app.include_router(products.router, prefix="/api/products", tags=["products"])
 app.include_router(admin.router)
 
 

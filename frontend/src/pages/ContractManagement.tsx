@@ -29,10 +29,13 @@ import {
   Paper,
 } from '@mui/material'
 import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-material'
-import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
+import client, { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity } from '../types'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
+
+// Fallback product options if API fails
+const DEFAULT_PRODUCT_OPTIONS = ['JET A-1', 'GASOIL', 'GASOIL 10PPM', 'HFO', 'LSFO']
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -55,8 +58,6 @@ function TabPanel(props: TabPanelProps) {
   )
 }
 
-const PRODUCT_OPTIONS = ['JET A-1', 'GASOIL', 'GASOIL 10PPM', 'HFO', 'LSFO']
-
 // Calculate number of contract years from start/end period
 const calculateContractYears = (startPeriod: string, endPeriod: string): number => {
   if (!startPeriod || !endPeriod) return 1
@@ -76,6 +77,7 @@ export default function ContractManagement() {
   const navigate = useNavigate()
   const [contracts, setContracts] = useState<Contract[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [productOptions, setProductOptions] = useState<string[]>(DEFAULT_PRODUCT_OPTIONS)
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
   const [open, setOpen] = useState(false)
@@ -131,12 +133,18 @@ export default function ContractManagement() {
 
   const loadData = async () => {
     try {
-      // Load contracts and customers in parallel - they're independent
-      const [contractsRes, customersRes] = await Promise.all([
+      // Load contracts, customers, and products in parallel - they're independent
+      const [contractsRes, customersRes, productsRes] = await Promise.all([
         contractAPI.getAll(),
         customerAPI.getAll(),
+        client.get('/api/products/names').catch(() => ({ data: DEFAULT_PRODUCT_OPTIONS })),
       ])
       const loadedContracts = contractsRes.data || []
+      
+      // Update product options from API
+      if (productsRes.data && productsRes.data.length > 0) {
+        setProductOptions(productsRes.data)
+      }
       const loadedCustomers = customersRes.data || []
       
       setContracts(loadedContracts)
@@ -350,8 +358,8 @@ export default function ContractManagement() {
 
       // Validate products
       for (const product of formData.products) {
-        if (!product.name || !PRODUCT_OPTIONS.includes(product.name)) {
-          alert(`Invalid product. Must be one of: ${PRODUCT_OPTIONS.join(', ')}`)
+        if (!product.name || !productOptions.includes(product.name)) {
+          alert(`Invalid product. Must be one of: ${productOptions.join(', ')}`)
           return
         }
         if (!product.total_quantity || product.total_quantity <= 0) {
@@ -1188,7 +1196,7 @@ export default function ContractManagement() {
                         required
                         fullWidth
                       >
-                        {PRODUCT_OPTIONS.map((opt) => (
+                        {productOptions.map((opt) => (
                           <MenuItem key={opt} value={opt}>
                             {opt}
                           </MenuItem>

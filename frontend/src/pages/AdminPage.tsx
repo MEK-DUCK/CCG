@@ -49,6 +49,8 @@ import {
   People,
   History,
   Shield,
+  Inventory,
+  Add,
 } from '@mui/icons-material'
 import client from '../api/client'
 
@@ -107,6 +109,17 @@ interface EditDialogState {
   id: number | null
 }
 
+interface Product {
+  id: number
+  code: string
+  name: string
+  description?: string
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at?: string
+}
+
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -120,6 +133,7 @@ export default function AdminPage() {
   const [monthlyPlans, setMonthlyPlans] = useState<any[]>([])
   const [cargos, setCargos] = useState<any[]>([])
   const [customers, setCustomers] = useState<any[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
   const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[]>([])
   const [integrityStats, setIntegrityStats] = useState<any>(null)
@@ -139,6 +153,17 @@ export default function AdminPage() {
     name: ''
   })
   const [logTypeFilter, setLogTypeFilter] = useState<string>('all')
+  const [productDialog, setProductDialog] = useState<{ open: boolean; editing: Product | null }>({
+    open: false,
+    editing: null
+  })
+  const [productForm, setProductForm] = useState({
+    code: '',
+    name: '',
+    description: '',
+    is_active: true,
+    sort_order: 0
+  })
 
   // System-generated fields that cannot be modified (per entity type)
   const protectedFields: Record<string, string[]> = {
@@ -147,6 +172,7 @@ export default function AdminPage() {
     'quarterly-plans': ['id', 'created_at', 'updated_at'],
     'monthly-plans': ['id', 'created_at', 'updated_at'],
     'cargos': ['id', 'cargo_id', 'created_at', 'updated_at'],
+    'products': ['id', 'created_at', 'updated_at'],
   }
 
   // Fetch functions
@@ -204,6 +230,15 @@ export default function AdminPage() {
     }
   }, [])
 
+  const fetchProducts = useCallback(async () => {
+    try {
+      const response = await client.get('/api/products?include_inactive=true')
+      setProducts(response.data)
+    } catch (err: any) {
+      console.error('Error fetching products:', err)
+    }
+  }, [])
+
   const fetchAuditLogs = useCallback(async () => {
     try {
       const params = logTypeFilter !== 'all' ? { log_type: logTypeFilter } : {}
@@ -235,6 +270,7 @@ export default function AdminPage() {
         fetchMonthlyPlans(),
         fetchCargos(),
         fetchCustomers(),
+        fetchProducts(),
         fetchAuditLogs(),
         fetchIntegrityCheck()
       ])
@@ -327,6 +363,77 @@ export default function AdminPage() {
       case 'warning': return <Warning fontSize="small" />
       case 'info': return <Info fontSize="small" />
       default: return <CheckCircle fontSize="small" />
+    }
+  }
+
+  // Product handlers
+  const handleOpenProductDialog = (product?: Product) => {
+    if (product) {
+      setProductForm({
+        code: product.code,
+        name: product.name,
+        description: product.description || '',
+        is_active: product.is_active,
+        sort_order: product.sort_order
+      })
+      setProductDialog({ open: true, editing: product })
+    } else {
+      setProductForm({
+        code: '',
+        name: '',
+        description: '',
+        is_active: true,
+        sort_order: products.length + 1
+      })
+      setProductDialog({ open: true, editing: null })
+    }
+  }
+
+  const handleSaveProduct = async () => {
+    setLoading(true)
+    try {
+      if (productDialog.editing) {
+        await client.put(`/api/products/${productDialog.editing.id}`, productForm)
+        setSuccess('Product updated successfully')
+      } else {
+        await client.post('/api/products', productForm)
+        setSuccess('Product created successfully')
+      }
+      setProductDialog({ open: false, editing: null })
+      await fetchProducts()
+    } catch (err: any) {
+      setError(`Failed to save product: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteProduct = async (product: Product) => {
+    if (!confirm(`Are you sure you want to delete "${product.name}"? This cannot be undone.`)) {
+      return
+    }
+    setLoading(true)
+    try {
+      await client.delete(`/api/products/${product.id}`)
+      setSuccess('Product deleted successfully')
+      await fetchProducts()
+    } catch (err: any) {
+      setError(`Failed to delete product: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleToggleProductActive = async (product: Product) => {
+    setLoading(true)
+    try {
+      await client.put(`/api/products/${product.id}`, { is_active: !product.is_active })
+      setSuccess(`Product ${product.is_active ? 'deactivated' : 'activated'} successfully`)
+      await fetchProducts()
+    } catch (err: any) {
+      setError(`Failed to update product: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -976,6 +1083,205 @@ export default function AdminPage() {
     </Box>
   )
 
+  const renderProductsTable = () => (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">
+          Products Configuration ({products.length} total)
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={() => handleOpenProductDialog()}
+          sx={{ bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
+        >
+          Add Product
+        </Button>
+      </Box>
+      
+      <Alert severity="info" sx={{ mb: 2 }}>
+        <Typography variant="body2">
+          Products defined here will be available for selection when creating contracts and cargos.
+          Deactivated products won't appear in dropdowns but existing data using them will remain intact.
+        </Typography>
+      </Alert>
+
+      <TableContainer component={Paper}>
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+              <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Code</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {products.map((product) => (
+              <TableRow 
+                key={product.id} 
+                hover
+                sx={{ 
+                  bgcolor: product.is_active ? 'white' : '#F8FAFC',
+                  opacity: product.is_active ? 1 : 0.7
+                }}
+              >
+                <TableCell>{product.sort_order}</TableCell>
+                <TableCell>
+                  <Chip 
+                    label={product.code} 
+                    size="small" 
+                    sx={{ 
+                      fontFamily: 'monospace', 
+                      fontWeight: 600,
+                      bgcolor: '#E0E7FF',
+                      color: '#3730A3'
+                    }} 
+                  />
+                </TableCell>
+                <TableCell sx={{ fontWeight: 500 }}>{product.name}</TableCell>
+                <TableCell sx={{ color: 'text.secondary', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {product.description || '-'}
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={product.is_active ? 'Active' : 'Inactive'}
+                    size="small"
+                    color={product.is_active ? 'success' : 'default'}
+                    onClick={() => handleToggleProductActive(product)}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                </TableCell>
+                <TableCell align="right">
+                  <Tooltip title="Edit">
+                    <IconButton size="small" onClick={() => handleOpenProductDialog(product)}>
+                      <Edit fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete">
+                    <IconButton size="small" color="error" onClick={() => handleDeleteProduct(product)}>
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            ))}
+            {products.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                  <Typography color="text.secondary">No products configured</Typography>
+                  <Button 
+                    variant="outlined" 
+                    size="small" 
+                    sx={{ mt: 1 }}
+                    onClick={async () => {
+                      try {
+                        await client.post('/api/products/seed-defaults')
+                        setSuccess('Default products seeded successfully')
+                        await fetchProducts()
+                      } catch (err: any) {
+                        setError(`Failed to seed products: ${err.response?.data?.detail || err.message}`)
+                      }
+                    }}
+                  >
+                    Seed Default Products
+                  </Button>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Product Edit/Create Dialog */}
+      <Dialog
+        open={productDialog.open}
+        onClose={() => setProductDialog({ open: false, editing: null })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {productDialog.editing ? 'Edit Product' : 'Add New Product'}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Product Code"
+                value={productForm.code}
+                onChange={(e) => setProductForm({ ...productForm, code: e.target.value.toUpperCase() })}
+                helperText="Short identifier (e.g., JETA1)"
+                required
+                inputProps={{ maxLength: 20 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Sort Order"
+                type="number"
+                value={productForm.sort_order}
+                onChange={(e) => setProductForm({ ...productForm, sort_order: parseInt(e.target.value) || 0 })}
+                helperText="Display order in lists"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Product Name"
+                value={productForm.name}
+                onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                helperText="Full display name (e.g., JET A-1)"
+                required
+                inputProps={{ maxLength: 64 }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Description"
+                value={productForm.description}
+                onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                helperText="Optional description"
+                multiline
+                rows={2}
+                inputProps={{ maxLength: 255 }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={productForm.is_active ? 'active' : 'inactive'}
+                  label="Status"
+                  onChange={(e) => setProductForm({ ...productForm, is_active: e.target.value === 'active' })}
+                >
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="inactive">Inactive</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setProductDialog({ open: false, editing: null })}>
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSaveProduct} 
+            disabled={loading || !productForm.code || !productForm.name}
+          >
+            {productDialog.editing ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+
   return (
     <Box>
       {/* Header */}
@@ -1030,6 +1336,7 @@ export default function AdminPage() {
           scrollButtons="auto"
         >
           <Tab label="Overview" icon={<Storage />} iconPosition="start" />
+          <Tab label="Products" icon={<Inventory />} iconPosition="start" />
           <Tab label="Customers" icon={<People />} iconPosition="start" />
           <Tab label="Contracts" icon={<Description />} iconPosition="start" />
           <Tab label="Quarterly Plans" icon={<CalendarMonth />} iconPosition="start" />
@@ -1043,13 +1350,14 @@ export default function AdminPage() {
       {/* Tab Content */}
       <Box>
         {activeTab === 0 && renderOverview()}
-        {activeTab === 1 && renderCustomersTable()}
-        {activeTab === 2 && renderContractsTable()}
-        {activeTab === 3 && renderQuarterlyPlansTable()}
-        {activeTab === 4 && renderMonthlyPlansTable()}
-        {activeTab === 5 && renderCargosTable()}
-        {activeTab === 6 && renderAuditLogs()}
-        {activeTab === 7 && renderIntegrityCheck()}
+        {activeTab === 1 && renderProductsTable()}
+        {activeTab === 2 && renderCustomersTable()}
+        {activeTab === 3 && renderContractsTable()}
+        {activeTab === 4 && renderQuarterlyPlansTable()}
+        {activeTab === 5 && renderMonthlyPlansTable()}
+        {activeTab === 6 && renderCargosTable()}
+        {activeTab === 7 && renderAuditLogs()}
+        {activeTab === 8 && renderIntegrityCheck()}
       </Box>
 
       {/* Edit Dialog */}
