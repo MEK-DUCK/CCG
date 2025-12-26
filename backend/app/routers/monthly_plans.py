@@ -52,43 +52,74 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
     if plan.year < MIN_YEAR or plan.year > MAX_YEAR:
         raise HTTPException(status_code=400, detail=f"Invalid year: {plan.year}. Must be {MIN_YEAR}-{MAX_YEAR}.")
     
-    # Verify quarterly plan exists
-    quarterly_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == plan.quarterly_plan_id).first()
-    if not quarterly_plan:
-        raise to_http_exception(quarterly_plan_not_found(plan.quarterly_plan_id))
+    # Check if this is a SPOT contract (uses contract_id instead of quarterly_plan_id)
+    is_spot_contract = plan.contract_id is not None and plan.quarterly_plan_id is None
     
-    # Calculate quarterly total
-    quarterly_total = (quarterly_plan.q1_quantity or 0) + (quarterly_plan.q2_quantity or 0) + (quarterly_plan.q3_quantity or 0) + (quarterly_plan.q4_quantity or 0)
+    if is_spot_contract:
+        # SPOT contract - verify contract exists
+        contract = db.query(models.Contract).filter(models.Contract.id == plan.contract_id).first()
+        if not contract:
+            raise HTTPException(status_code=404, detail=f"Contract {plan.contract_id} not found")
+        
+        # For SPOT contracts, we don't validate against quarterly plan quantities
+        db_plan = models.MonthlyPlan(
+            month=plan.month,
+            year=plan.year,
+            month_quantity=plan.month_quantity,
+            number_of_liftings=plan.number_of_liftings,
+            planned_lifting_sizes=plan.planned_lifting_sizes,
+            laycan_5_days=plan.laycan_5_days,
+            laycan_2_days=plan.laycan_2_days,
+            laycan_2_days_remark=getattr(plan, "laycan_2_days_remark", None),
+            loading_month=getattr(plan, "loading_month", None),
+            loading_window=getattr(plan, "loading_window", None),
+            delivery_month=getattr(plan, "delivery_month", None),
+            delivery_window=getattr(plan, "delivery_window", None),
+            delivery_window_remark=getattr(plan, "delivery_window_remark", None),
+            combi_group_id=getattr(plan, "combi_group_id", None),
+            quarterly_plan_id=None,  # No quarterly plan for SPOT
+            contract_id=plan.contract_id,
+            product_name=getattr(plan, "product_name", None),
+        )
+    else:
+        # Regular contract - verify quarterly plan exists
+        quarterly_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == plan.quarterly_plan_id).first()
+        if not quarterly_plan:
+            raise to_http_exception(quarterly_plan_not_found(plan.quarterly_plan_id))
+        
+        # Calculate quarterly total
+        quarterly_total = (quarterly_plan.q1_quantity or 0) + (quarterly_plan.q2_quantity or 0) + (quarterly_plan.q3_quantity or 0) + (quarterly_plan.q4_quantity or 0)
+        
+        # Get existing monthly plans for this quarterly plan
+        existing_monthly_plans = db.query(models.MonthlyPlan).filter(
+            models.MonthlyPlan.quarterly_plan_id == plan.quarterly_plan_id
+        ).all()
+        
+        used_quantity = sum(mp.month_quantity for mp in existing_monthly_plans)
+        remaining_quantity = quarterly_total - used_quantity
+        
+        # Validate monthly quantity doesn't exceed remaining quarterly quantity
+        if plan.month_quantity > remaining_quantity:
+            raise to_http_exception(quantity_exceeds_plan(plan.month_quantity, remaining_quantity, quarterly_total))
+        
+        db_plan = models.MonthlyPlan(
+            month=plan.month,
+            year=plan.year,
+            month_quantity=plan.month_quantity,
+            number_of_liftings=plan.number_of_liftings,
+            planned_lifting_sizes=plan.planned_lifting_sizes,
+            laycan_5_days=plan.laycan_5_days,
+            laycan_2_days=plan.laycan_2_days,
+            laycan_2_days_remark=getattr(plan, "laycan_2_days_remark", None),
+            loading_month=getattr(plan, "loading_month", None),
+            loading_window=getattr(plan, "loading_window", None),
+            delivery_month=getattr(plan, "delivery_month", None),
+            delivery_window=getattr(plan, "delivery_window", None),
+            delivery_window_remark=getattr(plan, "delivery_window_remark", None),
+            combi_group_id=getattr(plan, "combi_group_id", None),
+            quarterly_plan_id=plan.quarterly_plan_id
+        )
     
-    # Get existing monthly plans for this quarterly plan
-    existing_monthly_plans = db.query(models.MonthlyPlan).filter(
-        models.MonthlyPlan.quarterly_plan_id == plan.quarterly_plan_id
-    ).all()
-    
-    used_quantity = sum(mp.month_quantity for mp in existing_monthly_plans)
-    remaining_quantity = quarterly_total - used_quantity
-    
-    # Validate monthly quantity doesn't exceed remaining quarterly quantity
-    if plan.month_quantity > remaining_quantity:
-        raise to_http_exception(quantity_exceeds_plan(plan.month_quantity, remaining_quantity, quarterly_total))
-    
-    db_plan = models.MonthlyPlan(
-        month=plan.month,
-        year=plan.year,
-        month_quantity=plan.month_quantity,
-        number_of_liftings=plan.number_of_liftings,
-        planned_lifting_sizes=plan.planned_lifting_sizes,
-        laycan_5_days=plan.laycan_5_days,
-        laycan_2_days=plan.laycan_2_days,
-        laycan_2_days_remark=getattr(plan, "laycan_2_days_remark", None),
-        loading_month=getattr(plan, "loading_month", None),
-        loading_window=getattr(plan, "loading_window", None),
-        delivery_month=getattr(plan, "delivery_month", None),
-        delivery_window=getattr(plan, "delivery_window", None),
-        delivery_window_remark=getattr(plan, "delivery_window_remark", None),
-        combi_group_id=getattr(plan, "combi_group_id", None),
-        quarterly_plan_id=plan.quarterly_plan_id
-    )
     db.add(db_plan)
     db.flush()
     
