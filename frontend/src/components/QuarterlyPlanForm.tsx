@@ -167,11 +167,16 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
           q4_topup = existingPlan.q4_topup || 0
         }
         
+        // Get year-specific quantity if available, otherwise use total
+        const yearQuantity = product.year_quantities?.find((yq: any) => yq.year === year)
+        const yearTotalQty = yearQuantity?.quantity ?? product.total_quantity ?? 0
+        const yearOptionalQty = yearQuantity?.optional_quantity ?? product.optional_quantity ?? 0
+        
         newProductPlans.push({
           productName: product.name,
           contractYear: year,
-          totalQuantity: product.total_quantity || 0,
-          optionalQuantity: product.optional_quantity || 0,
+          totalQuantity: yearTotalQty,
+          optionalQuantity: yearOptionalQty,
           existingPlanId: existingPlan?.id,
           q1,
           q2,

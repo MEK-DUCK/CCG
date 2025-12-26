@@ -22,11 +22,19 @@ class Customer(CustomerBase):
     class Config:
         from_attributes = True
 
+# Per-year quantity for multi-year contracts
+class YearQuantity(BaseModel):
+    year: int = Field(..., ge=1)  # Contract year (1, 2, 3, etc.)
+    quantity: float = Field(..., ge=0)  # Quantity for this year in KT
+    optional_quantity: Optional[float] = Field(0, ge=0)  # Optional quantity for this year in KT
+
+
 # Contract Product Schema (for products array in contract)
 class ContractProduct(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)  # JET A-1, GASOIL, GASOIL 10PPM, HFO, LSFO
-    total_quantity: float = Field(..., ge=0)  # Total quantity in KT
+    total_quantity: float = Field(..., ge=0)  # Total quantity in KT (sum of all years)
     optional_quantity: Optional[float] = Field(0, ge=0)  # Optional quantity in KT
+    year_quantities: Optional[List[YearQuantity]] = None  # Per-year quantities for multi-year contracts
 
 
 # Authority Top-Up Schema (for authorized quantity increases beyond contract)

@@ -20,10 +20,18 @@ export interface Customer {
   updated_at?: string
 }
 
+// Per-year quantity for multi-year contracts
+export interface YearQuantity {
+  year: number  // Contract year (1, 2, 3, etc.)
+  quantity: number  // Quantity for this year in KT
+  optional_quantity?: number  // Optional quantity for this year in KT
+}
+
 export interface ContractProduct {
   name: string  // JET A-1, GASOIL, GASOIL 10PPM, HFO, LSFO
-  total_quantity: number  // Total quantity in KT
+  total_quantity: number  // Total quantity in KT (sum of all years, or single year for short contracts)
   optional_quantity?: number  // Optional quantity in KT
+  year_quantities?: YearQuantity[]  // Per-year quantities for multi-year contracts
 }
 
 export interface Contract {

@@ -30,7 +30,7 @@ import {
 } from '@mui/material'
 import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
-import type { Contract, Customer, QuarterlyPlan, ContractProduct } from '../types'
+import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity } from '../types'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
 
@@ -56,6 +56,21 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const PRODUCT_OPTIONS = ['JET A-1', 'GASOIL', 'GASOIL 10PPM', 'HFO', 'LSFO']
+
+// Calculate number of contract years from start/end period
+const calculateContractYears = (startPeriod: string, endPeriod: string): number => {
+  if (!startPeriod || !endPeriod) return 1
+  const start = new Date(startPeriod)
+  const end = new Date(endPeriod)
+  const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1
+  return Math.max(1, Math.ceil(months / 12))
+}
+
+// Get calendar year for a contract year
+const getCalendarYear = (startPeriod: string, contractYear: number): number => {
+  if (!startPeriod) return new Date().getFullYear()
+  return new Date(startPeriod).getFullYear() + (contractYear - 1)
+}
 
 export default function ContractManagement() {
   const navigate = useNavigate()
@@ -205,10 +220,23 @@ export default function ContractManagement() {
     setOpen(true)
   }
 
+  // Calculate number of years for the current contract period
+  const numContractYears = calculateContractYears(formData.start_period, formData.end_period)
+  
   const handleAddProduct = () => {
+    // Initialize year_quantities for multi-year contracts
+    const yearQuantities: YearQuantity[] = numContractYears > 1 
+      ? Array.from({ length: numContractYears }, (_, i) => ({ year: i + 1, quantity: 0, optional_quantity: 0 }))
+      : []
+    
     setFormData({
       ...formData,
-      products: [...formData.products, { name: '', total_quantity: 0, optional_quantity: 0 }]
+      products: [...formData.products, { 
+        name: '', 
+        total_quantity: 0, 
+        optional_quantity: 0,
+        year_quantities: yearQuantities.length > 0 ? yearQuantities : undefined
+      }]
     })
   }
 
@@ -224,6 +252,63 @@ export default function ContractManagement() {
     updatedProducts[index] = { ...updatedProducts[index], [field]: value }
     setFormData({ ...formData, products: updatedProducts })
   }
+  
+  // Handle year-specific quantity changes
+  const handleYearQuantityChange = (productIndex: number, year: number, field: 'quantity' | 'optional_quantity', value: number) => {
+    const updatedProducts = [...formData.products]
+    const product = updatedProducts[productIndex]
+    
+    // Initialize year_quantities if needed
+    if (!product.year_quantities) {
+      product.year_quantities = Array.from({ length: numContractYears }, (_, i) => ({ 
+        year: i + 1, 
+        quantity: 0, 
+        optional_quantity: 0 
+      }))
+    }
+    
+    // Find and update the specific year
+    const yearIndex = product.year_quantities.findIndex(yq => yq.year === year)
+    if (yearIndex >= 0) {
+      product.year_quantities[yearIndex] = { 
+        ...product.year_quantities[yearIndex], 
+        [field]: value 
+      }
+    }
+    
+    // Recalculate total_quantity from year_quantities
+    product.total_quantity = product.year_quantities.reduce((sum, yq) => sum + (yq.quantity || 0), 0)
+    product.optional_quantity = product.year_quantities.reduce((sum, yq) => sum + (yq.optional_quantity || 0), 0)
+    
+    setFormData({ ...formData, products: updatedProducts })
+  }
+  
+  // Update year_quantities when contract period changes
+  useEffect(() => {
+    if (formData.products.length > 0 && numContractYears > 1) {
+      const updatedProducts = formData.products.map(product => {
+        // Only update if year_quantities doesn't exist or has wrong length
+        if (!product.year_quantities || product.year_quantities.length !== numContractYears) {
+          const existingYears = product.year_quantities || []
+          const newYearQuantities: YearQuantity[] = Array.from({ length: numContractYears }, (_, i) => {
+            const existing = existingYears.find(yq => yq.year === i + 1)
+            return existing || { year: i + 1, quantity: 0, optional_quantity: 0 }
+          })
+          return { ...product, year_quantities: newYearQuantities }
+        }
+        return product
+      })
+      
+      // Only update if there are actual changes
+      const hasChanges = updatedProducts.some((p, i) => 
+        JSON.stringify(p.year_quantities) !== JSON.stringify(formData.products[i].year_quantities)
+      )
+      
+      if (hasChanges) {
+        setFormData(prev => ({ ...prev, products: updatedProducts }))
+      }
+    }
+  }, [numContractYears])
 
   const handleClose = () => {
     setOpen(false)
@@ -1049,8 +1134,10 @@ export default function ContractManagement() {
                       <Delete />
                     </IconButton>
                   </Box>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={4}>
+                  
+                  {/* Product Name Selection */}
+                  <Grid container spacing={2} sx={{ mb: 2 }}>
+                    <Grid item xs={12} md={numContractYears > 1 ? 12 : 4}>
                       <TextField
                         label="Product Name"
                         value={product.name}
@@ -1066,28 +1153,120 @@ export default function ContractManagement() {
                         ))}
                       </TextField>
                     </Grid>
-                    <Grid item xs={12} md={4}>
-                      <TextField
-                        label="Total Quantity (KT)"
-                        type="number"
-                        value={product.total_quantity}
-                        onChange={(e) => handleProductChange(index, 'total_quantity', parseFloat(e.target.value) || 0)}
-                        required
-                        fullWidth
-                        inputProps={{ min: 0, step: 0.01 }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={4}>
-                      <TextField
-                        label="Optional Quantity (KT)"
-                        type="number"
-                        value={product.optional_quantity || 0}
-                        onChange={(e) => handleProductChange(index, 'optional_quantity', parseFloat(e.target.value) || 0)}
-                        fullWidth
-                        inputProps={{ min: 0, step: 0.01 }}
-                      />
-                    </Grid>
+                    
+                    {/* Single year contract - show simple quantity inputs */}
+                    {numContractYears === 1 && (
+                      <>
+                        <Grid item xs={12} md={4}>
+                          <TextField
+                            label="Total Quantity (KT)"
+                            type="number"
+                            value={product.total_quantity}
+                            onChange={(e) => handleProductChange(index, 'total_quantity', parseFloat(e.target.value) || 0)}
+                            required
+                            fullWidth
+                            inputProps={{ min: 0, step: 0.01 }}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                          <TextField
+                            label="Optional Quantity (KT)"
+                            type="number"
+                            value={product.optional_quantity || 0}
+                            onChange={(e) => handleProductChange(index, 'optional_quantity', parseFloat(e.target.value) || 0)}
+                            fullWidth
+                            inputProps={{ min: 0, step: 0.01 }}
+                          />
+                        </Grid>
+                      </>
+                    )}
                   </Grid>
+                  
+                  {/* Multi-year contract - show per-year quantity inputs */}
+                  {numContractYears > 1 && (
+                    <Box sx={{ 
+                      p: 2, 
+                      bgcolor: '#F8FAFC', 
+                      borderRadius: 1, 
+                      border: '1px solid #E2E8F0' 
+                    }}>
+                      <Typography variant="caption" sx={{ 
+                        color: '#64748B', 
+                        fontWeight: 600, 
+                        textTransform: 'uppercase', 
+                        letterSpacing: '0.5px',
+                        display: 'block',
+                        mb: 2
+                      }}>
+                        Quantities per Year
+                      </Typography>
+                      
+                      <Grid container spacing={2}>
+                        {Array.from({ length: numContractYears }, (_, yearIndex) => {
+                          const year = yearIndex + 1
+                          const calendarYear = getCalendarYear(formData.start_period, year)
+                          const yearQty = product.year_quantities?.find(yq => yq.year === year)
+                          
+                          return (
+                            <Grid item xs={12} sm={6} md={4} key={year}>
+                              <Box sx={{ 
+                                p: 1.5, 
+                                bgcolor: '#FFFFFF', 
+                                borderRadius: 1,
+                                border: '1px solid #E2E8F0'
+                              }}>
+                                <Typography variant="caption" sx={{ 
+                                  color: '#1D4ED8', 
+                                  fontWeight: 600,
+                                  display: 'block',
+                                  mb: 1
+                                }}>
+                                  Year {year} ({calendarYear})
+                                </Typography>
+                                <TextField
+                                  label="Quantity (KT)"
+                                  type="number"
+                                  size="small"
+                                  value={yearQty?.quantity || 0}
+                                  onChange={(e) => handleYearQuantityChange(index, year, 'quantity', parseFloat(e.target.value) || 0)}
+                                  fullWidth
+                                  inputProps={{ min: 0, step: 0.01 }}
+                                  sx={{ mb: 1 }}
+                                />
+                                <TextField
+                                  label="Optional (KT)"
+                                  type="number"
+                                  size="small"
+                                  value={yearQty?.optional_quantity || 0}
+                                  onChange={(e) => handleYearQuantityChange(index, year, 'optional_quantity', parseFloat(e.target.value) || 0)}
+                                  fullWidth
+                                  inputProps={{ min: 0, step: 0.01 }}
+                                />
+                              </Box>
+                            </Grid>
+                          )
+                        })}
+                      </Grid>
+                      
+                      {/* Total summary */}
+                      <Box sx={{ 
+                        mt: 2, 
+                        pt: 1.5, 
+                        borderTop: '1px solid #E2E8F0',
+                        display: 'flex',
+                        gap: 3
+                      }}>
+                        <Typography variant="body2" sx={{ color: '#64748B' }}>
+                          <strong>Total:</strong> {product.total_quantity.toLocaleString()} KT
+                        </Typography>
+                        {(product.optional_quantity || 0) > 0 && (
+                          <Typography variant="body2" sx={{ color: '#64748B' }}>
+                            <strong>Optional:</strong> {(product.optional_quantity || 0).toLocaleString()} KT
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  )}
                 </Box>
               ))}
               
