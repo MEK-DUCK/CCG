@@ -382,6 +382,7 @@ export default function HomePage() {
   const [portMovementFilterStatus, setPortMovementFilterStatus] = useState<string | null>(null)
   const [portMovementSearch, setPortMovementSearch] = useState<string>('')
   const [completedCargosSearch, setCompletedCargosSearch] = useState<string>('')
+  const [inRoadCIFSearch, setInRoadCIFSearch] = useState<string>('')
   const [inRoadCIFFilterCustomers, setInRoadCIFFilterCustomers] = useState<number[]>([])
   const [cargoDialogOpen, setCargoDialogOpen] = useState(false)
   const [editingCargo, setEditingCargo] = useState<Cargo | null>(null)
@@ -1620,9 +1621,38 @@ export default function HomePage() {
       )
     }
 
+    // Filter cargos by search term
+    const filteredCargos = cargos.filter((cargo) => {
+      if (inRoadCIFSearch.trim() === '') {
+        return true
+      }
+      
+      const searchLower = inRoadCIFSearch.toLowerCase().trim()
+      const searchTerms = searchLower.split(' ').filter(term => term.length > 0)
+      
+      // Find contract for this cargo
+      const contract = contracts.find((c) => Number(c.id) === Number(cargo.contract_id))
+      const contractNumber = contract?.contract_number || ''
+      const customerName = getCustomerName(cargo.customer_id)
+      const productName = getProductName(cargo.product_name)
+      const dischargePort = cargo.discharge_port_location || ''
+      
+      // Check if any search term matches
+      const matchesSearch = searchTerms.some(term => {
+        const vesselMatch = cargo.vessel_name.toLowerCase().includes(term)
+        const customerMatch = customerName.toLowerCase().includes(term)
+        const contractMatch = contractNumber.toLowerCase().includes(term)
+        const productMatch = productName.toLowerCase().includes(term)
+        const dischargePortMatch = dischargePort.toLowerCase().includes(term)
+        return vesselMatch || customerMatch || contractMatch || productMatch || dischargePortMatch
+      })
+      
+      return matchesSearch
+    })
+
     // Group combie cargos - only show one row per combi_group_id
     const seenCombiGroups = new Set<string>()
-    const groupedCargos = cargos.filter((cargo) => {
+    const groupedCargos = filteredCargos.filter((cargo) => {
       if (cargo.combi_group_id) {
         if (seenCombiGroups.has(cargo.combi_group_id)) {
           return false // Skip duplicate combie rows
@@ -1635,7 +1665,9 @@ export default function HomePage() {
     if (groupedCargos.length === 0) {
       return (
         <Typography variant="body1" color="text.secondary" sx={{ p: 2 }}>
-          No In-Road CIF cargos found
+          {cargos.length === 0 
+            ? 'No In-Road CIF cargos found'
+            : 'No In-Road CIF cargos match the search criteria'}
         </Typography>
       )
     }
@@ -3595,6 +3627,31 @@ export default function HomePage() {
             <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B' }}>
               In-Road CIF Cargos (Pending Discharge)
             </Typography>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+              <TextField
+                size="small"
+                placeholder="Search vessel, customer, product, contract..."
+                value={inRoadCIFSearch}
+                onChange={(e) => setInRoadCIFSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search sx={{ color: 'text.secondary' }} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: inRoadCIFSearch && (
+                    <InputAdornment position="end">
+                      <IconButton size="small" onClick={() => setInRoadCIFSearch('')}>
+                        <Clear sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{ 
+                  minWidth: isMobile ? '100%' : 300, 
+                  fontSize: '0.875rem',
+                }}
+              />
             <FormControl size="small" sx={{ minWidth: 200 }}>
               <InputLabel>Filter by Customer</InputLabel>
               <Select
@@ -3639,6 +3696,7 @@ export default function HomePage() {
                 ))}
               </Select>
             </FormControl>
+            </Box>
           </Box>
           {renderInRoadCIFTable(
             inRoadCIFFilterCustomers.length === 0
