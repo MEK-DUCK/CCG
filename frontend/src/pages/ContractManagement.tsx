@@ -754,13 +754,13 @@ export default function ContractManagement() {
                         size="small"
                         sx={{ 
                           fontWeight: 600,
-                          bgcolor: contract.contract_category === 'TERM' ? '#DBEAFE' :
-                                   contract.contract_category === 'SEMI_TERM' ? '#FEF3C7' : '#DCFCE7',
-                          color: contract.contract_category === 'TERM' ? '#1E40AF' :
-                                 contract.contract_category === 'SEMI_TERM' ? '#92400E' : '#166534',
+                          bgcolor: contract.contract_category === 'TERM' ? '#E0E7FF' :
+                                   contract.contract_category === 'SEMI_TERM' ? '#FEF3C7' : '#FCE7F3',
+                          color: contract.contract_category === 'TERM' ? '#3730A3' :
+                                 contract.contract_category === 'SEMI_TERM' ? '#92400E' : '#9D174D',
                           border: '1px solid',
-                          borderColor: contract.contract_category === 'TERM' ? '#93C5FD' :
-                                       contract.contract_category === 'SEMI_TERM' ? '#FCD34D' : '#86EFAC',
+                          borderColor: contract.contract_category === 'TERM' ? '#A5B4FC' :
+                                       contract.contract_category === 'SEMI_TERM' ? '#FCD34D' : '#F9A8D4',
                         }}
                       />
                     </TableCell>
