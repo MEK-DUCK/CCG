@@ -670,8 +670,8 @@ export default function ContractManagement() {
                 <TableRow>
                   <TableCell>Contract Number</TableCell>
                   <TableCell>Customer</TableCell>
-                  <TableCell>Contract Category</TableCell>
-                  <TableCell>Type</TableCell>
+                  <TableCell>Contract Type</TableCell>
+                  <TableCell>FOB/CIF</TableCell>
                   <TableCell>Payment</TableCell>
                   <TableCell>Products</TableCell>
                   <TableCell>Period</TableCell>
