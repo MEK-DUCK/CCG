@@ -22,6 +22,7 @@ def _contracts_has_column(db: Session, column_name: str) -> bool:
 
 @router.post("/", response_model=schemas.Contract)
 def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_db)):
+    logger.info(f"Received contract creation request: {contract}")
     try:
         import json
         # Verify customer exists

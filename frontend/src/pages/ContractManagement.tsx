@@ -372,7 +372,8 @@ export default function ContractManagement() {
         products: formData.products.map(p => ({
           name: p.name,
           total_quantity: p.total_quantity,
-          optional_quantity: p.optional_quantity || 0
+          optional_quantity: p.optional_quantity || 0,
+          year_quantities: p.year_quantities && p.year_quantities.length > 0 ? p.year_quantities : undefined
         })),
         discharge_ranges: formData.discharge_ranges || undefined,
         additives_required: jetA1Selected ? (formData.additives_required === '' ? undefined : formData.additives_required === 'yes') : undefined,

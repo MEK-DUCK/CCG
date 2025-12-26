@@ -70,6 +70,19 @@ async def app_error_handler(request: Request, exc: AppError):
     return handle_app_error(request, exc)
 
 
+from pydantic import ValidationError as PydanticValidationError
+from fastapi.exceptions import RequestValidationError
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Log validation errors with full details for debugging."""
+    logger.error(f"Validation error for {request.method} {request.url.path}: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()}
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """
