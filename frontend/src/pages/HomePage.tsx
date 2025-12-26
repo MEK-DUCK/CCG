@@ -2718,7 +2718,7 @@ export default function HomePage() {
                         overflowWrap: 'break-word',
                         wordBreak: 'normal'
                       }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                     {cargo ? cargo.vessel_name : 'TBA'}
                       {isCombi && (
                         <Chip 
@@ -2730,6 +2730,20 @@ export default function HomePage() {
                             bgcolor: '#F59E0B', 
                             color: 'white',
                             fontWeight: 600,
+                          }}
+                        />
+                      )}
+                      {contract?.contract_category === 'SPOT' && (
+                        <Chip 
+                          label="Spot" 
+                          size="small" 
+                          sx={{ 
+                            height: 18, 
+                            fontSize: '0.65rem', 
+                            bgcolor: '#FCE7F3', 
+                            color: '#9D174D',
+                            fontWeight: 600,
+                            border: '1px solid #F9A8D4',
                           }}
                         />
                       )}
