@@ -10,7 +10,7 @@ import {
   Tabs,
   Tab,
 } from '@mui/material'
-import { Save, CalendarMonth } from '@mui/icons-material'
+import { Save, CalendarMonth, Add } from '@mui/icons-material'
 import { quarterlyPlanAPI, contractAPI } from '../api/client'
 
 interface QuarterlyPlanFormProps {
