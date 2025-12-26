@@ -96,6 +96,143 @@ def get_database_stats(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/analytics")
+def get_analytics(db: Session = Depends(get_db)):
+    """Get analytics data for inspector usage and port statistics."""
+    
+    # Inspector usage statistics
+    inspector_stats = []
+    try:
+        # Query all cargos and count by inspector_name
+        inspector_query = db.query(
+            Cargo.inspector_name,
+            func.count(Cargo.id).label('cargo_count')
+        ).filter(
+            Cargo.inspector_name.isnot(None),
+            Cargo.inspector_name != ''
+        ).group_by(Cargo.inspector_name).order_by(func.count(Cargo.id).desc()).all()
+        
+        for row in inspector_query:
+            inspector_stats.append({
+                "name": row.inspector_name,
+                "cargo_count": row.cargo_count
+            })
+    except Exception as e:
+        print(f"Error getting inspector stats: {e}")
+    
+    # Port usage statistics
+    port_stats = []
+    try:
+        # Get all cargos with load_ports
+        cargos = db.query(Cargo.load_ports).filter(
+            Cargo.load_ports.isnot(None),
+            Cargo.load_ports != ''
+        ).all()
+        
+        # Count port occurrences
+        port_counts = {}
+        for cargo in cargos:
+            if cargo.load_ports:
+                # Parse load_ports - could be JSON array or comma-separated string
+                ports_str = cargo.load_ports
+                if ports_str.startswith('['):
+                    try:
+                        ports = json.loads(ports_str)
+                    except:
+                        ports = [p.strip() for p in ports_str.split(',') if p.strip()]
+                else:
+                    ports = [p.strip() for p in ports_str.split(',') if p.strip()]
+                
+                for port in ports:
+                    port_counts[port] = port_counts.get(port, 0) + 1
+        
+        # Sort by count descending
+        for port, count in sorted(port_counts.items(), key=lambda x: -x[1]):
+            port_stats.append({
+                "port": port,
+                "cargo_count": count
+            })
+    except Exception as e:
+        print(f"Error getting port stats: {e}")
+    
+    # Monthly cargo trends (last 12 months)
+    monthly_trends = []
+    try:
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        
+        today = date.today()
+        for i in range(11, -1, -1):
+            month_date = today - relativedelta(months=i)
+            month = month_date.month
+            year = month_date.year
+            
+            # Count cargos created in this month
+            cargo_count = db.query(func.count(Cargo.id)).filter(
+                func.extract('month', Cargo.created_at) == month,
+                func.extract('year', Cargo.created_at) == year
+            ).scalar() or 0
+            
+            monthly_trends.append({
+                "month": month,
+                "year": year,
+                "label": month_date.strftime("%b %Y"),
+                "cargo_count": cargo_count
+            })
+    except Exception as e:
+        print(f"Error getting monthly trends: {e}")
+    
+    # Customer cargo distribution
+    customer_stats = []
+    try:
+        # Join cargos -> monthly_plans -> quarterly_plans -> contracts -> customers
+        customer_query = db.execute(text('''
+            SELECT 
+                cu.name as customer_name,
+                COUNT(DISTINCT ca.id) as cargo_count
+            FROM cargos ca
+            JOIN monthly_plans mp ON ca.monthly_plan_id = mp.id
+            JOIN quarterly_plans qp ON mp.quarterly_plan_id = qp.id
+            JOIN contracts co ON qp.contract_id = co.id
+            JOIN customers cu ON co.customer_id = cu.id
+            GROUP BY cu.id, cu.name
+            ORDER BY cargo_count DESC
+        ''')).fetchall()
+        
+        for row in customer_query:
+            customer_stats.append({
+                "customer": row[0],
+                "cargo_count": row[1]
+            })
+    except Exception as e:
+        print(f"Error getting customer stats: {e}")
+    
+    # Cargo status distribution
+    status_stats = []
+    try:
+        status_query = db.query(
+            Cargo.status,
+            func.count(Cargo.id).label('count')
+        ).group_by(Cargo.status).all()
+        
+        for row in status_query:
+            status_stats.append({
+                "status": row.status.value if row.status else "Unknown",
+                "count": row.count
+            })
+    except Exception as e:
+        print(f"Error getting status stats: {e}")
+    
+    return {
+        "inspector_stats": inspector_stats,
+        "port_stats": port_stats,
+        "monthly_trends": monthly_trends,
+        "customer_stats": customer_stats,
+        "status_stats": status_stats,
+        "last_updated": datetime.utcnow().isoformat()
+    }
+
+
 # =============================================================================
 # CONTRACTS ADMIN
 # =============================================================================
