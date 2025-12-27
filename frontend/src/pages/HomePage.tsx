@@ -681,6 +681,114 @@ export default function HomePage() {
         setCompletedInRoadCIF(removeFromList)
       }
     }, []),
+    onPortOperationChange: useCallback((event: DataSyncEvent) => {
+      // entity_id is the cargo_id for port operations
+      const cargoId = event.entity_id
+      const portOpData = event.entity_data as {
+        port_code: string
+        status: string
+        eta?: string
+        berthed?: string
+        commenced?: string
+        etc?: string
+        notes?: string
+        cargo_status?: string
+        cargo_version?: number
+      } | null
+      
+      if (!portOpData) return
+      
+      console.log(`[RealTimeSync] Port operation updated for cargo ${cargoId}, port ${portOpData.port_code}:`, portOpData)
+      
+      // Update the port operation in all cargo lists
+      const updatePortOpInCargo = (cargo: Cargo): Cargo => {
+        if (cargo.id !== cargoId) return cargo
+        
+        const existingOps = Array.isArray(cargo.port_operations) ? cargo.port_operations : []
+        const portCode = portOpData.port_code
+        
+        // Find and update the port operation, or add it if it doesn't exist
+        const opIndex = existingOps.findIndex(op => op.port_code === portCode)
+        let updatedOps: CargoPortOperation[]
+        
+        if (opIndex >= 0) {
+          // Update existing operation
+          updatedOps = existingOps.map((op, idx) => 
+            idx === opIndex 
+              ? { ...op, ...portOpData, port_code: portCode } as CargoPortOperation
+              : op
+          )
+        } else {
+          // Add new operation
+          updatedOps = [...existingOps, {
+            id: -1,
+            cargo_id: cargoId,
+            port_code: portCode,
+            status: portOpData.status || 'Planned',
+            eta: portOpData.eta,
+            berthed: portOpData.berthed,
+            commenced: portOpData.commenced,
+            etc: portOpData.etc,
+            notes: portOpData.notes,
+            created_at: new Date().toISOString(),
+          } as CargoPortOperation]
+        }
+        
+        // Also update the cargo status if it changed
+        const updatedCargo = { 
+          ...cargo, 
+          port_operations: updatedOps,
+        }
+        
+        if (portOpData.cargo_status && portOpData.cargo_status !== cargo.status) {
+          updatedCargo.status = portOpData.cargo_status as CargoStatus
+        }
+        
+        return updatedCargo
+      }
+      
+      setPortMovement(prev => prev.map(updatePortOpInCargo))
+      setActiveLoadings(prev => prev.map(updatePortOpInCargo))
+      setCompletedCargos(prev => prev.map(updatePortOpInCargo))
+      setInRoadCIF(prev => prev.map(updatePortOpInCargo))
+      setCompletedInRoadCIF(prev => prev.map(updatePortOpInCargo))
+      
+      // Handle cargo status transitions if the cargo status changed
+      if (portOpData.cargo_status) {
+        // Find the cargo to check its contract type
+        const allCargos = [...portMovement, ...activeLoadings, ...completedCargos, ...inRoadCIF, ...completedInRoadCIF]
+        const cargo = allCargos.find(c => c.id === cargoId)
+        if (cargo) {
+          const isCIF = cargo.contract_type === 'CIF'
+          const newStatus = portOpData.cargo_status
+          
+          // Move cargo between lists based on new status
+          if (newStatus === 'Loading') {
+            setPortMovement(prev => prev.filter(c => c.id !== cargoId))
+            setActiveLoadings(prev => {
+              if (prev.some(c => c.id === cargoId)) return prev
+              const updatedCargo = updatePortOpInCargo(cargo)
+              return [...prev, updatedCargo]
+            })
+          } else if (newStatus === 'Completed Loading') {
+            setPortMovement(prev => prev.filter(c => c.id !== cargoId))
+            setActiveLoadings(prev => prev.filter(c => c.id !== cargoId))
+            if (isCIF) {
+              setInRoadCIF(prev => {
+                if (prev.some(c => c.id === cargoId)) return prev
+                const updatedCargo = updatePortOpInCargo(cargo)
+                return [...prev, updatedCargo]
+              })
+            }
+            setCompletedCargos(prev => {
+              if (prev.some(c => c.id === cargoId)) return prev
+              const updatedCargo = updatePortOpInCargo(cargo)
+              return [...prev, updatedCargo]
+            })
+          }
+        }
+      }
+    }, [portMovement, activeLoadings, completedCargos, inRoadCIF, completedInRoadCIF]),
   })
 
   const formatSelectedMonthsLabel = (months: number[], year: number) => {

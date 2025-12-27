@@ -32,6 +32,7 @@ interface UseRealTimeSyncOptions {
   /** Called when a specific entity type changes */
   onCargoChange?: (event: DataSyncEvent) => void
   onMonthlyPlanChange?: (event: DataSyncEvent) => void
+  onPortOperationChange?: (event: DataSyncEvent) => void
   /** Auto-reconnect on disconnect (default: true) */
   autoReconnect?: boolean
   /** Heartbeat interval in ms (default: 30000) */
@@ -182,6 +183,9 @@ export function useRealTimeSync(
               }
               if (syncEvent.entity_type === 'monthly_plan' && callbacksRef.current.onMonthlyPlanChange) {
                 callbacksRef.current.onMonthlyPlanChange(syncEvent)
+              }
+              if (syncEvent.entity_type === 'port_operation' && callbacksRef.current.onPortOperationChange) {
+                callbacksRef.current.onPortOperationChange(syncEvent)
               }
             }
             // Ignore presence messages - we're only interested in data changes

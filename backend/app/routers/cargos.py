@@ -110,6 +110,58 @@ async def _broadcast_cargo_change(
         logger.error(f"Failed to broadcast cargo change: {e}", exc_info=True)
 
 
+def _port_op_to_broadcast_dict(op: models.CargoPortOperation, cargo: models.Cargo) -> dict:
+    """Convert a port operation model to a dict for broadcasting."""
+    status_val = op.status
+    if status_val and hasattr(status_val, 'value'):
+        status_val = status_val.value
+    
+    # Also include cargo status since it may have been recomputed
+    cargo_status_val = cargo.status
+    if cargo_status_val and hasattr(cargo_status_val, 'value'):
+        cargo_status_val = cargo_status_val.value
+    
+    return {
+        "id": op.id,
+        "cargo_id": op.cargo_id,
+        "port_code": op.port_code,
+        "status": status_val,
+        "eta": op.eta,
+        "berthed": op.berthed,
+        "commenced": op.commenced,
+        "etc": op.etc,
+        "notes": op.notes,
+        # Include cargo info so frontend can update cargo status too
+        "cargo_status": cargo_status_val,
+        "cargo_version": cargo.version,
+    }
+
+
+async def _broadcast_port_op_change(
+    cargo_id: int,
+    port_code: str,
+    port_op_data: dict,
+    user_id: Optional[int] = None,
+    user_initials: Optional[str] = None
+):
+    """Broadcast port operation change to all users viewing port movement page."""
+    logger.info(f"[BROADCAST] _broadcast_port_op_change called: cargo:{cargo_id} port:{port_code} by user:{user_id}")
+    try:
+        await presence_manager.broadcast_data_change(
+            resource_type="page",
+            resource_id="port-movement",
+            change_type="updated",
+            entity_type="port_operation",
+            entity_id=cargo_id,  # Use cargo_id as the entity_id for easier frontend handling
+            entity_data={**port_op_data, "port_code": port_code},
+            changed_by_user_id=user_id,
+            changed_by_initials=user_initials
+        )
+        logger.info(f"[BROADCAST] broadcast_data_change completed for port_op cargo:{cargo_id} port:{port_code}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast port operation change: {e}", exc_info=True)
+
+
 def _parse_load_ports(load_ports: Optional[str]) -> List[str]:
     """
     Parse Cargo.load_ports into a list of port codes.
@@ -548,10 +600,11 @@ def list_port_operations(cargo_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{cargo_id}/port-operations/{port_code}", response_model=schemas.CargoPortOperation)
-def upsert_port_operation(
+async def upsert_port_operation(
     cargo_id: int,
     port_code: str,
     op: schemas.CargoPortOperationUpdate,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     port_code = (port_code or "").strip().upper()
@@ -595,6 +648,19 @@ def upsert_port_operation(
     
     db.commit()
     db.refresh(db_op)
+    db.refresh(cargo)  # Refresh cargo to get updated status
+    
+    # Broadcast the port operation change to other users
+    user_id = getattr(request.state, 'user_id', None)
+    user_initials = getattr(request.state, 'user_initials', None)
+    await _broadcast_port_op_change(
+        cargo_id=cargo_id,
+        port_code=port_code,
+        port_op_data=_port_op_to_broadcast_dict(db_op, cargo),
+        user_id=user_id,
+        user_initials=user_initials
+    )
+    
     return db_op
 
 
