@@ -1701,9 +1701,9 @@ export default function HomePage() {
             <TableRow>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Vessel Name</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Customer</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>5-ND</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Payment Status</TableCell>
@@ -1753,6 +1753,7 @@ export default function HomePage() {
                     </Box>
                   </TableCell>
                 <TableCell>{getCustomerName(cargo.customer_id)}</TableCell>
+                <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
                   <TableCell>
                     {cargo.combi_group_id ? (
                       <Box>
@@ -1795,7 +1796,6 @@ export default function HomePage() {
                       </>
                     )}
                   </TableCell>
-                <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
                   <TableCell 
                     onClick={(e) => e.stopPropagation()} // Prevent row click when editing
                   >
