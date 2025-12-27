@@ -1,8 +1,9 @@
 """Utility functions for cargo audit logging"""
 import json
 from datetime import datetime, date
+from typing import Optional
 from sqlalchemy.orm import Session
-from app.models import CargoAuditLog, Cargo, MonthlyPlan
+from app.models import CargoAuditLog, Cargo, MonthlyPlan, User
 
 
 def serialize_value(value):
@@ -27,7 +28,8 @@ def log_cargo_action(
     new_value=None,
     old_monthly_plan_id: int = None,
     new_monthly_plan_id: int = None,
-    description: str = None
+    description: str = None,
+    user: Optional[User] = None
 ):
     """Log a cargo action to the audit log"""
     
@@ -109,7 +111,9 @@ def log_cargo_action(
             new_month=new_month,
             new_year=new_year,
             description=description,
-            cargo_snapshot=cargo_snapshot
+            cargo_snapshot=cargo_snapshot,
+            user_id=user.id if user else None,
+            user_initials=user.initials if user else None
         )
         
         db.add(audit_log)

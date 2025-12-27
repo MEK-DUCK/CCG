@@ -51,8 +51,10 @@ import {
   Shield,
   Inventory,
   Add,
+  ManageAccounts,
 } from '@mui/icons-material'
 import client from '../api/client'
+import UserManagement from '../components/UserManagement'
 
 // Types
 interface DatabaseStats {
@@ -1958,6 +1960,7 @@ export default function AdminPage() {
           scrollButtons="auto"
         >
           <Tab label="Overview" icon={<Storage />} iconPosition="start" />
+          <Tab label="Users" icon={<ManageAccounts />} iconPosition="start" />
           <Tab label="Products" icon={<Inventory />} iconPosition="start" />
           <Tab label="Load Ports" icon={<LocalShipping />} iconPosition="start" />
           <Tab label="Inspectors" icon={<People />} iconPosition="start" />
@@ -1974,16 +1977,17 @@ export default function AdminPage() {
       {/* Tab Content */}
       <Box>
         {activeTab === 0 && renderOverview()}
-        {activeTab === 1 && renderProductsTable()}
-        {activeTab === 2 && renderLoadPortsTable()}
-        {activeTab === 3 && renderInspectorsTable()}
-        {activeTab === 4 && renderCustomersTable()}
-        {activeTab === 5 && renderContractsTable()}
-        {activeTab === 6 && renderQuarterlyPlansTable()}
-        {activeTab === 7 && renderMonthlyPlansTable()}
-        {activeTab === 8 && renderCargosTable()}
-        {activeTab === 9 && renderAuditLogs()}
-        {activeTab === 10 && renderIntegrityCheck()}
+        {activeTab === 1 && <UserManagement />}
+        {activeTab === 2 && renderProductsTable()}
+        {activeTab === 3 && renderLoadPortsTable()}
+        {activeTab === 4 && renderInspectorsTable()}
+        {activeTab === 5 && renderCustomersTable()}
+        {activeTab === 6 && renderContractsTable()}
+        {activeTab === 7 && renderQuarterlyPlansTable()}
+        {activeTab === 8 && renderMonthlyPlansTable()}
+        {activeTab === 9 && renderCargosTable()}
+        {activeTab === 10 && renderAuditLogs()}
+        {activeTab === 11 && renderIntegrityCheck()}
       </Box>
 
       {/* Edit Dialog */}

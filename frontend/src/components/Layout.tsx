@@ -16,8 +16,13 @@ import {
   ListItemText,
   useMediaQuery,
   useTheme,
+  Menu as MuiMenu,
+  MenuItem,
+  Divider,
+  Chip,
 } from '@mui/material'
-import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize, AdminPanelSettings } from '@mui/icons-material'
+import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize, AdminPanelSettings, Logout, Person, KeyboardArrowDown } from '@mui/icons-material'
+import { useAuth } from '../contexts/AuthContext'
 
 interface LayoutProps {
   children: ReactNode
@@ -29,7 +34,10 @@ export default function Layout({ children }: LayoutProps) {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null)
+  const { user, logout, isAdmin } = useAuth()
 
+  // Filter nav items based on user role
   const navItems = [
     { label: 'Home', path: '/', icon: <Storage /> },
     { label: 'Customers', path: '/customers', icon: <People /> },
@@ -38,8 +46,14 @@ export default function Layout({ children }: LayoutProps) {
     { label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
     { label: 'Reconciliation', path: '/reconciliation', icon: <History /> },
     { label: 'Contract Summary', path: '/contract-summary', icon: <Summarize /> },
-    { label: 'Admin', path: '/admin', icon: <AdminPanelSettings /> },
+    ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: <AdminPanelSettings /> }] : []),
   ]
+
+  const handleLogout = () => {
+    setUserMenuAnchor(null)
+    logout()
+    navigate('/login')
+  }
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
@@ -135,6 +149,49 @@ export default function Layout({ children }: LayoutProps) {
           </ListItem>
         ))}
       </List>
+      {/* User info in mobile drawer */}
+      {user && (
+        <Box sx={{ mt: 'auto', p: 2, borderTop: '1px solid rgba(148, 163, 184, 0.12)' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+            <Box sx={{
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              bgcolor: isAdmin ? '#EDE9FE' : '#E0F2FE',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Typography sx={{ fontSize: '0.875rem', fontWeight: 700, color: isAdmin ? '#7C3AED' : '#0284C7' }}>
+                {user.initials}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography sx={{ fontWeight: 600, fontSize: '0.875rem', color: '#1E293B' }}>{user.full_name}</Typography>
+              <Typography sx={{ fontSize: '0.75rem', color: '#64748B' }}>{user.email}</Typography>
+            </Box>
+          </Box>
+          <Button
+            fullWidth
+            variant="outlined"
+            startIcon={<Logout />}
+            onClick={() => {
+              handleDrawerToggle()
+              handleLogout()
+            }}
+            sx={{
+              color: '#DC2626',
+              borderColor: '#FCA5A5',
+              '&:hover': {
+                bgcolor: '#FEE2E2',
+                borderColor: '#DC2626',
+              },
+            }}
+          >
+            Sign Out
+          </Button>
+        </Box>
+      )}
     </Box>
   )
 
@@ -279,10 +336,81 @@ export default function Layout({ children }: LayoutProps) {
                   </Button>
                 ))}
               </Box>
+              {/* User Menu */}
+              {user && (
+                <Box sx={{ position: 'absolute', right: 24 }}>
+                  <Button
+                    onClick={(e) => setUserMenuAnchor(e.currentTarget)}
+                    endIcon={<KeyboardArrowDown />}
+                    sx={{
+                      textTransform: 'none',
+                      color: '#475569',
+                      borderRadius: 2,
+                      px: 1.5,
+                      '&:hover': { bgcolor: '#F1F5F9' },
+                    }}
+                  >
+                    <Box sx={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      bgcolor: isAdmin ? '#EDE9FE' : '#E0F2FE',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      mr: 1,
+                    }}>
+                      <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: isAdmin ? '#7C3AED' : '#0284C7' }}>
+                        {user.initials}
+                      </Typography>
+                    </Box>
+                    <Typography sx={{ fontWeight: 500, fontSize: '0.875rem' }}>
+                      {user.full_name}
+                    </Typography>
+                  </Button>
+                </Box>
+              )}
             </>
           )}
         </Toolbar>
       </AppBar>
+      {/* User Menu Dropdown */}
+      <MuiMenu
+        anchorEl={userMenuAnchor}
+        open={Boolean(userMenuAnchor)}
+        onClose={() => setUserMenuAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        PaperProps={{
+          sx: {
+            mt: 1,
+            minWidth: 200,
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+          }
+        }}
+      >
+        <Box sx={{ px: 2, py: 1.5 }}>
+          <Typography sx={{ fontWeight: 600, color: '#1E293B' }}>{user?.full_name}</Typography>
+          <Typography sx={{ fontSize: '0.75rem', color: '#64748B' }}>{user?.email}</Typography>
+          <Chip
+            label={isAdmin ? 'Admin' : 'User'}
+            size="small"
+            sx={{
+              mt: 1,
+              bgcolor: isAdmin ? '#EDE9FE' : '#E0F2FE',
+              color: isAdmin ? '#7C3AED' : '#0284C7',
+              fontWeight: 600,
+              fontSize: '0.7rem',
+            }}
+          />
+        </Box>
+        <Divider />
+        <MenuItem onClick={handleLogout} sx={{ color: '#DC2626', py: 1.5 }}>
+          <Logout sx={{ mr: 1.5, fontSize: 18 }} />
+          Sign Out
+        </MenuItem>
+      </MuiMenu>
       <Box component="nav">
         <Drawer
           variant="temporary"

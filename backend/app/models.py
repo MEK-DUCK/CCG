@@ -51,6 +51,19 @@ class CargoStatus(str, enum.Enum):
     NOMINATION_RELEASED = "Nomination Released"
 
 
+class UserRole(str, enum.Enum):
+    """User role for access control."""
+    ADMIN = "admin"
+    USER = "user"
+
+
+class UserStatus(str, enum.Enum):
+    """User account status."""
+    PENDING = "pending"      # Invited but hasn't set password
+    ACTIVE = "active"        # Normal active user
+    INACTIVE = "inactive"    # Deactivated by admin
+
+
 # =============================================================================
 # CONFIGURATION MODELS
 # =============================================================================
@@ -105,6 +118,40 @@ class Inspector(Base):
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+# =============================================================================
+# USER/AUTH MODELS
+# =============================================================================
+
+class User(Base):
+    """
+    User account for authentication and audit tracking.
+    Users can only be created by admins (no public registration).
+    """
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=True)  # Null until user sets password
+    full_name = Column(String(255), nullable=False)
+    initials = Column(String(4), unique=True, nullable=False, index=True)  # For audit logs
+    role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
+    status = Column(Enum(UserStatus), default=UserStatus.PENDING, nullable=False)
+    
+    # Invite/password reset token
+    invite_token = Column(String(255), nullable=True, unique=True)
+    invite_token_expires = Column(DateTime(timezone=True), nullable=True)
+    password_reset_token = Column(String(255), nullable=True, unique=True)
+    password_reset_expires = Column(DateTime(timezone=True), nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    last_login = Column(DateTime(timezone=True), nullable=True)
+    
+    # Who created this user
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 
 # =============================================================================
@@ -390,6 +437,10 @@ class CargoAuditLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     cargo_snapshot = Column(Text, nullable=True)  # JSON snapshot for deleted cargos
     
+    # User tracking
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_initials = Column(String(4), nullable=True, index=True)
+    
 
 class MonthlyPlanAuditLog(Base):
     """Audit log for monthly plan changes."""
@@ -412,6 +463,10 @@ class MonthlyPlanAuditLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     monthly_plan_snapshot = Column(Text, nullable=True)
     
+    # User tracking
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_initials = Column(String(4), nullable=True, index=True)
+    
 
 class QuarterlyPlanAuditLog(Base):
     """Audit log for quarterly plan changes."""
@@ -430,6 +485,10 @@ class QuarterlyPlanAuditLog(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     quarterly_plan_snapshot = Column(Text, nullable=True)
+    
+    # User tracking
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_initials = Column(String(4), nullable=True, index=True)
 
 
 class ContractAuditLog(Base):
@@ -458,3 +517,7 @@ class ContractAuditLog(Base):
     customer_name = Column(String, nullable=True)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # User tracking
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_initials = Column(String(4), nullable=True, index=True)

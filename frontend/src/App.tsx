@@ -10,7 +10,12 @@ import ReconciliationPage from './pages/ReconciliationPage'
 import DashboardPage from './pages/DashboardPage'
 import ContractSummaryPage from './pages/ContractSummaryPage'
 import AdminPage from './pages/AdminPage'
+import LoginPage from './pages/LoginPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import SetPasswordPage from './pages/SetPasswordPage'
 import Layout from './components/Layout'
+import ProtectedRoute, { PublicOnlyRoute } from './components/ProtectedRoute'
+import { AuthProvider } from './contexts/AuthContext'
 
 const theme = createTheme({
   palette: {
@@ -565,21 +570,90 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Layout>
+      <AuthProvider>
+        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/customers" element={<CustomerManagement />} />
-            <Route path="/contracts" element={<ContractManagement />} />
-            <Route path="/contracts/:contractId/dashboard" element={<ContractDashboard />} />
-            <Route path="/lifting-plan" element={<LiftingPlanPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/reconciliation" element={<ReconciliationPage />} />
-            <Route path="/contract-summary" element={<ContractSummaryPage />} />
-            <Route path="/admin" element={<AdminPage />} />
+            {/* Public auth routes (redirect to home if already logged in) */}
+            <Route path="/login" element={
+              <PublicOnlyRoute>
+                <LoginPage />
+              </PublicOnlyRoute>
+            } />
+            <Route path="/forgot-password" element={
+              <PublicOnlyRoute>
+                <ForgotPasswordPage />
+              </PublicOnlyRoute>
+            } />
+            <Route path="/set-password" element={<SetPasswordPage />} />
+
+            {/* Protected routes (require authentication) */}
+            <Route path="/" element={
+              <ProtectedRoute>
+                <Layout>
+                  <HomePage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/customers" element={
+              <ProtectedRoute>
+                <Layout>
+                  <CustomerManagement />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/contracts" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ContractManagement />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/contracts/:contractId/dashboard" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ContractDashboard />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/lifting-plan" element={
+              <ProtectedRoute>
+                <Layout>
+                  <LiftingPlanPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Layout>
+                  <DashboardPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/reconciliation" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ReconciliationPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/contract-summary" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ContractSummaryPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            {/* Admin route (requires admin role) */}
+            <Route path="/admin" element={
+              <ProtectedRoute requireAdmin>
+                <Layout>
+                  <AdminPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
           </Routes>
-        </Layout>
-      </Router>
+        </Router>
+      </AuthProvider>
     </ThemeProvider>
   )
 }

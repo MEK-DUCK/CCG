@@ -7,6 +7,7 @@ import os
 from app.database import engine, Base, ensure_schema
 from app.routers import customers, contracts, quarterly_plans, monthly_plans, cargos, audit_logs, documents
 from app.routers import config_router, admin, products, load_ports, inspectors
+from app.routers import auth_router, users
 from app.errors import AppError, handle_app_error, handle_unexpected_error
 
 # Configure logging
@@ -100,6 +101,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Routers
 # =============================================================================
 
+# Auth routes (no /api prefix for cleaner URLs)
+app.include_router(auth_router.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
+
+# Business routes
 app.include_router(customers.router, prefix="/api/customers", tags=["customers"])
 app.include_router(contracts.router, prefix="/api/contracts", tags=["contracts"])
 app.include_router(quarterly_plans.router, prefix="/api/quarterly-plans", tags=["quarterly-plans"])

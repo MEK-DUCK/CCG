@@ -672,3 +672,78 @@ class WeeklyQuantityComparisonResponse(BaseModel):
     generated_at: datetime
     contracts: List[WeeklyQuantityContract]
 
+
+# =============================================================================
+# AUTH/USER SCHEMAS
+# =============================================================================
+
+from app.models import UserRole, UserStatus
+
+class UserBase(BaseModel):
+    email: str = Field(..., description="User email address")
+    full_name: str = Field(..., min_length=1, max_length=255, description="Full name")
+    initials: str = Field(..., min_length=2, max_length=4, description="User initials for audit logs (e.g., MEK)")
+    role: UserRole = Field(UserRole.USER, description="User role")
+
+class UserCreate(UserBase):
+    """Schema for admin creating a new user (no password - user sets it via invite)"""
+    pass
+
+class UserUpdate(BaseModel):
+    """Schema for updating user details"""
+    email: Optional[str] = None
+    full_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    initials: Optional[str] = Field(None, min_length=2, max_length=4)
+    role: Optional[UserRole] = None
+    status: Optional[UserStatus] = None
+
+class User(UserBase):
+    """Full user schema for responses"""
+    id: int
+    status: UserStatus
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
+    created_by_id: Optional[int] = None
+    
+    class Config:
+        from_attributes = True
+
+class UserPublic(BaseModel):
+    """Public user info (no sensitive data)"""
+    id: int
+    email: str
+    full_name: str
+    initials: str
+    role: UserRole
+    status: UserStatus
+    
+    class Config:
+        from_attributes = True
+
+# Auth request/response schemas
+class LoginRequest(BaseModel):
+    email: str = Field(..., description="User email")
+    password: str = Field(..., min_length=1, description="User password")
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserPublic
+
+class SetPasswordRequest(BaseModel):
+    """For setting password via invite or reset token"""
+    token: str = Field(..., description="Invite or reset token")
+    password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., description="User email")
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., description="Current password")
+    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+
+class MessageResponse(BaseModel):
+    message: str
+    success: bool = True
+
