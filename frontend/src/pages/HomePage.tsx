@@ -1282,6 +1282,39 @@ export default function HomePage() {
     return productName || '-'
   }
 
+  // Product color mapping - using distinct colors from FOB/CIF (primary/secondary) and Payment (success/warning)
+  const getProductColor = (productName: string): { bgcolor: string; color: string } => {
+    const name = (productName || '').toUpperCase()
+    
+    // Distinct color palette for products (avoiding blue/purple for FOB/CIF, green/orange for payment)
+    if (name.includes('GO') || name.includes('GASOIL') || name.includes('DIESEL')) {
+      return { bgcolor: '#0891B2', color: 'white' } // Cyan/Teal
+    }
+    if (name.includes('MOGAS') || name.includes('PETROL') || name.includes('ULP')) {
+      return { bgcolor: '#DC2626', color: 'white' } // Red
+    }
+    if (name.includes('JET') || name.includes('KERO') || name.includes('PARAFFIN')) {
+      return { bgcolor: '#7C3AED', color: 'white' } // Violet
+    }
+    if (name.includes('FUEL') || name.includes('FO') || name.includes('HFO')) {
+      return { bgcolor: '#1F2937', color: 'white' } // Dark gray/black
+    }
+    if (name.includes('LPG') || name.includes('PROPANE') || name.includes('BUTANE')) {
+      return { bgcolor: '#EC4899', color: 'white' } // Pink
+    }
+    if (name.includes('NAPHTHA') || name.includes('CONDENSATE')) {
+      return { bgcolor: '#F59E0B', color: 'white' } // Amber (different shade from warning)
+    }
+    if (name.includes('BITUMEN') || name.includes('ASPHALT')) {
+      return { bgcolor: '#78716C', color: 'white' } // Stone/Brown
+    }
+    if (name.includes('LUBRICANT') || name.includes('LUBE') || name.includes('BASE OIL')) {
+      return { bgcolor: '#0D9488', color: 'white' } // Teal
+    }
+    // Default for unknown products
+    return { bgcolor: '#6366F1', color: 'white' } // Indigo
+  }
+
   const getLaycanDisplay = (monthlyPlan: MonthlyPlan, contract: Contract | null) => {
     if (!contract) {
       return 'TBA'
@@ -1574,8 +1607,7 @@ export default function HomePage() {
                             key={c.id} 
                             label={`${c.product_name}: ${c.cargo_quantity} KT`}
                             size="small"
-                            color="info"
-                            sx={{ fontSize: '0.75rem' }}
+                            sx={{ fontSize: '0.75rem', ...getProductColor(c.product_name) }}
                           />
                         ))}
                       </Box>
@@ -1583,7 +1615,7 @@ export default function HomePage() {
                       <Chip 
                         label={getProductName(cargo.product_name)}
                         size="small"
-                        color="info"
+                        sx={getProductColor(cargo.product_name)}
                       />
                     )}
                   </TableCell>
@@ -1770,8 +1802,7 @@ export default function HomePage() {
                             key={c.id} 
                             label={`${c.product_name}: ${c.cargo_quantity} KT`}
                             size="small"
-                            color="info"
-                            sx={{ fontSize: '0.75rem' }}
+                            sx={{ fontSize: '0.75rem', ...getProductColor(c.product_name) }}
                           />
                         ))}
                       </Box>
@@ -1779,7 +1810,7 @@ export default function HomePage() {
                       <Chip 
                         label={getProductName(cargo.product_name)}
                         size="small"
-                        color="info"
+                        sx={getProductColor(cargo.product_name)}
                       />
                     )}
                   </TableCell>
@@ -2061,8 +2092,7 @@ export default function HomePage() {
                             key={c.id} 
                             label={`${c.product_name}: ${c.cargo_quantity} KT`}
                             size="small"
-                            color="info"
-                            sx={{ fontSize: '0.75rem' }}
+                            sx={{ fontSize: '0.75rem', ...getProductColor(c.product_name) }}
                           />
                         ))}
                       </Box>
@@ -2070,7 +2100,7 @@ export default function HomePage() {
                       <Chip 
                         label={getProductName(cargo.product_name)}
                         size="small"
-                        color="info"
+                        sx={getProductColor(cargo.product_name)}
                       />
                     )}
                   </TableCell>
@@ -2913,8 +2943,7 @@ export default function HomePage() {
                                 key={c.id} 
                                 label={`${c.product_name}: ${c.cargo_quantity} KT`}
                                 size="small"
-                                color="info"
-                                sx={{ fontSize: '0.75rem' }}
+                                sx={{ fontSize: '0.75rem', ...getProductColor(c.product_name) }}
                               />
                             ))}
                           </Box>
@@ -2927,8 +2956,7 @@ export default function HomePage() {
                                   key={mp.id} 
                                   label={`${productName}: ${mp.month_quantity} KT`}
                                   size="small"
-                                  color="info"
-                                  sx={{ fontSize: '0.75rem' }}
+                                  sx={{ fontSize: '0.75rem', ...getProductColor(productName) }}
                                 />
                               )
                             })}
@@ -2937,7 +2965,7 @@ export default function HomePage() {
                           <Chip 
                             label={cargo ? cargo.product_name : (monthlyPlan ? getProductNameForMonthlyPlan(monthlyPlan) : '-')}
                             size="small"
-                            color="info"
+                            sx={getProductColor(cargo ? cargo.product_name : (monthlyPlan ? getProductNameForMonthlyPlan(monthlyPlan) : ''))}
                           />
                         )}
                       </TableCell>
