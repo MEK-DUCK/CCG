@@ -4589,12 +4589,12 @@ export default function HomePage() {
                             >
                               Completed Loading
                             </MenuItem>
-                            {/* Show In-Road only for CIF contracts when NOT in In-Road CIF tab */}
-                            {editingCargo?.contract_type === 'CIF' && value !== 2 && (
+                            {/* Show In-Road only for CIF contracts when NOT in In-Road CIF tab or Completed CIF tab */}
+                            {editingCargo?.contract_type === 'CIF' && value !== 2 && value !== 3 && (
                               <MenuItem value="In-Road (Pending Discharge)">In-Road (Pending Discharge)</MenuItem>
                             )}
-                            {/* Show Discharge Complete for CIF contracts in In-Road CIF tab (value === 2) */}
-                            {editingCargo?.contract_type === 'CIF' && value === 2 && (
+                            {/* Show Discharge Complete for CIF contracts in In-Road CIF tab (value === 2) or Completed CIF tab (value === 3) */}
+                            {editingCargo?.contract_type === 'CIF' && (value === 2 || value === 3) && (
                               <MenuItem value="Discharge Complete">Discharge Complete</MenuItem>
                             )}
                           </Select>
