@@ -1282,37 +1282,37 @@ export default function HomePage() {
     return productName || '-'
   }
 
-  // Product color mapping - using distinct colors from FOB/CIF (primary/secondary) and Payment (success/warning)
+  // Product color mapping - matching Recon tab pastel colors
   const getProductColor = (productName: string): { bgcolor: string; color: string } => {
     const name = (productName || '').toUpperCase()
     
-    // Distinct color palette for products (avoiding blue/purple for FOB/CIF, green/orange for payment)
+    // Pastel color palette matching Recon tab style
     if (name.includes('GO') || name.includes('GASOIL') || name.includes('DIESEL')) {
-      return { bgcolor: '#0891B2', color: 'white' } // Cyan/Teal
-    }
-    if (name.includes('MOGAS') || name.includes('PETROL') || name.includes('ULP')) {
-      return { bgcolor: '#DC2626', color: 'white' } // Red
+      return { bgcolor: '#FEF3C7', color: '#92400E' } // Amber pastel (same as Recon)
     }
     if (name.includes('JET') || name.includes('KERO') || name.includes('PARAFFIN')) {
-      return { bgcolor: '#7C3AED', color: 'white' } // Violet
+      return { bgcolor: '#DBEAFE', color: '#1E40AF' } // Blue pastel (same as Recon)
     }
     if (name.includes('FUEL') || name.includes('FO') || name.includes('HFO')) {
-      return { bgcolor: '#1F2937', color: 'white' } // Dark gray/black
+      return { bgcolor: '#F3E8FF', color: '#6B21A8' } // Purple pastel (same as Recon)
+    }
+    if (name.includes('MOGAS') || name.includes('PETROL') || name.includes('ULP')) {
+      return { bgcolor: '#FCE7F3', color: '#9D174D' } // Pink pastel
     }
     if (name.includes('LPG') || name.includes('PROPANE') || name.includes('BUTANE')) {
-      return { bgcolor: '#EC4899', color: 'white' } // Pink
+      return { bgcolor: '#CCFBF1', color: '#115E59' } // Teal pastel
     }
     if (name.includes('NAPHTHA') || name.includes('CONDENSATE')) {
-      return { bgcolor: '#F59E0B', color: 'white' } // Amber (different shade from warning)
+      return { bgcolor: '#FEF9C3', color: '#854D0E' } // Yellow pastel
     }
     if (name.includes('BITUMEN') || name.includes('ASPHALT')) {
-      return { bgcolor: '#78716C', color: 'white' } // Stone/Brown
+      return { bgcolor: '#E7E5E4', color: '#44403C' } // Stone pastel
     }
     if (name.includes('LUBRICANT') || name.includes('LUBE') || name.includes('BASE OIL')) {
-      return { bgcolor: '#0D9488', color: 'white' } // Teal
+      return { bgcolor: '#D1FAE5', color: '#065F46' } // Emerald pastel
     }
     // Default for unknown products
-    return { bgcolor: '#6366F1', color: 'white' } // Indigo
+    return { bgcolor: '#F1F5F9', color: '#475569' } // Slate pastel (same as Recon default)
   }
 
   const getLaycanDisplay = (monthlyPlan: MonthlyPlan, contract: Contract | null) => {
