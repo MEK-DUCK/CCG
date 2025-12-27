@@ -2108,9 +2108,11 @@ export default function HomePage() {
               return (
               <TableRow 
                   key={cargo.combi_group_id ? `combi-${cargo.combi_group_id}` : cargo.id}
+                onClick={() => handleEditCargo(cargo)}
                 sx={{ 
-                  cursor: 'default', 
+                  cursor: 'pointer', 
                   bgcolor: '#F8FAFC', // Slightly grey background to indicate read-only
+                  '&:hover': { bgcolor: '#E2E8F0' },
                   '& td': { 
                     minHeight: isMobile ? 56 : 48,
                     py: isMobile ? 1.5 : 1,
@@ -4190,8 +4192,8 @@ export default function HomePage() {
         <DialogContent sx={{ px: isMobile ? 2 : 3, pt: isMobile ? 3 : 4, pb: isMobile ? 2 : 3, overflowY: 'auto' }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1.5 : 2, pt: 1 }}>
             {(() => {
-              // Check if this is a completed cargo
-              const isCompletedCargo = !!(editingCargo && editingCargo.status === 'Completed Loading')
+              // Check if this is a completed cargo (Completed Loading for FOB, Discharge Complete for CIF)
+              const isCompletedCargo = !!(editingCargo && (editingCargo.status === 'Completed Loading' || editingCargo.status === 'Discharge Complete'))
               const disabledStyle = {
                 '& .MuiInputBase-input.Mui-disabled': {
                   WebkitTextFillColor: 'rgba(0, 0, 0, 0.38)',
