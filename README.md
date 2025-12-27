@@ -18,6 +18,14 @@ A full-stack web application for managing oil contract planning, lifting schedul
 - **🔒 Optimistic Locking**: Prevents lost updates when multiple users edit the same record simultaneously
 - **⚠️ Conflict Detection**: Automatic detection and notification when edit conflicts occur
 
+### Version History & Recovery
+- **📜 Version History**: View complete history of changes for cargos and monthly plans
+- **🔍 Change Diff**: User-friendly display showing what changed (old values in red, new values in green)
+- **⏪ Restore**: Ability to restore previous versions with one click
+- **🗑️ Recycle Bin**: Soft delete with 30-day retention period
+- **♻️ Recovery**: Restore deleted items from the Recycle Bin in Admin page
+- **🔄 Batched Autosave**: Multiple field changes within 2 minutes are grouped into a single version
+
 ### Authentication & Security
 - **JWT Authentication**: Secure token-based authentication with 7-day expiration
 - **Role-Based Access**: User management with different permission levels
@@ -62,6 +70,7 @@ oil-lifting-program/
 │   │       ├── monthly_plans.py
 │   │       ├── cargos.py
 │   │       ├── presence_router.py  # WebSocket endpoints
+│   │       ├── version_history_router.py  # Version history & recycle bin
 │   │       └── ...
 │   ├── requirements.txt
 │   └── .env.example
@@ -73,6 +82,10 @@ oil-lifting-program/
 │   │   │   │   ├── ActiveUsersIndicator.tsx
 │   │   │   │   ├── EditingWarningBanner.tsx
 │   │   │   │   └── ConflictDialog.tsx
+│   │   │   ├── VersionHistory/  # Version history components
+│   │   │   │   └── VersionHistory.tsx
+│   │   │   ├── RecycleBin/      # Recycle bin components
+│   │   │   │   └── RecycleBin.tsx
 │   │   │   └── ...
 │   │   ├── contexts/
 │   │   │   └── AuthContext.tsx  # Authentication context
@@ -271,7 +284,19 @@ On the HomePage tabs (Port Movement, Active Loadings, Completed Cargos, In-Road 
 - `POST /api/cargos` - Create cargo (broadcasts to connected users)
 - `GET /api/cargos/{id}` - Get cargo by ID
 - `PUT /api/cargos/{id}` - Update cargo (broadcasts to connected users)
-- `DELETE /api/cargos/{id}` - Delete cargo (broadcasts to connected users)
+- `DELETE /api/cargos/{id}` - Soft delete cargo (moves to recycle bin)
+
+### Version History
+- `GET /api/versions/{entity_type}/{entity_id}` - Get version history for an entity
+- `GET /api/versions/{entity_type}/{entity_id}/{version_number}` - Get specific version details
+- `POST /api/versions/{entity_type}/{entity_id}/restore` - Restore to a previous version
+
+### Recycle Bin
+- `GET /api/versions/deleted` - List all soft-deleted items
+- `GET /api/versions/deleted/{deleted_id}` - Get deleted item details
+- `POST /api/versions/deleted/{deleted_id}/restore` - Restore deleted item
+- `DELETE /api/versions/deleted/{deleted_id}` - Permanently delete item
+- `POST /api/versions/deleted/cleanup` - Clean up expired items (30+ days old)
 
 ## Homepage Tabs
 
@@ -325,6 +350,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES=10080
 - CIF cargos move to "In-Road CIF Cargos" after loading, then to "Completed Cargos" after discharge
 - Real-time sync uses WebSockets - ensure your deployment supports WebSocket connections
 - For production, use a proper secret key and consider shorter token expiration times
+- Version history is available for cargos (via History button in edit dialog) and monthly plans (via 3-dots menu)
+- Deleted cargos are soft-deleted with 30-day retention; access Recycle Bin from Admin page to restore or permanently delete
 
 ## Troubleshooting
 
