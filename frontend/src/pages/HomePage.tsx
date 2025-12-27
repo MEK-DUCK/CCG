@@ -410,6 +410,7 @@ export default function HomePage() {
     discharge_port_location: '',
     discharge_completion_time: '',
     five_nd_date: '',  // 5-ND: Due date for narrowing down delivery window (CIF In-Road)
+    nd_delivery_window: '',  // Narrowed Down Delivery Window
     notes: '',
     status: 'Planned' as CargoStatus,
     lc_status: '' as '' | LCStatus,
@@ -692,6 +693,7 @@ export default function HomePage() {
         return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16)
       })() : '',
       five_nd_date: cargo.five_nd_date || '',
+      nd_delivery_window: cargo.nd_delivery_window || '',
       notes: cargo.notes || '',
       status: cargo.status,
       lc_status: cargo.lc_status || '',
@@ -851,6 +853,7 @@ export default function HomePage() {
       eta_discharge_port: '',
       discharge_port_location: '',
       discharge_completion_time: '',
+      nd_delivery_window: '',
       notes: '',
       status: 'Planned' as CargoStatus,
       lc_status: '',
@@ -922,8 +925,9 @@ export default function HomePage() {
           if (cargoFormData.eta_discharge_port) updatePayload.eta_discharge_port = cargoFormData.eta_discharge_port
           if (cargoFormData.discharge_port_location) updatePayload.discharge_port_location = cargoFormData.discharge_port_location
           if (cargoFormData.discharge_completion_time) updatePayload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
-          // 5-ND date for In-Road CIF tracking
+          // 5-ND date and ND Delivery Window for In-Road CIF tracking
           updatePayload.five_nd_date = cargoFormData.five_nd_date || undefined
+          updatePayload.nd_delivery_window = cargoFormData.nd_delivery_window || undefined
         }
         
         // Include monthly_plan_id if it's being changed (for moving cargo between months)
@@ -1253,6 +1257,7 @@ export default function HomePage() {
             if (cargoFormData.discharge_port_location) payload.discharge_port_location = cargoFormData.discharge_port_location
             if (cargoFormData.discharge_completion_time) payload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
             if (cargoFormData.five_nd_date) payload.five_nd_date = cargoFormData.five_nd_date
+            if (cargoFormData.nd_delivery_window) payload.nd_delivery_window = cargoFormData.nd_delivery_window
           }
 
             const response = await cargoAPI.create(payload)
@@ -1767,6 +1772,17 @@ export default function HomePage() {
       }
     }
 
+    // Handler for inline ND Delivery Window update
+    const handleNDDeliveryWindowChange = async (cargo: Cargo, newValue: string) => {
+      try {
+        await cargoAPI.update(cargo.id, { nd_delivery_window: newValue || undefined })
+        // Update local state
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, nd_delivery_window: newValue } : c))
+      } catch (error) {
+        console.error('Error updating ND Delivery Window:', error)
+      }
+    }
+
     // Get delivery window from monthly plan
     const getDeliveryWindow = (cargo: Cargo): string => {
       // First try from the cached delivery windows (fetched when In-Road CIF data loads)
@@ -1801,6 +1817,7 @@ export default function HomePage() {
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>5-ND</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>ND Del Window</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Delivery Window</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>ETA Discharge</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
@@ -1912,6 +1929,21 @@ export default function HomePage() {
                       InputLabelProps={{ shrink: true }}
                       sx={{ 
                         width: 140,
+                        '& .MuiInputBase-input': {
+                          fontSize: '0.875rem',
+                          py: 0.5,
+                        },
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <TextField
+                      size="small"
+                      value={cargo.nd_delivery_window || ''}
+                      onChange={(e) => handleNDDeliveryWindowChange(cargo, e.target.value)}
+                      placeholder="Enter ND window"
+                      sx={{ 
+                        width: 120,
                         '& .MuiInputBase-input': {
                           fontSize: '0.875rem',
                           py: 0.5,
@@ -4213,8 +4245,9 @@ export default function HomePage() {
                       placeholder="Enter discharge port location"
                     />
                   </Grid>
-                  {/* Only show 5-ND field for In-Road CIF cargos */}
+                  {/* Only show 5-ND and ND Delivery Window fields for In-Road CIF cargos */}
                   {editingCargo && editingCargo.status === 'In-Road (Pending Discharge)' && (
+                    <>
                   <Grid item xs={12} md={6}>
                     <TextField
                         label="5-ND (Narrowing Down Due Date)"
@@ -4228,6 +4261,17 @@ export default function HomePage() {
                       sx={isCompletedCargo ? disabledStyle : {}}
                     />
                   </Grid>
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          label="ND Del Window (Narrowed Down Delivery Window)"
+                          value={cargoFormData.nd_delivery_window}
+                          onChange={(e) => setCargoFormData({ ...cargoFormData, nd_delivery_window: e.target.value })}
+                          fullWidth
+                          placeholder="Enter narrowed down delivery window"
+                          helperText="Narrowed down delivery window after 5-ND"
+                        />
+                      </Grid>
+                    </>
                   )}
                 </>
               )}
