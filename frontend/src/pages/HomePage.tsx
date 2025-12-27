@@ -543,8 +543,14 @@ export default function HomePage() {
         const isCIF = newCargo.contract_type === 'CIF'
         
         if (isCIF) {
-          // CIF cargos go to In-Road CIF when completed loading, otherwise to port movement
+          // CIF cargos: Completed Loading goes to both Completed Cargos AND In-Road CIF
           if (newCargo.status === 'Completed Loading') {
+            // Add to Completed Cargos tab
+            setCompletedCargos(prev => {
+              if (prev.some(c => c.id === newCargo.id)) return prev
+              return [...prev, newCargo]
+            })
+            // Also add to In-Road CIF tab
             setInRoadCIF(prev => {
               if (prev.some(c => c.id === newCargo.id)) return prev
               return [...prev, newCargo]
@@ -608,9 +614,15 @@ export default function HomePage() {
               return [...prev, updatedCargo]
             })
           } else if (updatedCargo.status === 'Completed Loading') {
-            // CIF: Completed Loading -> In-Road CIF
+            // CIF: Completed Loading -> Completed Cargos AND In-Road CIF
             setPortMovement(prev => prev.filter(c => c.id !== updatedCargo.id))
             setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
+            // Add to Completed Cargos tab
+            setCompletedCargos(prev => {
+              if (prev.some(c => c.id === updatedCargo.id)) return prev
+              return [...prev, updatedCargo]
+            })
+            // Also add to In-Road CIF tab
             setInRoadCIF(prev => {
               if (prev.some(c => c.id === updatedCargo.id)) return prev
               return [...prev, updatedCargo]
@@ -619,6 +631,7 @@ export default function HomePage() {
             // CIF: Completed Discharge -> Completed In-Road CIF
             setInRoadCIF(prev => prev.filter(c => c.id !== updatedCargo.id))
             setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setCompletedCargos(prev => prev.filter(c => c.id !== updatedCargo.id))
             setCompletedInRoadCIF(prev => {
               if (prev.some(c => c.id === updatedCargo.id)) return prev
               return [...prev, updatedCargo]
@@ -628,6 +641,7 @@ export default function HomePage() {
             setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
             setInRoadCIF(prev => prev.filter(c => c.id !== updatedCargo.id))
             setCompletedInRoadCIF(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setCompletedCargos(prev => prev.filter(c => c.id !== updatedCargo.id))
             setPortMovement(prev => {
               if (prev.some(c => c.id === updatedCargo.id)) return prev
               return [...prev, updatedCargo]
