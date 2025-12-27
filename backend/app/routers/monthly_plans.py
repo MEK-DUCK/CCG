@@ -237,7 +237,10 @@ def read_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
 
 @router.put("/{plan_id}", response_model=schemas.MonthlyPlan)
 def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Session = Depends(get_db)):
-    db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
+    # Lock the monthly plan row to prevent concurrent modifications
+    db_plan = db.query(models.MonthlyPlan).filter(
+        models.MonthlyPlan.id == plan_id
+    ).with_for_update().first()
     if db_plan is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
     
@@ -457,21 +460,25 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
     """
     import json
     
-    db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
+    # Lock the monthly plan row to prevent concurrent modifications
+    db_plan = db.query(models.MonthlyPlan).filter(
+        models.MonthlyPlan.id == plan_id
+    ).with_for_update().first()
     if db_plan is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
     
-    # Get quarterly plan and contract for cascading updates
+    # Get quarterly plan and contract for cascading updates - also lock them
     quarterly_plan = db.query(models.QuarterlyPlan).filter(
         models.QuarterlyPlan.id == db_plan.quarterly_plan_id
-    ).first()
+    ).with_for_update().first()
     
     if not quarterly_plan:
         raise HTTPException(status_code=400, detail="Monthly plan has no associated quarterly plan")
     
+    # Lock the contract row as well
     contract = db.query(models.Contract).filter(
         models.Contract.id == quarterly_plan.contract_id
-    ).first()
+    ).with_for_update().first()
     
     if not contract:
         raise HTTPException(status_code=400, detail="Quarterly plan has no associated contract")

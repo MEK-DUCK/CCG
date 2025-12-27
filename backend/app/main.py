@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
 import os
+import time
+from collections import defaultdict
+from threading import Lock
 
 from app.database import engine, Base, ensure_schema
 from app.routers import customers, contracts, quarterly_plans, monthly_plans, cargos, audit_logs, documents
@@ -57,24 +60,109 @@ app.add_middleware(
         "Accept",
         "Origin",
         "X-Requested-With",
-        "X-User-Initials",  # For audit logging
     ],
     expose_headers=["Content-Disposition"],  # For file downloads
 )
 
 # =============================================================================
-# Middleware to extract user initials from request header
+# Rate Limiting (simple in-memory implementation)
+# =============================================================================
+# In production, use Redis-based rate limiting for distributed systems
+RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))  # requests per window
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # window in seconds
+
+class RateLimiter:
+    """Simple in-memory rate limiter using sliding window."""
+    def __init__(self, max_requests: int, window_seconds: int):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.requests = defaultdict(list)
+        self.lock = Lock()
+    
+    def is_allowed(self, client_id: str) -> bool:
+        """Check if request is allowed for this client."""
+        now = time.time()
+        with self.lock:
+            # Remove old requests outside the window
+            self.requests[client_id] = [
+                req_time for req_time in self.requests[client_id]
+                if now - req_time < self.window_seconds
+            ]
+            
+            # Check if under limit
+            if len(self.requests[client_id]) < self.max_requests:
+                self.requests[client_id].append(now)
+                return True
+            return False
+    
+    def get_remaining(self, client_id: str) -> int:
+        """Get remaining requests for this client."""
+        now = time.time()
+        with self.lock:
+            valid_requests = [
+                req_time for req_time in self.requests[client_id]
+                if now - req_time < self.window_seconds
+            ]
+            return max(0, self.max_requests - len(valid_requests))
+
+rate_limiter = RateLimiter(RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW)
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limit requests per client IP."""
+    # Skip rate limiting for health checks
+    if request.url.path in ["/", "/api/health"]:
+        return await call_next(request)
+    
+    # Get client identifier (IP address)
+    client_ip = request.client.host if request.client else "unknown"
+    
+    if not rate_limiter.is_allowed(client_ip):
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": "Too many requests. Please slow down.",
+                "retry_after": RATE_LIMIT_WINDOW
+            },
+            headers={"Retry-After": str(RATE_LIMIT_WINDOW)}
+        )
+    
+    response = await call_next(request)
+    
+    # Add rate limit headers
+    remaining = rate_limiter.get_remaining(client_ip)
+    response.headers["X-RateLimit-Limit"] = str(RATE_LIMIT_REQUESTS)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    response.headers["X-RateLimit-Window"] = str(RATE_LIMIT_WINDOW)
+    
+    return response
+
+# =============================================================================
+# Middleware to extract user initials from JWT token (not client header!)
 # =============================================================================
 from app.audit_utils import set_current_user_initials
+from app.auth import decode_token
 
 @app.middleware("http")
 async def extract_user_initials(request: Request, call_next):
-    """Extract user initials from X-User-Initials header and set in context"""
-    user_initials = request.headers.get("X-User-Initials")
-    if user_initials:
-        set_current_user_initials(user_initials)
-    else:
-        set_current_user_initials(None)
+    """
+    Extract user initials from JWT token for audit logging.
+    
+    SECURITY: We extract initials from the validated JWT token, NOT from
+    a client-provided header. This prevents clients from spoofing initials.
+    """
+    user_initials = None
+    
+    # Get Authorization header
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:]  # Remove "Bearer " prefix
+        payload = decode_token(token)
+        if payload:
+            # Extract initials from the validated JWT payload
+            user_initials = payload.get("initials")
+    
+    set_current_user_initials(user_initials)
     
     response = await call_next(request)
     return response

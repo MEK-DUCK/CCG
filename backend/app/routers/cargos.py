@@ -466,7 +466,10 @@ def upsert_port_operation(
     if port_code not in SUPPORTED_LOAD_PORTS:
         raise to_http_exception(invalid_load_port(port_code, list(SUPPORTED_LOAD_PORTS)))
 
-    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
+    # Lock the cargo row to prevent concurrent modifications
+    cargo = db.query(models.Cargo).filter(
+        models.Cargo.id == cargo_id
+    ).with_for_update().first()
     if cargo is None:
         raise to_http_exception(cargo_not_found(cargo_id))
 
@@ -475,10 +478,11 @@ def upsert_port_operation(
         if update_data["status"] not in PORT_OP_ALLOWED_STATUSES:
             raise to_http_exception(invalid_status(update_data["status"], list(PORT_OP_ALLOWED_STATUSES)))
 
+    # Lock the port operation row as well
     db_op = db.query(models.CargoPortOperation).filter(
         models.CargoPortOperation.cargo_id == cargo_id,
         models.CargoPortOperation.port_code == port_code,
-    ).first()
+    ).with_for_update().first()
 
     if not db_op:
         db_op = models.CargoPortOperation(
@@ -493,6 +497,10 @@ def upsert_port_operation(
 
     # Recompute cargo status based on per-port status
     _recompute_cargo_status_from_port_ops(db, cargo)
+    
+    # Increment cargo version since its state changed
+    cargo.version = (cargo.version or 1) + 1
+    
     db.commit()
     db.refresh(db_op)
     return db_op
@@ -500,14 +508,30 @@ def upsert_port_operation(
 
 @router.put("/{cargo_id}", response_model=schemas.Cargo)
 def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depends(get_db)):
-    """Update cargo - handles lc_status conversion from string to enum"""
+    """Update cargo - handles lc_status conversion from string to enum.
+    
+    Implements optimistic locking: if client sends 'version', we verify it matches
+    the current version to prevent lost updates from concurrent edits.
+    """
     try:
-        db_cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
+        # Use SELECT FOR UPDATE to prevent concurrent modifications
+        db_cargo = db.query(models.Cargo).filter(
+            models.Cargo.id == cargo_id
+        ).with_for_update().first()
+        
         if db_cargo is None:
             raise to_http_exception(cargo_not_found(cargo_id))
         
         update_data = cargo.model_dump(exclude_unset=True) if hasattr(cargo, 'model_dump') else cargo.dict(exclude_unset=True)
         logger.debug(f"Updating cargo {cargo_id} with data: {update_data}")
+        
+        # Optimistic locking check - if client sends version, verify it matches
+        client_version = update_data.pop('version', None)
+        if client_version is not None and client_version != db_cargo.version:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cargo was modified by another user. Please refresh and try again. (Expected version {client_version}, found {db_cargo.version})"
+            )
         
     except HTTPException:
         raise
@@ -704,9 +728,13 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
     
     try:
         _recompute_cargo_status_from_port_ops(db, db_cargo)
+        
+        # Increment version for optimistic locking
+        db_cargo.version = (db_cargo.version or 1) + 1
+        
         db.commit()
         db.refresh(db_cargo)
-        logger.info(f"Cargo {cargo_id} updated successfully")
+        logger.info(f"Cargo {cargo_id} updated successfully (version {db_cargo.version})")
         return db_cargo
     except SQLAlchemyError as e:
         db.rollback()
@@ -727,10 +755,10 @@ def sync_combi_cargo_group(
     Only updates fields that are set in the request - individual cargo quantities are preserved.
     """
     try:
-        # Find all cargos in the combi group
+        # Find all cargos in the combi group with FOR UPDATE lock to prevent concurrent modifications
         cargos = db.query(models.Cargo).filter(
             models.Cargo.combi_group_id == combi_group_id
-        ).all()
+        ).with_for_update().all()
         
         if not cargos:
             raise to_http_exception(combi_group_not_found(combi_group_id))
@@ -816,11 +844,15 @@ def sync_combi_cargo_group(
                         if op.status in [PortOperationStatus.PLANNED.value, PortOperationStatus.LOADING.value]:
                             op.status = PortOperationStatus.COMPLETED.value
             
+            # Increment version for optimistic locking
+            cargo.version = (cargo.version or 1) + 1
+            
             updated_cargos.append({
                 "id": cargo.id,
                 "cargo_id": cargo.cargo_id,
                 "product_name": cargo.product_name,
                 "status": cargo.status.value if cargo.status else None,
+                "version": cargo.version,
             })
         
         db.commit()

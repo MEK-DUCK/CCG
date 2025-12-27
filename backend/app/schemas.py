@@ -522,6 +522,8 @@ class CargoUpdate(BaseModel):
     inspector_invoice_completed: Optional[bool] = None
     inspector_invoice_initials: Optional[str] = None
     inspector_invoice_date: Optional[datetime] = None
+    # Optimistic locking - client must send current version to prevent lost updates
+    version: Optional[int] = None
 
 class Cargo(CargoBase):
     id: int
@@ -533,6 +535,7 @@ class Cargo(CargoBase):
     status: CargoStatus
     monthly_plan_id: int
     combi_group_id: Optional[str] = None  # UUID to link combi cargos together
+    version: int = 1  # Optimistic locking version
     created_at: datetime
     updated_at: Optional[datetime] = None
     port_operations: Optional[List["CargoPortOperation"]] = None

@@ -31,8 +31,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const TOKEN_KEY = 'oil_lifting_token'
 const USER_KEY = 'oil_lifting_user'
 
-// DEV MODE: Set to true to bypass authentication during development
-const DEV_MODE = true
+// DEV MODE: Only enabled when VITE_DEV_AUTH=true in development
+// NEVER enable in production - this bypasses all authentication!
+const DEV_MODE = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH === 'true'
 const DEV_USER: User = {
   id: 1,
   email: 'dev@oillifting.local',
@@ -61,9 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (DEV_MODE) {
       console.log('🔓 DEV MODE: Authentication bypassed. Logged in as:', DEV_USER.full_name)
-      // Save DEV user to localStorage so API client can read initials
+      // Save DEV user to localStorage
       localStorage.setItem(USER_KEY, JSON.stringify(DEV_USER))
       localStorage.setItem(TOKEN_KEY, 'dev-token')
+      // Note: In DEV_MODE, the backend should also be in dev mode to accept requests
+      // without valid JWT. Audit logs will show no initials unless backend is configured.
       return
     }
 

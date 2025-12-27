@@ -248,6 +248,10 @@ class QuarterlyPlan(Base):
     q3_topup = Column(Float, default=0)
     q4_topup = Column(Float, default=0)
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
+    
+    # Optimistic locking - prevents lost updates in concurrent edits
+    version = Column(Integer, nullable=False, default=1)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -301,6 +305,9 @@ class MonthlyPlan(Base):
     
     # Product name for SPOT contracts (when no quarterly plan to get it from)
     product_name = Column(String, nullable=True)
+    
+    # Optimistic locking - prevents lost updates in concurrent edits
+    version = Column(Integer, nullable=False, default=1)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -375,6 +382,9 @@ class Cargo(Base):
     
     # Legacy field - deprecated
     product_id = Column(Integer, nullable=True, default=0)
+    
+    # Optimistic locking - prevents lost updates in concurrent edits
+    version = Column(Integer, nullable=False, default=1)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
