@@ -329,17 +329,24 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
 
 @router.get("/completed-cargos", response_model=List[schemas.Cargo])
 def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = None, db: Session = Depends(get_db)):
-    """Get FOB completed cargos and CIF cargos after loading completion, optionally filtered by month/year"""
+    """Get FOB completed cargos and CIF cargos after loading completion (including discharge complete), optionally filtered by month/year"""
     try:
         from sqlalchemy import or_, and_
         query = db.query(models.Cargo).filter(
             or_(
+                # FOB cargos with Completed Loading status
                 and_(
                     models.Cargo.status == CargoStatus.COMPLETED_LOADING,
                     models.Cargo.contract_type == ContractType.FOB
                 ),
+                # CIF cargos with Completed Loading status
                 and_(
                     models.Cargo.status == CargoStatus.COMPLETED_LOADING,
+                    models.Cargo.contract_type == ContractType.CIF
+                ),
+                # CIF cargos with Discharge Complete status (should stay in completed cargos for checklist tracking)
+                and_(
+                    models.Cargo.status == CargoStatus.DISCHARGE_COMPLETE,
                     models.Cargo.contract_type == ContractType.CIF
                 )
             )
