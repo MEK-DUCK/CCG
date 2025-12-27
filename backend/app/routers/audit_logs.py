@@ -311,7 +311,7 @@ def get_reconciliation_logs(
             except Exception:
                 pass
         
-        # Create a dict-like object with product_name
+        # Create a dict-like object with product_name and user_initials
         log_dict = {
             "id": log.id,
             "monthly_plan_id": log.monthly_plan_id,
@@ -330,6 +330,7 @@ def get_reconciliation_logs(
             "description": log.description,
             "created_at": log.created_at,
             "monthly_plan_snapshot": log.monthly_plan_snapshot,
+            "user_initials": log.user_initials,
         }
         monthly_logs_with_product.append(schemas.MonthlyPlanAuditLog(**log_dict))
     

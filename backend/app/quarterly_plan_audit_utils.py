@@ -3,6 +3,7 @@ import json
 from datetime import datetime, date
 from sqlalchemy.orm import Session
 from app.models import QuarterlyPlanAuditLog, QuarterlyPlan, Contract, Customer
+from app.audit_utils import get_current_user_initials
 
 
 def serialize_value(value):
@@ -94,6 +95,9 @@ def log_quarterly_plan_action(
         else:
             description = f"{action} on quarterly plan"
     
+    # Get user initials from context
+    user_initials = get_current_user_initials()
+    
     # Create audit log entry
     try:
         audit_log = QuarterlyPlanAuditLog(
@@ -107,7 +111,8 @@ def log_quarterly_plan_action(
             contract_number=contract_number,
             contract_name=contract_name,
             description=description,
-            quarterly_plan_snapshot=quarterly_plan_snapshot
+            quarterly_plan_snapshot=quarterly_plan_snapshot,
+            user_initials=user_initials
         )
         
         db.add(audit_log)

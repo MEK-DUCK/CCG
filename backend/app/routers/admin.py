@@ -700,6 +700,7 @@ def get_all_audit_logs(
                 "new_value": log.new_value,
                 "description": log.description,
                 "created_at": log.created_at.isoformat() if log.created_at else None,
+                "user_initials": log.user_initials,
             })
     
     if not log_type or log_type == "monthly_plan":
@@ -716,6 +717,7 @@ def get_all_audit_logs(
                 "new_value": log.new_value,
                 "description": log.description,
                 "created_at": log.created_at.isoformat() if log.created_at else None,
+                "user_initials": log.user_initials,
             })
     
     if not log_type or log_type == "quarterly_plan":
@@ -732,6 +734,7 @@ def get_all_audit_logs(
                 "new_value": log.new_value,
                 "description": log.description,
                 "created_at": log.created_at.isoformat() if log.created_at else None,
+                "user_initials": log.user_initials,
             })
     
     if not log_type or log_type == "contract":
@@ -751,6 +754,7 @@ def get_all_audit_logs(
                 "topup_quantity": log.topup_quantity,
                 "authority_reference": log.authority_reference,
                 "created_at": log.created_at.isoformat() if log.created_at else None,
+                "user_initials": log.user_initials,
             })
     
     # Sort all logs by created_at

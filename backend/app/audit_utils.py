@@ -3,7 +3,24 @@ import json
 from datetime import datetime, date
 from typing import Optional
 from sqlalchemy.orm import Session
+from fastapi import Request
+from contextvars import ContextVar
 from app.models import CargoAuditLog, Cargo, MonthlyPlan, User
+
+# Context variable to store current user initials (set by middleware/dependency)
+_current_user_initials: ContextVar[Optional[str]] = ContextVar('current_user_initials', default=None)
+
+def set_current_user_initials(initials: Optional[str]):
+    """Set the current user initials for audit logging"""
+    _current_user_initials.set(initials)
+
+def get_current_user_initials() -> Optional[str]:
+    """Get the current user initials for audit logging"""
+    return _current_user_initials.get()
+
+def get_user_initials_from_request(request: Request) -> Optional[str]:
+    """Extract user initials from request header"""
+    return request.headers.get('X-User-Initials')
 
 
 def serialize_value(value):
@@ -94,6 +111,16 @@ def log_cargo_action(
         else:
             description = f"{action} on cargo {cargo_cargo_id}"
     
+    # Get user initials - from user object, or from context variable
+    user_initials = None
+    user_id = None
+    if user:
+        user_id = user.id
+        user_initials = user.initials
+    else:
+        # Try to get from context variable (set by request)
+        user_initials = get_current_user_initials()
+    
     # Create audit log entry
     try:
         audit_log = CargoAuditLog(
@@ -112,8 +139,8 @@ def log_cargo_action(
             new_year=new_year,
             description=description,
             cargo_snapshot=cargo_snapshot,
-            user_id=user.id if user else None,
-            user_initials=user.initials if user else None
+            user_id=user_id,
+            user_initials=user_initials
         )
         
         db.add(audit_log)

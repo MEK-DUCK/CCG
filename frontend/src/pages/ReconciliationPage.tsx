@@ -503,6 +503,7 @@ export default function ReconciliationPage() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Date & Time</TableCell>
+                    <TableCell>User</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell>Action</TableCell>
                     <TableCell>Customer</TableCell>
@@ -523,6 +524,23 @@ export default function ReconciliationPage() {
                         <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8125rem' }}>
                           {formatDate(log.created_at)}
                         </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {log.user_initials ? (
+                          <Chip 
+                            label={log.user_initials} 
+                            size="small" 
+                            sx={{ 
+                              fontFamily: 'monospace', 
+                              fontWeight: 700,
+                              bgcolor: '#F1F5F9',
+                              color: '#475569',
+                              fontSize: '0.7rem',
+                            }} 
+                          />
+                        ) : (
+                          <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Chip

@@ -208,6 +208,7 @@ export interface MonthlyPlanAuditLog {
   description?: string
   created_at: string
   monthly_plan_snapshot?: string
+  user_initials?: string  // User who made the change
 }
 
 export interface QuarterlyPlanAuditLog {
@@ -224,6 +225,7 @@ export interface QuarterlyPlanAuditLog {
   description?: string
   created_at: string
   quarterly_plan_snapshot?: string
+  user_initials?: string  // User who made the change
 }
 
 export type PlanAuditLog = MonthlyPlanAuditLog | QuarterlyPlanAuditLog

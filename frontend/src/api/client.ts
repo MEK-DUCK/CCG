@@ -15,10 +15,24 @@ const client = axios.create({
   maxRedirects: 5,
 })
 
-// Add request interceptor for debugging
+// Add request interceptor for debugging and user tracking
 client.interceptors.request.use(
   (config) => {
     console.log('🚀 Axios Request:', config.method?.toUpperCase(), config.url, config.data)
+    
+    // Add user initials header for audit logging
+    const userDataStr = localStorage.getItem('oil_lifting_user')
+    if (userDataStr) {
+      try {
+        const userData = JSON.parse(userDataStr)
+        if (userData.initials) {
+          config.headers['X-User-Initials'] = userData.initials
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    
     return config
   },
   (error) => {

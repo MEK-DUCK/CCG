@@ -57,9 +57,27 @@ app.add_middleware(
         "Accept",
         "Origin",
         "X-Requested-With",
+        "X-User-Initials",  # For audit logging
     ],
     expose_headers=["Content-Disposition"],  # For file downloads
 )
+
+# =============================================================================
+# Middleware to extract user initials from request header
+# =============================================================================
+from app.audit_utils import set_current_user_initials
+
+@app.middleware("http")
+async def extract_user_initials(request: Request, call_next):
+    """Extract user initials from X-User-Initials header and set in context"""
+    user_initials = request.headers.get("X-User-Initials")
+    if user_initials:
+        set_current_user_initials(user_initials)
+    else:
+        set_current_user_initials(None)
+    
+    response = await call_next(request)
+    return response
 
 # =============================================================================
 # Exception Handlers

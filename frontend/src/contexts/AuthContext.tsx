@@ -31,6 +31,17 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const TOKEN_KEY = 'oil_lifting_token'
 const USER_KEY = 'oil_lifting_user'
 
+// DEV MODE: Set to true to bypass authentication during development
+const DEV_MODE = true
+const DEV_USER: User = {
+  id: 1,
+  email: 'dev@oillifting.local',
+  full_name: 'Developer',
+  initials: 'DEV',
+  role: 'admin',
+  status: 'active',
+}
+
 // API endpoints
 const AUTH_ENDPOINTS = {
   login: '/api/auth/login',
@@ -42,12 +53,21 @@ const AUTH_ENDPOINTS = {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [user, setUser] = useState<User | null>(DEV_MODE ? DEV_USER : null)
+  const [token, setToken] = useState<string | null>(DEV_MODE ? 'dev-token' : null)
+  const [isLoading, setIsLoading] = useState(false)
 
-  // Initialize auth state from localStorage
+  // Initialize auth state from localStorage (or set DEV user in DEV_MODE)
   useEffect(() => {
+    if (DEV_MODE) {
+      console.log('🔓 DEV MODE: Authentication bypassed. Logged in as:', DEV_USER.full_name)
+      // Save DEV user to localStorage so API client can read initials
+      localStorage.setItem(USER_KEY, JSON.stringify(DEV_USER))
+      localStorage.setItem(TOKEN_KEY, 'dev-token')
+      return
+    }
+
+    setIsLoading(true)
     const storedToken = localStorage.getItem(TOKEN_KEY)
     const storedUser = localStorage.getItem(USER_KEY)
 

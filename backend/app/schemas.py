@@ -620,6 +620,7 @@ class MonthlyPlanAuditLog(BaseModel):
     description: Optional[str] = None
     created_at: datetime
     monthly_plan_snapshot: Optional[str] = None
+    user_initials: Optional[str] = None  # User who made the change
     
     class Config:
         from_attributes = True
@@ -640,6 +641,7 @@ class QuarterlyPlanAuditLog(BaseModel):
     description: Optional[str] = None
     created_at: datetime
     quarterly_plan_snapshot: Optional[str] = None
+    user_initials: Optional[str] = None  # User who made the change
     
     class Config:
         from_attributes = True

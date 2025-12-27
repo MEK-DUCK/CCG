@@ -102,6 +102,7 @@ interface AuditLogEntry {
   created_at: string
   product_name?: string
   topup_quantity?: number
+  user_initials?: string
 }
 
 interface EditDialogState {
@@ -1144,6 +1145,7 @@ export default function AdminPage() {
           <TableHead>
             <TableRow>
               <TableCell>Time</TableCell>
+              <TableCell>User</TableCell>
               <TableCell>Type</TableCell>
               <TableCell>Entity</TableCell>
               <TableCell>Action</TableCell>
@@ -1158,6 +1160,23 @@ export default function AdminPage() {
               <TableRow key={log.id} hover>
                 <TableCell sx={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
                   {log.created_at ? new Date(log.created_at).toLocaleString() : '-'}
+                </TableCell>
+                <TableCell>
+                  {log.user_initials ? (
+                    <Chip 
+                      label={log.user_initials} 
+                      size="small" 
+                      sx={{ 
+                        fontFamily: 'monospace', 
+                        fontWeight: 700,
+                        bgcolor: '#F1F5F9',
+                        color: '#475569',
+                        fontSize: '0.7rem',
+                      }} 
+                    />
+                  ) : (
+                    <Typography variant="caption" sx={{ color: '#94a3b8' }}>-</Typography>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Chip 
