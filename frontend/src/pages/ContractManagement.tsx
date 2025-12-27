@@ -378,7 +378,7 @@ export default function ContractManagement() {
         }
       }
 
-      const payload = {
+      const payload: any = {
         customer_id: parseInt(formData.customer_id),
         contract_number: formData.contract_number,
         contract_type: formData.contract_type,
@@ -399,6 +399,11 @@ export default function ContractManagement() {
         fax_received_date: formData.fax_received === 'yes' && formData.fax_received_date ? formData.fax_received_date : undefined,
         concluded_memo_received: formData.concluded_memo_received === '' ? undefined : formData.concluded_memo_received === 'yes',
         concluded_memo_received_date: formData.concluded_memo_received === 'yes' && formData.concluded_memo_received_date ? formData.concluded_memo_received_date : undefined,
+      }
+      
+      // Include version for optimistic locking when updating
+      if (editingContract) {
+        payload.version = editingContract.version || 1
       }
 
       console.log('Submitting contract:', payload)

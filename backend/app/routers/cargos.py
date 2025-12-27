@@ -35,6 +35,7 @@ from app.errors import (
     ValidationError,
     ErrorCode,
 )
+from app.version_history import version_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -91,11 +92,16 @@ async def _broadcast_cargo_change(
     cargo_data: Optional[dict] = None,
     user_id: Optional[int] = None,
     user_initials: Optional[str] = None
-):
-    """Broadcast cargo change to all users viewing port movement page."""
+) -> tuple[int, int]:
+    """
+    Broadcast cargo change to all users viewing port movement page.
+    
+    Returns:
+        Tuple of (success_count, failure_count)
+    """
     logger.info(f"[BROADCAST] _broadcast_cargo_change called: {change_type} cargo:{cargo_id} by user:{user_id}")
     try:
-        await presence_manager.broadcast_data_change(
+        result = await presence_manager.broadcast_data_change(
             resource_type="page",
             resource_id="port-movement",
             change_type=change_type,
@@ -105,9 +111,12 @@ async def _broadcast_cargo_change(
             changed_by_user_id=user_id,
             changed_by_initials=user_initials
         )
-        logger.info(f"[BROADCAST] broadcast_data_change completed for cargo:{cargo_id}")
+        success, failures = result if result else (0, 0)
+        logger.info(f"[BROADCAST] broadcast_data_change completed for cargo:{cargo_id} (success={success}, failures={failures})")
+        return (success, failures)
     except Exception as e:
         logger.error(f"Failed to broadcast cargo change: {e}", exc_info=True)
+        return (0, 1)  # Indicate failure
 
 
 def _port_op_to_broadcast_dict(op: models.CargoPortOperation, cargo: models.Cargo) -> dict:
@@ -271,18 +280,28 @@ async def create_cargo(
             detail=f"Product '{cargo.product_name}' not found in contract's products list. Valid products: {', '.join(product_names)}"
         )
     
-    monthly_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == cargo.monthly_plan_id).first()
+    # SECURITY: Lock the monthly plan row to prevent race conditions
+    # This ensures only one cargo can be created per monthly plan even with concurrent requests
+    monthly_plan = db.query(models.MonthlyPlan).filter(
+        models.MonthlyPlan.id == cargo.monthly_plan_id
+    ).with_for_update().first()
+    
     if not monthly_plan:
         raise to_http_exception(monthly_plan_not_found(cargo.monthly_plan_id))
     
     # Validate cargo quantity matches monthly plan quantity (with tolerance)
+    # This is now a HARD error to prevent data integrity issues
     if not is_quantity_equal(cargo.cargo_quantity, monthly_plan.month_quantity):
-        logger.warning(
-            f"Cargo quantity ({cargo.cargo_quantity}) differs from monthly plan ({monthly_plan.month_quantity})"
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cargo quantity ({cargo.cargo_quantity} KT) does not match monthly plan quantity ({monthly_plan.month_quantity} KT). "
+                   f"Allowed tolerance is {QUANTITY_TOLERANCE * 100}%. Please adjust the quantity or update the monthly plan first."
         )
-        # Allow the mismatch but log it - some business cases may require different quantities
     
-    # Check if this monthly plan already has a cargo (race condition handled below)
+    # Check if this monthly plan already has a cargo
+    # The row lock above prevents race conditions - if two requests try to create
+    # a cargo for the same monthly plan, the second one will wait for the first
+    # to complete, then see the existing cargo
     existing_cargo = db.query(models.Cargo).filter(
         models.Cargo.monthly_plan_id == cargo.monthly_plan_id
     ).first()
@@ -376,10 +395,11 @@ async def create_cargo(
         raise HTTPException(status_code=500, detail="An unexpected error occurred")
     
     # Broadcast the new cargo to all users viewing port movement (non-blocking)
+    broadcast_success, broadcast_failures = 0, 0
     try:
         user_id = getattr(request.state, 'user_id', None)
         user_initials = getattr(request.state, 'user_initials', None)
-        await _broadcast_cargo_change(
+        broadcast_success, broadcast_failures = await _broadcast_cargo_change(
             change_type="created",
             cargo_id=db_cargo.id,
             cargo_data=_cargo_to_broadcast_dict(db_cargo),
@@ -389,8 +409,13 @@ async def create_cargo(
     except Exception as e:
         # Don't fail the request if broadcast fails
         logger.error(f"Failed to broadcast cargo creation: {e}")
+        broadcast_failures = 1
     
-    return db_cargo
+    # Convert to response with broadcast status
+    response = schemas.Cargo.model_validate(db_cargo)
+    response.broadcast_success = broadcast_success
+    response.broadcast_failures = broadcast_failures
+    return response
 
 
 @router.get("/", response_model=List[schemas.Cargo])
@@ -675,7 +700,12 @@ async def update_cargo(
     
     Implements optimistic locking: if client sends 'version', we verify it matches
     the current version to prevent lost updates from concurrent edits.
+    
+    Also saves version history before making changes (allows undo).
     """
+    user_id = getattr(request.state, 'user_id', None)
+    user_initials = getattr(request.state, 'user_initials', None)
+    
     try:
         # Use SELECT FOR UPDATE to prevent concurrent modifications
         db_cargo = db.query(models.Cargo).filter(
@@ -688,13 +718,20 @@ async def update_cargo(
         update_data = cargo.model_dump(exclude_unset=True) if hasattr(cargo, 'model_dump') else cargo.dict(exclude_unset=True)
         logger.debug(f"Updating cargo {cargo_id} with data: {update_data}")
         
-        # Optimistic locking check - if client sends version, verify it matches
+        # Optimistic locking check - version is REQUIRED to prevent lost updates
         client_version = update_data.pop('version', None)
-        if client_version is not None and client_version != db_cargo.version:
+        if client_version is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Version field is required for updates. Please refresh the page and try again."
+            )
+        if client_version != db_cargo.version:
             raise HTTPException(
                 status_code=409,
-                detail=f"Cargo was modified by another user. Please refresh and try again. (Expected version {client_version}, found {db_cargo.version})"
+                detail=f"Cargo was modified by another user. Please refresh and try again. (Your version: {client_version}, Current version: {db_cargo.version})"
             )
+        
+        # Version history will be saved AFTER changes are applied
         
     except HTTPException:
         raise
@@ -895,6 +932,20 @@ async def update_cargo(
         # Increment version for optimistic locking
         db_cargo.version = (db_cargo.version or 1) + 1
         
+        # Save version history AFTER making changes (snapshot contains NEW state)
+        # This allows proper diff comparison between versions
+        user_id = getattr(request.state, 'user_id', None)
+        user_initials = getattr(request.state, 'user_initials', None)
+        changed_fields = [f for f, v in update_data.items() if old_values.get(f) != v]
+        if changed_fields:
+            change_summary = f"Updated: {', '.join(changed_fields)}"
+            version_service.save_version(
+                db, "cargo", cargo_id, db_cargo,
+                user_id=user_id,
+                user_initials=user_initials,
+                change_summary=change_summary
+            )
+        
         db.commit()
         db.refresh(db_cargo)
         logger.info(f"Cargo {cargo_id} updated successfully (version {db_cargo.version})")
@@ -904,23 +955,29 @@ async def update_cargo(
         raise HTTPException(status_code=500, detail="Error saving cargo update")
     
     # Broadcast the update to all users viewing port movement (non-blocking)
+    broadcast_success, broadcast_failures = 0, 0
     try:
         user_id = getattr(request.state, 'user_id', None)
         user_initials = getattr(request.state, 'user_initials', None)
         logger.info(f"[BROADCAST] Starting broadcast for cargo {db_cargo.id}, user_id={user_id}, initials={user_initials}")
-        await _broadcast_cargo_change(
+        broadcast_success, broadcast_failures = await _broadcast_cargo_change(
             change_type="updated",
             cargo_id=db_cargo.id,
             cargo_data=_cargo_to_broadcast_dict(db_cargo),
             user_id=user_id,
             user_initials=user_initials
         )
-        logger.info(f"[BROADCAST] Completed broadcast for cargo {db_cargo.id}")
+        logger.info(f"[BROADCAST] Completed broadcast for cargo {db_cargo.id} (success={broadcast_success}, failures={broadcast_failures})")
     except Exception as e:
         # Don't fail the request if broadcast fails
         logger.error(f"Failed to broadcast cargo update: {e}", exc_info=True)
+        broadcast_failures = 1
     
-    return db_cargo
+    # Convert to response with broadcast status
+    response = schemas.Cargo.model_validate(db_cargo)
+    response.broadcast_success = broadcast_success
+    response.broadcast_failures = broadcast_failures
+    return response
 
 
 @router.put("/combi-group/{combi_group_id}/sync")
@@ -1065,10 +1122,25 @@ def sync_combi_cargo_group(
 
 
 @router.delete("/{cargo_id}")
-async def delete_cargo(cargo_id: int, request: Request, db: Session = Depends(get_db)):
+async def delete_cargo(
+    cargo_id: int, 
+    request: Request, 
+    reason: Optional[str] = Query(default=None, description="Reason for deletion"),
+    permanent: bool = Query(default=False, description="Permanently delete (skip recycle bin)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a cargo.
+    
+    By default, uses soft delete (moves to recycle bin for 90 days).
+    Use permanent=true to skip the recycle bin (cannot be undone).
+    """
     db_cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
     if db_cargo is None:
         raise to_http_exception(cargo_not_found(cargo_id))
+    
+    user_id = getattr(request.state, 'user_id', None)
+    user_initials = getattr(request.state, 'user_initials', None)
     
     try:
         # Log the deletion before deleting
@@ -1087,10 +1159,22 @@ async def delete_cargo(cargo_id: int, request: Request, db: Session = Depends(ge
             {models.CargoAuditLog.cargo_id: None, models.CargoAuditLog.cargo_db_id: db_cargo.id},
             synchronize_session=False
         )
-    
-        db.delete(db_cargo)
+        
+        if permanent:
+            # Hard delete - cannot be undone
+            db.delete(db_cargo)
+            logger.info(f"Cargo {cargo_id} permanently deleted")
+        else:
+            # Soft delete - move to recycle bin
+            version_service.soft_delete(
+                db, "cargo", db_cargo,
+                user_id=user_id,
+                user_initials=user_initials,
+                reason=reason
+            )
+            logger.info(f"Cargo {cargo_id} moved to recycle bin")
+        
         db.commit()
-        logger.info(f"Cargo {cargo_id} deleted successfully")
     except HTTPException:
         raise
     except SQLAlchemyError as e:
@@ -1100,8 +1184,6 @@ async def delete_cargo(cargo_id: int, request: Request, db: Session = Depends(ge
     
     # Broadcast the deletion to all users viewing port movement (non-blocking)
     try:
-        user_id = getattr(request.state, 'user_id', None)
-        user_initials = getattr(request.state, 'user_initials', None)
         await _broadcast_cargo_change(
             change_type="deleted",
             cargo_id=cargo_id,
@@ -1113,4 +1195,5 @@ async def delete_cargo(cargo_id: int, request: Request, db: Session = Depends(ge
         # Don't fail the request if broadcast fails
         logger.error(f"Failed to broadcast cargo deletion: {e}")
     
-    return {"message": "Cargo deleted successfully"}
+    message = "Cargo permanently deleted" if permanent else "Cargo moved to recycle bin (can be restored within 90 days)"
+    return {"message": message}

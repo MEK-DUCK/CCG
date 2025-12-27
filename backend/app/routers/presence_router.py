@@ -83,21 +83,18 @@ async def presence_websocket(
     user = None
     
     try:
-        # Authenticate user
+        # SECURITY: Authenticate user BEFORE accepting connection
+        # This prevents resource exhaustion from unauthenticated connection floods
         user = await get_user_from_token(token, db)
         
         if not user:
-            # Allow anonymous presence for public pages, but with limited info
-            await websocket.accept()
-            await websocket.send_json({
-                "type": "error",
-                "message": "Authentication required for presence tracking"
-            })
+            # Close without accepting - don't waste resources on unauthenticated requests
             await websocket.close(code=4001)
+            logger.warning(f"WebSocket connection rejected: invalid or missing token")
             return
         
-        # Register presence
-        await presence_manager.connect(
+        # Register presence (includes connection limit check)
+        success, error_message = await presence_manager.connect(
             websocket=websocket,
             resource_type=resource_type,
             resource_id=resource_id,
@@ -105,6 +102,21 @@ async def presence_websocket(
             initials=user.initials,
             full_name=user.full_name
         )
+        
+        if not success:
+            # Connection was rejected (e.g., too many connections)
+            # Connection was already accepted by connect(), so send error and close
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "code": "CONNECTION_LIMIT_EXCEEDED",
+                    "message": error_message
+                })
+                await websocket.close(code=4002)
+            except Exception:
+                pass  # Connection may already be closed
+            logger.warning(f"WebSocket connection rejected for user {user.id}: {error_message}")
+            return
         
         # Handle incoming messages
         while True:

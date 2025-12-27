@@ -239,8 +239,9 @@ export function usePresence(
           }
           
           // Auto-reconnect with exponential backoff (only if not cleaning up)
-          if (autoReconnect && !isCleaningUpRef.current && mountedRef.current && event.code !== 4001) {
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000)
+          // Skip reconnect for code 1005 (no status) which often happens during React Strict Mode cleanup
+          if (autoReconnect && !isCleaningUpRef.current && mountedRef.current && event.code !== 4001 && event.code !== 1005) {
+            const delay = Math.min(2000 * Math.pow(2, reconnectAttemptsRef.current), 30000)
             reconnectAttemptsRef.current++
             
             console.log(`[Presence] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`)
@@ -263,8 +264,9 @@ export function usePresence(
       }
     }
     
-    // Small delay to handle React Strict Mode double-mounting
-    const connectTimeout = setTimeout(connect, 100)
+    // Longer delay to handle React Strict Mode double-mounting in development
+    // This prevents rapid connect/disconnect cycles that confuse the presence system
+    const connectTimeout = setTimeout(connect, 500)
     
     return () => {
       // Mark as cleaning up to prevent reconnection attempts

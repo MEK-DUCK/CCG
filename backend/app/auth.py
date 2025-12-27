@@ -26,11 +26,31 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # =============================================================================
 
-# Secret key for JWT - generate a secure one in production!
-# Using a stable default key for development to avoid invalidating tokens on server restart
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "oil-lifting-dev-secret-key-change-in-production-2024")
+# Secret key for JWT - MUST be set via environment variable
+# In development, set JWT_SECRET_KEY in your .env file
+# In production, set it as a secure environment variable
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    # For development convenience, generate a stable key based on a seed
+    # This allows tokens to persist across restarts in dev, but is NOT secure for production
+    import hashlib
+    DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+    if DEV_MODE:
+        # In dev mode, use a deterministic key (not secure, but convenient)
+        SECRET_KEY = hashlib.sha256(b"oil-lifting-dev-key-DO-NOT-USE-IN-PRODUCTION").hexdigest()
+        logger.warning("⚠️  Using development JWT secret key. Set JWT_SECRET_KEY for production!")
+    else:
+        raise RuntimeError(
+            "FATAL: JWT_SECRET_KEY environment variable not set. "
+            "Set JWT_SECRET_KEY to a secure random string (at least 32 characters). "
+            "For development, you can set DEV_MODE=true to use an insecure default key."
+        )
+
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))  # 7 days default
+# Access token expiration - 15 minutes for security (use refresh tokens for longer sessions)
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
+# Refresh token expiration - 7 days
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
 # Bearer token security
 security = HTTPBearer(auto_error=False)
@@ -63,15 +83,37 @@ def get_password_hash(password: str) -> str:
 # =============================================================================
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a JWT access token."""
+    """Create a JWT access token (short-lived, for API requests)."""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+def create_refresh_token(data: dict) -> str:
+    """Create a JWT refresh token (long-lived, for getting new access tokens)."""
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update({"exp": expire, "type": "refresh"})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def decode_refresh_token(token: str) -> Optional[dict]:
+    """Decode and validate a refresh token."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            logger.warning("Token is not a refresh token")
+            return None
+        return payload
+    except JWTError as e:
+        logger.warning(f"Refresh token decode error: {e}")
+        return None
 
 
 def decode_token(token: str) -> Optional[dict]:

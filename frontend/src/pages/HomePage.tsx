@@ -34,7 +34,7 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material'
-import { FileDownload, Search, Description, Clear } from '@mui/icons-material'
+import { FileDownload, Search, Description, Clear, History } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
 import { format } from 'date-fns'
 import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, quarterlyPlanAPI, documentsAPI } from '../api/client'
@@ -47,6 +47,7 @@ import { useLaycanAlerts } from '../hooks/useLaycanAlerts'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { useRealTimeSync, DataSyncEvent } from '../hooks/useRealTimeSync'
 import { useConflictHandler, EditingWarningBanner, ActiveUsersIndicator } from '../components/Presence'
+import { VersionHistoryDialog } from '../components/VersionHistory'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -478,6 +479,7 @@ export default function HomePage() {
   const [cargoDialogOpen, setCargoDialogOpen] = useState(false)
   const [editingCargo, setEditingCargo] = useState<Cargo | null>(null)
   const [cargoEditingUser, setCargoEditingUser] = useState<{ user: PresenceUser; field: string } | null>(null)
+  const [cargoHistoryDialogOpen, setCargoHistoryDialogOpen] = useState(false)
   const [cargoMonthlyPlanId, setCargoMonthlyPlanId] = useState<number | null>(null)
   const [cargoMonthlyPlan, setCargoMonthlyPlan] = useState<MonthlyPlan | null>(null) // Fetched monthly plan for editing
   const [cargoContractId, setCargoContractId] = useState<number | null>(null)
@@ -1430,8 +1432,8 @@ export default function HomePage() {
           }
           updatePromise = cargoAPI.syncCombiGroup(editingCargo.combi_group_id, sharedUpdatePayload)
         } else {
-          // Single cargo update
-          updatePromise = cargoAPI.update(editingCargo.id, updatePayload)
+          // Single cargo update (include version for optimistic locking)
+          updatePromise = cargoAPI.update(editingCargo.id, { ...updatePayload, version: editingCargo.version || 1 })
         }
         
         updatePromise
@@ -1514,9 +1516,10 @@ export default function HomePage() {
                 }
                 setInRoadCIF(prev => [...prev, duplicateCargo])
                 
-                // Update status via API
+                // Update status via API (include version for optimistic locking)
                 await cargoAPI.update(duplicateId, {
                   status: 'In-Road (Pending Discharge)',
+                  version: duplicateResponse.data.version || 1,
                 })
                 
                 // Refresh In-Road data in background
@@ -2117,9 +2120,9 @@ export default function HomePage() {
     // Handler for inline 5-ND date update
     const handleFiveNDDateChange = async (cargo: Cargo, newDate: string) => {
       try {
-        await cargoAPI.update(cargo.id, { five_nd_date: newDate || undefined })
-        // Update local state
-        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, five_nd_date: newDate } : c))
+        const result = await cargoAPI.update(cargo.id, { five_nd_date: newDate || undefined, version: cargo.version || 1 })
+        // Update local state with new version
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, five_nd_date: newDate, version: result.data.version } : c))
       } catch (error) {
         console.error('Error updating 5-ND date:', error)
       }
@@ -2128,9 +2131,9 @@ export default function HomePage() {
     // Handler for inline ETA Discharge Port update
     const handleETADischargePortChange = async (cargo: Cargo, newValue: string) => {
       try {
-        await cargoAPI.update(cargo.id, { eta_discharge_port: newValue || undefined })
-        // Update local state
-        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, eta_discharge_port: newValue } : c))
+        const result = await cargoAPI.update(cargo.id, { eta_discharge_port: newValue || undefined, version: cargo.version || 1 })
+        // Update local state with new version
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, eta_discharge_port: newValue, version: result.data.version } : c))
       } catch (error) {
         console.error('Error updating ETA Discharge Port:', error)
       }
@@ -2139,9 +2142,9 @@ export default function HomePage() {
     // Handler for inline Discharge Port Location update
     const handleDischargePortLocationChange = async (cargo: Cargo, newValue: string) => {
       try {
-        await cargoAPI.update(cargo.id, { discharge_port_location: newValue || undefined })
-        // Update local state
-        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, discharge_port_location: newValue } : c))
+        const result = await cargoAPI.update(cargo.id, { discharge_port_location: newValue || undefined, version: cargo.version || 1 })
+        // Update local state with new version
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, discharge_port_location: newValue, version: result.data.version } : c))
       } catch (error) {
         console.error('Error updating Discharge Port Location:', error)
       }
@@ -2150,9 +2153,9 @@ export default function HomePage() {
     // Handler for inline ND Delivery Window update
     const handleNDDeliveryWindowChange = async (cargo: Cargo, newValue: string) => {
       try {
-        await cargoAPI.update(cargo.id, { nd_delivery_window: newValue || undefined })
-        // Update local state
-        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, nd_delivery_window: newValue } : c))
+        const result = await cargoAPI.update(cargo.id, { nd_delivery_window: newValue || undefined, version: cargo.version || 1 })
+        // Update local state with new version
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, nd_delivery_window: newValue, version: result.data.version } : c))
       } catch (error) {
         console.error('Error updating ND Delivery Window:', error)
       }
@@ -2705,9 +2708,9 @@ export default function HomePage() {
       setCompletedCargos(updateCargoInList)
       setInRoadCIF(updateCargoInList)
       
-      // Send API calls for all cargos in the group
+      // Send API calls for all cargos in the group (include version for optimistic locking)
       const updatePromises = cargosToUpdate.map(cargo => 
-        cargoAPI.update(cargo.id, updateData)
+        cargoAPI.update(cargo.id, { ...updateData, version: cargo.version || 1 })
       )
       
       Promise.all(updatePromises)
@@ -5109,29 +5112,60 @@ export default function HomePage() {
             })()}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: isMobile ? 2 : 3, py: isMobile ? 2 : 3, gap: 1 }}>
-          <Button 
-            onClick={() => setCargoDialogOpen(false)}
-            sx={{ 
-              minHeight: isMobile ? 48 : 36,
-              minWidth: isMobile ? 100 : 'auto',
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleCargoSubmit}
-            variant="contained"
-            disabled={!cargoFormData.vessel_name || !cargoFormData.cargo_quantity}
-            sx={{ 
-              minHeight: isMobile ? 48 : 36,
-              minWidth: isMobile ? 120 : 'auto',
-            }}
-          >
-            {editingCargo ? 'Update Vessel' : 'Create Vessel'}
-          </Button>
+        <DialogActions sx={{ px: isMobile ? 2 : 3, py: isMobile ? 2 : 3, gap: 1, justifyContent: 'space-between' }}>
+          <Box>
+            {editingCargo && (
+              <Button
+                onClick={() => setCargoHistoryDialogOpen(true)}
+                startIcon={<History />}
+                sx={{ 
+                  minHeight: isMobile ? 48 : 36,
+                }}
+              >
+                History
+              </Button>
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button 
+              onClick={() => setCargoDialogOpen(false)}
+              sx={{ 
+                minHeight: isMobile ? 48 : 36,
+                minWidth: isMobile ? 100 : 'auto',
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCargoSubmit}
+              variant="contained"
+              disabled={!cargoFormData.vessel_name || !cargoFormData.cargo_quantity}
+              sx={{ 
+                minHeight: isMobile ? 48 : 36,
+                minWidth: isMobile ? 120 : 'auto',
+              }}
+            >
+              {editingCargo ? 'Update Vessel' : 'Create Vessel'}
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
+
+      {/* Cargo Version History Dialog */}
+      <VersionHistoryDialog
+        open={cargoHistoryDialogOpen}
+        onClose={() => setCargoHistoryDialogOpen(false)}
+        entityType="cargo"
+        entityId={editingCargo?.id || 0}
+        entityName={editingCargo ? `${editingCargo.cargo_id} - ${editingCargo.vessel_name}` : undefined}
+        onRestore={() => {
+          // Reload data after restore
+          loadData()
+          loadPortMovement()
+          loadActiveLoadings()
+          setCargoDialogOpen(false)
+        }}
+      />
     </Box>
   )
 }

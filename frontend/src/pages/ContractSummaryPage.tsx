@@ -187,7 +187,12 @@ export default function ContractSummaryPage() {
     setSavedById((prev) => ({ ...prev, [contractId]: false }))
     setSaveErrorById((prev) => ({ ...prev, [contractId]: '' }))
     try {
-      const res = await contractAPI.update(contractId, { remarks: value || null })
+      // Get the contract's current version for optimistic locking
+      const contract = contracts.find(c => c.id === contractId)
+      const res = await contractAPI.update(contractId, { 
+        remarks: value || null,
+        version: contract?.version || 1
+      })
       const updated = res.data as Contract
       setContracts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       setRemarksDraftById((prev) => ({ ...prev, [updated.id]: updated.remarks || '' }))

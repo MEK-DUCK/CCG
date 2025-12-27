@@ -5,14 +5,18 @@ Tracks which users are viewing which resources (pages, records) and broadcasts
 presence updates to all users viewing the same resource.
 """
 from fastapi import WebSocket, WebSocketDisconnect
-from typing import Dict, Set, Optional, List
+from typing import Dict, Set, Optional, List, Tuple
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 import asyncio
 import json
 import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+# Maximum WebSocket connections per user (prevents resource exhaustion)
+MAX_CONNECTIONS_PER_USER = int(os.getenv("MAX_WS_CONNECTIONS_PER_USER", "50"))
 
 
 @dataclass
@@ -38,17 +42,42 @@ class PresenceManager:
     - "monthly-plan:4354" - Specific monthly plan
     - "contract:412" - Specific contract
     - "cargo:1957" - Specific cargo
+    
+    Security features:
+    - Maximum connections per user to prevent resource exhaustion
+    - Per-resource locks to reduce contention
     """
     
-    def __init__(self):
+    def __init__(self, max_connections_per_user: int = MAX_CONNECTIONS_PER_USER):
         # resource_key -> {user_id -> WebSocket}
         self.connections: Dict[str, Dict[int, WebSocket]] = {}
         # resource_key -> {user_id -> PresenceUser}
         self.user_info: Dict[str, Dict[int, PresenceUser]] = {}
         # user_id -> set of resource_keys (for cleanup on disconnect)
         self.user_resources: Dict[int, Set[str]] = {}
-        # Lock for thread-safe operations
-        self._lock = asyncio.Lock()
+        # Per-resource locks for finer-grained concurrency control
+        self._resource_locks: Dict[str, asyncio.Lock] = {}
+        # Global lock for managing the locks dict itself
+        self._global_lock = asyncio.Lock()
+        # Max connections per user
+        self.max_connections_per_user = max_connections_per_user
+    
+    async def _get_resource_lock(self, key: str) -> asyncio.Lock:
+        """Get or create a lock for a specific resource."""
+        async with self._global_lock:
+            if key not in self._resource_locks:
+                self._resource_locks[key] = asyncio.Lock()
+            return self._resource_locks[key]
+    
+    async def _cleanup_resource_lock(self, key: str) -> None:
+        """Remove a resource lock if no longer needed."""
+        async with self._global_lock:
+            if key in self._resource_locks and key not in self.connections:
+                del self._resource_locks[key]
+    
+    def get_user_connection_count(self, user_id: int) -> int:
+        """Get the number of active connections for a user."""
+        return len(self.user_resources.get(user_id, set()))
     
     def _make_key(self, resource_type: str, resource_id: str) -> str:
         """Create a unique key for a resource."""
@@ -62,19 +91,42 @@ class PresenceManager:
         user_id: int,
         initials: str,
         full_name: str
-    ) -> None:
-        """Register a user's connection to a resource."""
-        await websocket.accept()
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Register a user's connection to a resource.
+        
+        Returns:
+            Tuple of (success, error_message)
+            - (True, None) if connection was successful
+            - (False, "error message") if connection was rejected
+        """
         key = self._make_key(resource_type, resource_id)
         
-        async with self._lock:
+        # Check connection limit BEFORE accepting
+        current_count = self.get_user_connection_count(user_id)
+        if current_count >= self.max_connections_per_user:
+            logger.warning(
+                f"User {user_id} ({initials}) exceeded max connections "
+                f"({current_count}/{self.max_connections_per_user})"
+            )
+            return (False, f"Maximum connections ({self.max_connections_per_user}) exceeded. Please close some tabs.")
+        
+        # Accept the connection
+        await websocket.accept()
+        
+        # Get per-resource lock for finer-grained concurrency
+        resource_lock = await self._get_resource_lock(key)
+        
+        async with resource_lock:
             # Initialize dicts if needed
             if key not in self.connections:
                 self.connections[key] = {}
                 self.user_info[key] = {}
             
-            if user_id not in self.user_resources:
-                self.user_resources[user_id] = set()
+            async with self._global_lock:
+                if user_id not in self.user_resources:
+                    self.user_resources[user_id] = set()
+                self.user_resources[user_id].add(key)
             
             # Store connection and user info
             self.connections[key][user_id] = websocket
@@ -84,12 +136,12 @@ class PresenceManager:
                 full_name=full_name,
                 connected_at=datetime.now(timezone.utc).isoformat()
             )
-            self.user_resources[user_id].add(key)
         
         # Broadcast updated presence to all users on this resource
         await self.broadcast_presence(resource_type, resource_id)
         
-        logger.info(f"User {initials} (ID:{user_id}) connected to {key}")
+        logger.info(f"User {initials} (ID:{user_id}) connected to {key} ({current_count + 1} total connections)")
+        return (True, None)
     
     async def disconnect(
         self, 
@@ -101,7 +153,10 @@ class PresenceManager:
         key = self._make_key(resource_type, resource_id)
         initials = "?"
         
-        async with self._lock:
+        # Get per-resource lock
+        resource_lock = await self._get_resource_lock(key)
+        
+        async with resource_lock:
             if key in self.connections:
                 self.connections[key].pop(user_id, None)
                 user = self.user_info[key].pop(user_id, None)
@@ -113,10 +168,14 @@ class PresenceManager:
                     del self.connections[key]
                     del self.user_info[key]
             
-            if user_id in self.user_resources:
-                self.user_resources[user_id].discard(key)
-                if not self.user_resources[user_id]:
-                    del self.user_resources[user_id]
+            async with self._global_lock:
+                if user_id in self.user_resources:
+                    self.user_resources[user_id].discard(key)
+                    if not self.user_resources[user_id]:
+                        del self.user_resources[user_id]
+        
+        # Clean up the resource lock if no longer needed
+        await self._cleanup_resource_lock(key)
         
         # Broadcast updated presence to remaining users
         await self.broadcast_presence(resource_type, resource_id)
@@ -125,7 +184,7 @@ class PresenceManager:
     
     async def disconnect_user_all(self, user_id: int) -> None:
         """Disconnect a user from all resources (e.g., on logout or connection drop)."""
-        async with self._lock:
+        async with self._global_lock:
             resources = list(self.user_resources.get(user_id, set()))
         
         for key in resources:
@@ -142,12 +201,19 @@ class PresenceManager:
         """Broadcast current presence list to all users on a resource."""
         key = self._make_key(resource_type, resource_id)
         
-        async with self._lock:
+        # Get per-resource lock
+        resource_lock = await self._get_resource_lock(key)
+        
+        async with resource_lock:
             if key not in self.connections:
+                logger.debug(f"No connections for {key}, skipping broadcast")
                 return
             
             connections = dict(self.connections.get(key, {}))
             users = list(self.user_info.get(key, {}).values())
+        
+        user_initials = [u.initials for u in users]
+        logger.info(f"Broadcasting presence for {key}: {len(users)} users ({', '.join(user_initials)}) to {len(connections)} connections")
         
         message = json.dumps({
             "type": "presence",
@@ -164,6 +230,7 @@ class PresenceManager:
                 continue
             try:
                 await ws.send_text(message)
+                logger.debug(f"Sent presence update to user {uid}")
             except Exception as e:
                 logger.warning(f"Failed to send presence to user {uid}: {e}")
                 disconnected.append(uid)
@@ -211,7 +278,10 @@ class PresenceManager:
         """
         key = self._make_key(resource_type, resource_id)
         
-        async with self._lock:
+        # Get per-resource lock
+        resource_lock = await self._get_resource_lock(key)
+        
+        async with resource_lock:
             connections = dict(self.connections.get(key, {}))
         
         message = json.dumps({
@@ -240,7 +310,7 @@ class PresenceManager:
         entity_data: Optional[dict] = None,
         changed_by_user_id: Optional[int] = None,
         changed_by_initials: Optional[str] = None
-    ) -> None:
+    ) -> Tuple[int, int]:
         """
         Broadcast a data change to all users viewing a resource.
         
@@ -256,14 +326,20 @@ class PresenceManager:
             entity_data: Optional full entity data for "created" or "updated"
             changed_by_user_id: ID of user who made the change
             changed_by_initials: Initials of user who made the change
+            
+        Returns:
+            Tuple of (success_count, failure_count) for monitoring/feedback
         """
         key = self._make_key(resource_type, resource_id)
         
-        async with self._lock:
+        # Get per-resource lock
+        resource_lock = await self._get_resource_lock(key)
+        
+        async with resource_lock:
             connections = dict(self.connections.get(key, {}))
         
         if not connections:
-            return
+            return (0, 0)
         
         message = json.dumps({
             "type": "data_sync",
@@ -281,12 +357,14 @@ class PresenceManager:
         logger.info(f"Broadcasting {change_type} {entity_type}:{entity_id} to {len(connections)} users on {key}")
         
         disconnected = []
+        success_count = 0
         for uid, ws in connections.items():
             # Don't send to the user who made the change - they already have the data
             if changed_by_user_id and uid == changed_by_user_id:
                 continue
             try:
                 await ws.send_text(message)
+                success_count += 1
             except Exception as e:
                 logger.warning(f"Failed to send data_sync to user {uid}: {e}")
                 disconnected.append(uid)
@@ -294,6 +372,8 @@ class PresenceManager:
         # Clean up disconnected users
         for uid in disconnected:
             await self.disconnect(resource_type, resource_id, uid)
+        
+        return (success_count, len(disconnected))
 
 
 # Global presence manager instance

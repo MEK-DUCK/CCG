@@ -546,6 +546,10 @@ class Cargo(CargoBase):
     updated_at: Optional[datetime] = None
     port_operations: Optional[List["CargoPortOperation"]] = None
     
+    # Broadcast status (optional, included when real-time sync is attempted)
+    broadcast_success: Optional[int] = None  # Number of users successfully notified
+    broadcast_failures: Optional[int] = None  # Number of notification failures
+    
     class Config:
         from_attributes = True
         use_enum_values = True
@@ -739,8 +743,16 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None  # For new login flow
     token_type: str = "bearer"
+    expires_in: Optional[int] = None  # Seconds until access token expires
     user: UserPublic
+
+
+class RefreshTokenRequest(BaseModel):
+    """Request to refresh access token"""
+    refresh_token: str = Field(..., description="Refresh token from login")
+
 
 class SetPasswordRequest(BaseModel):
     """For setting password via invite or reset token"""

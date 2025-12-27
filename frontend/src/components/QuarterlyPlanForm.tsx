@@ -80,6 +80,7 @@ interface ProductPlanData {
   totalQuantity: number
   optionalQuantity: number
   existingPlanId?: number
+  existingPlanVersion?: number  // For optimistic locking
   q1: string
   q2: string
   q3: string
@@ -219,6 +220,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
           totalQuantity: yearTotalQty,
           optionalQuantity: yearOptionalQty,
           existingPlanId: existingPlan?.id,
+          existingPlanVersion: existingPlan?.version || 1,
           q1,
           q2,
           q3,
@@ -294,12 +296,13 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
         const q4Qty = parseFloat(plan.q4) || 0
 
         if (plan.existingPlanId) {
-          // Update existing plan
+          // Update existing plan (include version for optimistic locking)
           await quarterlyPlanAPI.update(plan.existingPlanId, {
             q1_quantity: q1Qty,
             q2_quantity: q2Qty,
             q3_quantity: q3Qty,
             q4_quantity: q4Qty,
+            version: plan.existingPlanVersion || 1,
           })
         } else {
           // Create new plan with contract_year

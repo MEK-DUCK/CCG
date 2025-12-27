@@ -29,42 +29,131 @@ client.interceptors.request.use(
   }
 )
 
+// Track if we're currently refreshing the token to prevent multiple refresh attempts
+let isRefreshing = false
+let failedQueue: Array<{
+  resolve: (value?: unknown) => void
+  reject: (reason?: unknown) => void
+}> = []
+
+const processQueue = (error: unknown, token: string | null = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error)
+    } else {
+      prom.resolve(token)
+    }
+  })
+  failedQueue = []
+}
+
 // Add response interceptor for debugging and auth error handling
 client.interceptors.response.use(
   (response) => {
     console.log('✅ Axios Response:', response.status, response.config.url, 'Data length:', response.data?.length || 'N/A')
     return response
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config
+    
     console.error('❌ Axios Error Response:', error.response?.status, error.config?.url)
     console.error('❌ Error message:', error.message)
     console.error('❌ Error code:', error.code)
+    
     if (error.code === 'ERR_NETWORK') {
       console.error('❌ Network Error - Request could not be made. Check:')
       console.error('   1. Is the backend running on port 8000?')
       console.error('   2. Is the Vite proxy configured correctly?')
       console.error('   3. Try restarting the frontend dev server')
     }
+    
     if (error.response) {
       console.error('❌ Error response data:', error.response.data)
       
-      // Handle 401 Unauthorized - token expired or invalid
-      // Only auto-logout if we had a token (authenticated request)
-      if (error.response.status === 401 && client.defaults.headers.common['Authorization']) {
-        const errorDetail = error.response.data?.detail || ''
-        if (errorDetail.includes('Invalid or expired token') || errorDetail.includes('Not authenticated')) {
+      // Handle 401 Unauthorized - try to refresh token first
+      if (error.response.status === 401 && !originalRequest._retry) {
+        const refreshToken = localStorage.getItem('oil_lifting_refresh_token')
+        
+        // If we have a refresh token and this isn't the refresh endpoint itself
+        if (refreshToken && !originalRequest.url?.includes('/auth/refresh')) {
+          if (isRefreshing) {
+            // If already refreshing, queue this request
+            return new Promise((resolve, reject) => {
+              failedQueue.push({ resolve, reject })
+            }).then(token => {
+              originalRequest.headers['Authorization'] = `Bearer ${token}`
+              return client(originalRequest)
+            }).catch(err => {
+              return Promise.reject(err)
+            })
+          }
+          
+          originalRequest._retry = true
+          isRefreshing = true
+          
+          try {
+            console.log('🔄 Attempting token refresh...')
+            const response = await client.post('/api/auth/refresh', {
+              refresh_token: refreshToken
+            })
+            
+            const { access_token, expires_in } = response.data
+            
+            // Update stored tokens
+            localStorage.setItem('oil_lifting_token', access_token)
+            const expiryTime = Date.now() + (expires_in || 900) * 1000
+            localStorage.setItem('oil_lifting_token_expiry', expiryTime.toString())
+            
+            // Update auth header
+            client.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
+            originalRequest.headers['Authorization'] = `Bearer ${access_token}`
+            
+            console.log('✅ Token refreshed successfully')
+            processQueue(null, access_token)
+            
+            // Retry the original request
+            return client(originalRequest)
+          } catch (refreshError) {
+            console.error('❌ Token refresh failed:', refreshError)
+            processQueue(refreshError, null)
+            
+            // Refresh failed, clear auth and redirect to login
+            localStorage.removeItem('oil_lifting_token')
+            localStorage.removeItem('oil_lifting_refresh_token')
+            localStorage.removeItem('oil_lifting_user')
+            localStorage.removeItem('oil_lifting_token_expiry')
+            delete client.defaults.headers.common['Authorization']
+            
+            if (!window.location.pathname.includes('/login')) {
+              window.location.href = '/login?expired=true'
+            }
+            return Promise.reject(refreshError)
+          } finally {
+            isRefreshing = false
+          }
+        } else {
+          // No refresh token or refresh endpoint failed
           console.warn('🔒 Authentication expired - clearing session')
-          // Clear stored auth data
           localStorage.removeItem('oil_lifting_token')
+          localStorage.removeItem('oil_lifting_refresh_token')
           localStorage.removeItem('oil_lifting_user')
+          localStorage.removeItem('oil_lifting_token_expiry')
           delete client.defaults.headers.common['Authorization']
-          // Redirect to login if not already there
+          
           if (!window.location.pathname.includes('/login')) {
             window.location.href = '/login?expired=true'
           }
         }
       }
+      
+      // Handle 429 Too Many Requests (rate limiting)
+      if (error.response.status === 429) {
+        const retryAfter = error.response.data?.retry_after || 60
+        console.warn(`⏳ Rate limited. Retry after ${retryAfter} seconds.`)
+        // Could show a toast notification here
+      }
     }
+    
     if (error.request) {
       console.error('❌ Request was made but no response received:', error.request)
     }
@@ -204,5 +293,49 @@ export const documentsAPI = {
         'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       }
     }),
+}
+
+// Version History API
+export const versionHistoryAPI = {
+  // Get version history for an entity
+  getVersions: (entityType: string, entityId: number, limit?: number) =>
+    client.get(`/api/versions/${entityType}/${entityId}`, { params: { limit } }),
+  
+  // Get specific version details
+  getVersionDetail: (entityType: string, entityId: number, versionNumber: number) =>
+    client.get(`/api/versions/${entityType}/${entityId}/${versionNumber}`),
+  
+  // Restore to a specific version
+  restoreVersion: (entityType: string, entityId: number, versionNumber: number) =>
+    client.post(`/api/versions/${entityType}/${entityId}/restore`, { version_number: versionNumber }),
+}
+
+// Recycle Bin API
+export const recycleBinAPI = {
+  // Get list of deleted entities
+  getDeleted: (entityType?: string, includeRestored?: boolean, limit?: number) =>
+    client.get('/api/recycle-bin', { 
+      params: { 
+        entity_type: entityType, 
+        include_restored: includeRestored,
+        limit 
+      } 
+    }),
+  
+  // Get details of a specific deleted entity
+  getDeletedDetail: (deletedId: number) =>
+    client.get(`/api/recycle-bin/${deletedId}`),
+  
+  // Restore a deleted entity
+  restore: (deletedId: number) =>
+    client.post(`/api/recycle-bin/${deletedId}/restore`),
+  
+  // Permanently delete (admin only)
+  permanentDelete: (deletedId: number) =>
+    client.delete(`/api/recycle-bin/${deletedId}`),
+  
+  // Cleanup expired entities (admin only)
+  cleanup: () =>
+    client.post('/api/recycle-bin/cleanup'),
 }
 

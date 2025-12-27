@@ -558,3 +558,88 @@ class GeneralAuditLog(Base):
     # User tracking
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     user_initials = Column(String(4), nullable=True, index=True)
+
+
+# =============================================================================
+# VERSION HISTORY & SOFT DELETE MODELS
+# =============================================================================
+
+class EntityVersion(Base):
+    """
+    Version history for all major entities (cargos, contracts, monthly plans, quarterly plans).
+    Stores complete snapshots allowing full restoration to any previous version.
+    
+    This enables:
+    - Viewing history of changes with full before/after data
+    - Restoring to any previous version with one click
+    - Auditing who changed what and when
+    """
+    __tablename__ = "entity_versions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Entity identification
+    entity_type = Column(String(50), nullable=False, index=True)  # cargo, contract, monthly_plan, quarterly_plan
+    entity_id = Column(Integer, nullable=False, index=True)  # ID of the entity
+    
+    # Version info
+    version_number = Column(Integer, nullable=False)  # 1, 2, 3, etc.
+    
+    # Complete snapshot of the entity at this version (JSON)
+    snapshot_data = Column(Text, nullable=False)  # Full JSON representation
+    
+    # What changed from previous version (for quick display)
+    change_summary = Column(Text, nullable=True)  # Human-readable summary
+    changed_fields = Column(Text, nullable=True)  # JSON array of field names that changed
+    
+    # Who and when
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by_initials = Column(String(4), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Index for efficient lookups
+    __table_args__ = (
+        # Unique constraint: one version number per entity
+        # Index for fast history queries
+    )
+
+
+class DeletedEntity(Base):
+    """
+    Recycle bin for soft-deleted entities.
+    Records are moved here instead of being permanently deleted.
+    
+    This enables:
+    - Recovering accidentally deleted records
+    - Viewing what was deleted and by whom
+    - Automatic permanent deletion after retention period (e.g., 90 days)
+    """
+    __tablename__ = "deleted_entities"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Entity identification
+    entity_type = Column(String(50), nullable=False, index=True)  # cargo, contract, monthly_plan, quarterly_plan, customer
+    entity_id = Column(Integer, nullable=False, index=True)  # Original ID of the deleted entity
+    entity_display_name = Column(String(255), nullable=True)  # Human-readable name for display
+    
+    # Complete snapshot at time of deletion (JSON)
+    snapshot_data = Column(Text, nullable=False)  # Full JSON representation
+    
+    # Related entities (for context)
+    related_info = Column(Text, nullable=True)  # JSON with related IDs/names (e.g., contract, customer)
+    
+    # Deletion info
+    deleted_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    deleted_by_initials = Column(String(4), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    deletion_reason = Column(Text, nullable=True)  # Optional reason for deletion
+    
+    # Restoration info (if restored)
+    restored_at = Column(DateTime(timezone=True), nullable=True)
+    restored_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    restored_by_initials = Column(String(4), nullable=True)
+    new_entity_id = Column(Integer, nullable=True)  # ID after restoration (may differ from original)
+    
+    # For automatic cleanup
+    permanent_delete_after = Column(DateTime(timezone=True), nullable=True)  # When to permanently delete

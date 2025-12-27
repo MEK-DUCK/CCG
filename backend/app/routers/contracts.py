@@ -324,12 +324,18 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
     
     update_data = contract.dict(exclude_unset=True)
     
-    # Optimistic locking check - if client sends version, verify it matches
+    # Optimistic locking check - version is REQUIRED to prevent lost updates
     client_version = update_data.pop('version', None)
-    if client_version is not None and client_version != getattr(db_contract, 'version', 1):
+    current_version = getattr(db_contract, 'version', 1)
+    if client_version is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Version field is required for updates. Please refresh the page and try again."
+        )
+    if client_version != current_version:
         raise HTTPException(
             status_code=409,
-            detail=f"Contract was modified by another user. Please refresh and try again. (Expected version {client_version}, found {getattr(db_contract, 'version', 1)})"
+            detail=f"Contract was modified by another user. Please refresh and try again. (Your version: {client_version}, Current version: {current_version})"
         )
 
     if "remarks" in update_data and not has_remarks:

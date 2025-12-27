@@ -257,12 +257,18 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
     # This allows clearing fields by sending null or empty string
     update_data = plan.dict(exclude_unset=True)
     
-    # Optimistic locking check - if client sends version, verify it matches
+    # Optimistic locking check - version is REQUIRED to prevent lost updates
     client_version = update_data.pop('version', None)
-    if client_version is not None and client_version != getattr(db_plan, 'version', 1):
+    current_version = getattr(db_plan, 'version', 1)
+    if client_version is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Version field is required for updates. Please refresh the page and try again."
+        )
+    if client_version != current_version:
         raise HTTPException(
             status_code=409,
-            detail=f"Monthly plan was modified by another user. Please refresh and try again. (Expected version {client_version}, found {getattr(db_plan, 'version', 1)})"
+            detail=f"Monthly plan was modified by another user. Please refresh and try again. (Your version: {client_version}, Current version: {current_version})"
         )
     
     # Validate month/year if being updated
@@ -319,6 +325,14 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
         if hasattr(db_plan, field):
             old_values[field] = getattr(db_plan, field)
     
+    # Check if any fields are actually changing
+    changed_fields = []
+    for field, value in update_data.items():
+        old_val = old_values.get(field)
+        if old_val != value:
+            changed_fields.append(field)
+    
+    # Apply the changes
     for field, value in update_data.items():
         old_val = old_values.get(field)
         setattr(db_plan, field, value)
@@ -340,6 +354,16 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
     # Increment version for optimistic locking
     db_plan.version = getattr(db_plan, 'version', 1) + 1
     
+    # Save version history AFTER making changes (snapshot contains NEW state)
+    if changed_fields:
+        from app.version_history import version_service
+        change_summary = f"Updated: {', '.join(changed_fields)}"
+        version_service.save_version(
+            db, "monthly_plan", db_plan.id, db_plan,
+            user_initials="SYS",
+            change_summary=change_summary
+        )
+    
     db.commit()
     db.refresh(db_plan)
     logger.info(f"Monthly plan {plan_id} updated")
@@ -350,16 +374,23 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
 def move_monthly_plan(plan_id: int, move_request: schemas.MonthlyPlanMoveRequest, db: Session = Depends(get_db)):
     """
     Move a monthly plan to a different month (defer or advance).
-    Blocked if the plan has any associated cargos.
+    If the plan has cargos, they will be moved along with it (with version history).
+    Blocked if the plan has COMPLETED cargos (completed operations can't be moved).
     """
+    from app.version_history import version_service
+    
     db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
     if db_plan is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
     
-    # Check if plan has any cargos - block move if yes
+    # Check cargo status - only block if cargos are COMPLETED
     cargo_info = get_cargo_info(plan_id, db)
-    if cargo_info['total_cargos'] > 0:
-        raise to_http_exception(plan_has_cargos(cargo_info['total_cargos'], cargo_info['cargo_ids']))
+    if cargo_info['has_completed_cargos']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot move monthly plan. It has {cargo_info['completed_cargos']} completed cargo(s): "
+                   f"{', '.join(cargo_info['completed_cargo_ids'])}. Completed operations cannot be moved."
+        )
     
     # Validate move direction matches action
     old_date = db_plan.year * 12 + db_plan.month
@@ -373,16 +404,58 @@ def move_monthly_plan(plan_id: int, move_request: schemas.MonthlyPlanMoveRequest
     # Store old values for audit
     old_month = db_plan.month
     old_year = db_plan.year
-    
-    # Update the plan
-    db_plan.month = move_request.target_month
-    db_plan.year = move_request.target_year
-    
-    # Build description
     old_month_name = month_name[old_month]
     new_month_name = month_name[move_request.target_month]
     action_verb = "Deferred" if move_request.action == "DEFER" else "Advanced"
+    
+    # Save version history for the monthly plan before moving
+    version_service.save_version(
+        db, "monthly_plan", db_plan.id, db_plan,
+        user_initials="SYS",
+        change_summary=f"{action_verb} from {old_month_name} {old_year} to {new_month_name} {move_request.target_year}"
+    )
+    
+    # If there are cargos, save version history and update them
+    cargos = db.query(models.Cargo).filter(models.Cargo.monthly_plan_id == plan_id).all()
+    moved_cargo_ids = []
+    
+    for cargo in cargos:
+        # Save version history for each cargo before the move
+        version_service.save_version(
+            db, "cargo", cargo.id, cargo,
+            user_initials="SYS",
+            change_summary=f"{action_verb} with monthly plan from {old_month_name} {old_year} to {new_month_name} {move_request.target_year}"
+        )
+        
+        # Log the cargo move in the cargo audit log
+        audit_entry = models.CargoAuditLog(
+            cargo_id=cargo.id,
+            cargo_db_id=cargo.id,
+            cargo_cargo_id=cargo.cargo_id,
+            action=move_request.action,
+            field_name='monthly_plan_month',
+            old_value=f"{old_month_name} {old_year}",
+            new_value=f"{new_month_name} {move_request.target_year}",
+            old_month=old_month,
+            old_year=old_year,
+            new_month=move_request.target_month,
+            new_year=move_request.target_year,
+            description=move_request.reason or f"{action_verb} with monthly plan"
+        )
+        db.add(audit_entry)
+        moved_cargo_ids.append(cargo.cargo_id)
+        
+        logger.info(f"Cargo {cargo.cargo_id} {action_verb.lower()} with monthly plan: {old_month_name} {old_year} -> {new_month_name} {move_request.target_year}")
+    
+    # Update the monthly plan
+    db_plan.month = move_request.target_month
+    db_plan.year = move_request.target_year
+    db_plan.version = (db_plan.version or 1) + 1  # Increment version for optimistic locking
+    
+    # Build description for monthly plan audit log
     description = f"{action_verb} {db_plan.month_quantity:,.0f} KT from {old_month_name} {old_year} to {new_month_name} {move_request.target_year}"
+    if moved_cargo_ids:
+        description += f" (with cargo(s): {', '.join(moved_cargo_ids)})"
     if move_request.reason:
         description += f" - Reason: {move_request.reason}"
     
@@ -400,6 +473,9 @@ def move_monthly_plan(plan_id: int, move_request: schemas.MonthlyPlanMoveRequest
     db.refresh(db_plan)
     
     logger.info(f"Monthly plan {plan_id} {action_verb.lower()}: {old_month_name} {old_year} -> {new_month_name} {move_request.target_year}")
+    if moved_cargo_ids:
+        logger.info(f"Moved {len(moved_cargo_ids)} cargo(s) with the plan: {', '.join(moved_cargo_ids)}")
+    
     return db_plan
 
 

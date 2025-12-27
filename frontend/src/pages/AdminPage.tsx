@@ -52,9 +52,11 @@ import {
   Inventory,
   Add,
   ManageAccounts,
+  DeleteSweep,
 } from '@mui/icons-material'
 import client from '../api/client'
 import UserManagement from '../components/UserManagement'
+import { RecycleBin } from '../components/RecycleBin'
 
 // Types
 interface DatabaseStats {
@@ -1990,6 +1992,7 @@ export default function AdminPage() {
           <Tab label="Cargos" icon={<LocalShipping />} iconPosition="start" />
           <Tab label="Audit Logs" icon={<History />} iconPosition="start" />
           <Tab label="Integrity Check" icon={<Shield />} iconPosition="start" />
+          <Tab label="Recycle Bin" icon={<DeleteSweep />} iconPosition="start" />
         </Tabs>
       </Paper>
 
@@ -2007,6 +2010,7 @@ export default function AdminPage() {
         {activeTab === 9 && renderCargosTable()}
         {activeTab === 10 && renderAuditLogs()}
         {activeTab === 11 && renderIntegrityCheck()}
+        {activeTab === 12 && <RecycleBin />}
       </Box>
 
       {/* Edit Dialog */}

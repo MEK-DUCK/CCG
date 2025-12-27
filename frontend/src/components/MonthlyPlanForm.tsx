@@ -26,11 +26,12 @@ import {
   Tabs,
   Tab,
 } from '@mui/material'
-import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp, CalendarMonth } from '@mui/icons-material'
+import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp, CalendarMonth, History } from '@mui/icons-material'
 import { monthlyPlanAPI, contractAPI, MonthlyPlanTopUpRequest } from '../api/client'
 import { MonthlyPlanStatus } from '../types'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
+import { VersionHistoryDialog } from './VersionHistory'
 
 // Simple UUID generator
 const generateUUID = (): string => {
@@ -116,6 +117,8 @@ interface MonthlyPlanEntry {
   // Authority top-up tracking
   authority_topup_quantity?: number  // Top-up quantity in KT
   authority_topup_reference?: string  // Reference number
+  // Optimistic locking
+  version?: number
 }
 
 export default function MonthlyPlanForm({ contractId, contract: propContract, quarterlyPlans, onPlanCreated, isSpotContract = false }: MonthlyPlanFormProps) {
@@ -225,7 +228,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   
   // Action menu state
   const [actionMenuAnchor, setActionMenuAnchor] = useState<null | HTMLElement>(null)
-  const [actionMenuEntry, setActionMenuEntry] = useState<{ month: number; year: number; entryIndex: number; entry: MonthlyPlanEntry } | null>(null)
+  const [actionMenuEntry, setActionMenuEntry] = useState<{ month: number; year: number; entryIndex: number; entry: MonthlyPlanEntry; hasCargos: boolean } | null>(null)
+  
+  // Version History dialog state
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
+  const [historyEntryId, setHistoryEntryId] = useState<number | null>(null)
   
   // Top-Up dialog state
   const [topupDialogOpen, setTopupDialogOpen] = useState(false)
@@ -255,20 +262,70 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     productQuarterlyPlanMap.set(products[0].name, yearQuarterlyPlans[0])
   }
 
-  const scheduleAutosave = (planId: number, data: any, keySuffix: string) => {
-    const key = `${planId}:${keySuffix}`
-    const existing = autosaveTimersRef.current[key]
-    if (existing) {
-      window.clearTimeout(existing)
+  // Pending changes accumulator - batches multiple field changes into one save
+  // Using a module-level variable to avoid React Strict Mode issues with refs
+  const pendingChangesRef = useRef<Record<number, { data: any; version?: number; monthKey?: string; entryIndex?: number }>>({})
+  
+  const scheduleAutosave = useCallback((planId: number, data: any, _keySuffix: string, version?: number, monthKey?: string, entryIndex?: number) => {
+    // Use a single timer key per plan to batch all changes together
+    const key = `plan:${planId}`
+    
+    // Accumulate changes for this plan - merge with existing pending changes
+    const existing = pendingChangesRef.current[planId] || { data: {} }
+    const newData = { ...existing.data, ...data }
+    
+    pendingChangesRef.current[planId] = {
+      data: newData,
+      version: version ?? existing.version,
+      monthKey: monthKey ?? existing.monthKey,
+      entryIndex: entryIndex !== undefined ? entryIndex : existing.entryIndex,
     }
+    
+    console.log(`[Autosave] Accumulated changes for plan ${planId}:`, Object.keys(newData))
+    
+    // Clear existing timer for this plan
+    const existingTimer = autosaveTimersRef.current[key]
+    if (existingTimer) {
+      console.log(`[Autosave] Clearing existing timer for plan ${planId}`)
+      window.clearTimeout(existingTimer)
+      delete autosaveTimersRef.current[key]
+    }
+    
+    // Set new timer - will save all accumulated changes after 1200ms of no activity
     autosaveTimersRef.current[key] = window.setTimeout(async () => {
+      const pending = pendingChangesRef.current[planId]
+      if (!pending || Object.keys(pending.data).length === 0) return
+      
+      // Clear pending changes before saving
+      delete pendingChangesRef.current[planId]
+      delete autosaveTimersRef.current[key]
+      
+      console.log(`[Autosave] Saving batched changes for plan ${planId}:`, Object.keys(pending.data))
+      
       try {
-        await monthlyPlanAPI.update(planId, data)
+        // Include version for optimistic locking
+        const updateData = { ...pending.data, version: pending.version || 1 }
+        const result = await monthlyPlanAPI.update(planId, updateData)
+        
+        // Update local state with new version to prevent conflicts on subsequent saves
+        if (pending.monthKey !== undefined && pending.entryIndex !== undefined && result.data?.version) {
+          setMonthEntries(prev => {
+            const entries = [...(prev[pending.monthKey!] || [])]
+            if (entries[pending.entryIndex!]) {
+              entries[pending.entryIndex!] = { ...entries[pending.entryIndex!], version: result.data.version }
+            }
+            return { ...prev, [pending.monthKey!]: entries }
+          })
+          // Also update existingMonthlyPlans
+          setExistingMonthlyPlans(prev => prev.map(p => 
+            p.id === planId ? { ...p, version: result.data.version } : p
+          ))
+        }
       } catch (error) {
         console.error('Error autosaving monthly plan field:', error)
       }
-    }, 600)
-  }
+    }, 120000)  // 120 second (2 min) delay to allow batching multiple field changes
+  }, [])
 
   // Load contract
   useEffect(() => {
@@ -413,6 +470,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             _combi_product_plan_map: combiProductPlanMap,
             authority_topup_quantity: totalTopup,
             authority_topup_reference: firstPlan.authority_topup_reference || '',
+            version: firstPlan.version || 1,
           } as MonthlyPlanEntry & { _combi_plan_ids?: number[]; _combi_product_plan_map?: Record<string, number> })
         })
         
@@ -441,6 +499,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             combi_quantities: {},
             authority_topup_quantity: plan.authority_topup_quantity || 0,
             authority_topup_reference: plan.authority_topup_reference || '',
+            version: plan.version || 1,
           })
         })
         
@@ -496,8 +555,10 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     })
 
     const planId = updatedEntries[entryIndex]?.id
-    if (planId && (field === 'laycan_2_days_remark' || field === 'delivery_window_remark')) {
-      scheduleAutosave(planId, { [field]: value }, field)
+    const version = updatedEntries[entryIndex]?.version
+    // Autosave all laycan and delivery fields for existing plans
+    if (planId) {
+      scheduleAutosave(planId, { [field]: value }, field, version, key, entryIndex)
     }
   }
 
@@ -645,11 +706,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   }
 
   // Action menu handlers
-  const handleActionMenuOpen = (event: React.MouseEvent<HTMLElement>, month: number, year: number, entryIndex: number, entry: MonthlyPlanEntry) => {
-    console.log('Opening action menu for entry - ID:', entry.id, 'Type:', typeof entry.id, 'Truthy:', !!entry.id)
+  const handleActionMenuOpen = (event: React.MouseEvent<HTMLElement>, month: number, year: number, entryIndex: number, entry: MonthlyPlanEntry, hasCargos: boolean) => {
+    console.log('Opening action menu for entry - ID:', entry.id, 'Type:', typeof entry.id, 'Truthy:', !!entry.id, 'Has cargos:', hasCargos)
     console.log('Full entry:', JSON.stringify(entry, null, 2))
     setActionMenuAnchor(event.currentTarget)
-    setActionMenuEntry({ month, year, entryIndex, entry })
+    setActionMenuEntry({ month, year, entryIndex, entry, hasCargos })
   }
 
   const handleActionMenuClose = () => {
@@ -880,10 +941,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             delivery_month: contractType === 'CIF' ? (entry.delivery_month ?? null) : null,
             delivery_window: contractType === 'CIF' ? (entry.delivery_window ?? null) : null,
             delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark ?? null) : null,
+            version: existingPlan.version || 1,
           }
           
           try {
-            await monthlyPlanAPI.update(planId, updateData)
+            const result = await monthlyPlanAPI.update(planId, updateData)
+            // Update local version after successful save
+            existingPlan.version = result.data.version
           } catch (error: any) {
             console.error(`Error updating combi plan ${planId}:`, error)
           }
@@ -914,10 +978,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               delivery_month: contractType === 'CIF' ? (entry.delivery_month ?? null) : null,
               delivery_window: contractType === 'CIF' ? (entry.delivery_window ?? null) : null,
               delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark ?? null) : null,
+              version: entry.version || existingPlan.version || 1,
             }
             
             try {
-              await monthlyPlanAPI.update(existingPlan.id, updateData)
+              const result = await monthlyPlanAPI.update(existingPlan.id, updateData)
+              // Update local version after successful save
+              entry.version = result.data.version
+              existingPlan.version = result.data.version
             } catch (error: any) {
               console.error(`Error updating plan ${existingPlan.id}:`, error)
           }
@@ -1485,14 +1553,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                 borderRadius: 1,
                               }}
                             >
-                              {/* Action buttons for entries - show menu for all entries, but some options may be disabled */}
+                              {/* Action buttons for entries - show menu for saved entries */}
                               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
                                 <IconButton
                                   size="small"
-                                  onClick={(e) => handleActionMenuOpen(e, month, year, entryIndex, entry)}
+                                  onClick={(e) => handleActionMenuOpen(e, month, year, entryIndex, entry, hasCargos)}
                                   sx={{ color: '#64748B' }}
-                                  disabled={hasCargos}
-                                  title={hasCargos ? 'Cannot modify - has cargos' : 'Actions'}
+                                  disabled={!entry.id}
+                                  title={!entry.id ? 'Save entry first' : 'Actions (Defer, Advance, Top-Up)'}
                                 >
                                   <MoreVert fontSize="small" />
                                 </IconButton>
@@ -1874,6 +1942,27 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             secondary={!actionMenuEntry?.entry.id ? '(Save entry first)' : undefined}
           />
         </MenuItem>
+        <MenuItem 
+          onClick={() => {
+            if (actionMenuEntry?.entry.id) {
+              setHistoryEntryId(actionMenuEntry.entry.id)
+              setHistoryDialogOpen(true)
+            }
+            handleActionMenuClose()
+          }}
+          disabled={!actionMenuEntry?.entry.id}
+          sx={{ 
+            opacity: !actionMenuEntry?.entry.id ? 0.5 : 1,
+          }}
+        >
+          <ListItemIcon>
+            <History fontSize="small" sx={{ color: !actionMenuEntry?.entry.id ? '#9CA3AF' : '#6366F1' }} />
+          </ListItemIcon>
+          <ListItemText 
+            primary="View History" 
+            secondary={!actionMenuEntry?.entry.id ? '(Save entry first)' : undefined}
+          />
+        </MenuItem>
         <Divider />
         <MenuItem 
           onClick={() => {
@@ -1882,12 +1971,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             }
             handleActionMenuClose()
           }}
-          sx={{ color: 'error.main' }}
+          disabled={actionMenuEntry?.hasCargos}
+          sx={{ 
+            color: actionMenuEntry?.hasCargos ? 'text.disabled' : 'error.main',
+            opacity: actionMenuEntry?.hasCargos ? 0.5 : 1
+          }}
         >
           <ListItemIcon>
-            <Delete fontSize="small" sx={{ color: 'error.main' }} />
+            <Delete fontSize="small" sx={{ color: actionMenuEntry?.hasCargos ? '#9CA3AF' : 'error.main' }} />
           </ListItemIcon>
-          <ListItemText primary="Delete Entry" />
+          <ListItemText 
+            primary="Delete Entry" 
+            secondary={actionMenuEntry?.hasCargos ? '(Has active cargos)' : undefined}
+          />
         </MenuItem>
       </Menu>
       
@@ -2118,6 +2214,24 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Version History Dialog */}
+      {historyEntryId && (
+        <VersionHistoryDialog
+          open={historyDialogOpen}
+          onClose={() => {
+            setHistoryDialogOpen(false)
+            setHistoryEntryId(null)
+          }}
+          entityType="monthly_plan"
+          entityId={historyEntryId}
+          entityName={`Monthly Plan ${historyEntryId}`}
+          onRestore={() => {
+            // Reload data after restore
+            onPlanCreated()
+          }}
+        />
+      )}
     </Paper>
   )
 }
