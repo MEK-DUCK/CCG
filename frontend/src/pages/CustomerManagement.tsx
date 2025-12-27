@@ -318,7 +318,7 @@ export default function CustomerManagement() {
             {editingCustomer ? 'Update customer information' : 'Create a new customer record'}
           </Typography>
         </DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
+        <DialogContent sx={{ pt: 3 }}>
           <TextField
             label="Customer Name"
             value={formData.name}
@@ -327,6 +327,7 @@ export default function CustomerManagement() {
             fullWidth
             autoFocus
             placeholder="Enter customer name"
+            sx={{ mt: 1 }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
