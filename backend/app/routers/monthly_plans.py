@@ -32,7 +32,8 @@ def get_cargo_info(monthly_plan_id: int, db: Session) -> Dict:
         models.Cargo.monthly_plan_id == monthly_plan_id
     ).all()
     
-    completed_cargos = [c for c in cargos if c.status == CargoStatus.COMPLETED_LOADING]
+    # A cargo is "completed" if it has COMPLETED_LOADING (FOB) or DISCHARGE_COMPLETE (CIF)
+    completed_cargos = [c for c in cargos if c.status in (CargoStatus.COMPLETED_LOADING, CargoStatus.DISCHARGE_COMPLETE)]
     
     return {
         'total_cargos': len(cargos),
