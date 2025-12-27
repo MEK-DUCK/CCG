@@ -1568,15 +1568,23 @@ export default function HomePage() {
                 <TableCell>{getCustomerName(cargo.customer_id)}</TableCell>
                   <TableCell>
                     {cargo.combi_group_id ? (
-                      <Box>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                         {combieCargos.map(c => (
-                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
-                            {c.product_name}: {c.cargo_quantity} KT
-                          </Typography>
+                          <Chip 
+                            key={c.id} 
+                            label={`${c.product_name}: ${c.cargo_quantity} KT`}
+                            size="small"
+                            color="info"
+                            sx={{ fontSize: '0.75rem' }}
+                          />
                         ))}
                       </Box>
                     ) : (
-                      getProductName(cargo.product_name)
+                      <Chip 
+                        label={getProductName(cargo.product_name)}
+                        size="small"
+                        color="info"
+                      />
                     )}
                   </TableCell>
                   <TableCell>
@@ -1756,15 +1764,23 @@ export default function HomePage() {
                 <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
                   <TableCell>
                     {cargo.combi_group_id ? (
-                      <Box>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                         {combieCargos.map(c => (
-                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
-                            {c.product_name}: {c.cargo_quantity} KT
-                          </Typography>
+                          <Chip 
+                            key={c.id} 
+                            label={`${c.product_name}: ${c.cargo_quantity} KT`}
+                            size="small"
+                            color="info"
+                            sx={{ fontSize: '0.75rem' }}
+                          />
                         ))}
                       </Box>
                     ) : (
-                      getProductName(cargo.product_name)
+                      <Chip 
+                        label={getProductName(cargo.product_name)}
+                        size="small"
+                        color="info"
+                      />
                     )}
                   </TableCell>
                   <TableCell>
@@ -2039,15 +2055,23 @@ export default function HomePage() {
                   <TableCell>{contractNumber || '-'}</TableCell>
                   <TableCell>
                     {cargo.combi_group_id ? (
-                      <Box>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                         {combieCargos.map(c => (
-                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
-                            {c.product_name}: {c.cargo_quantity} KT
-                          </Typography>
+                          <Chip 
+                            key={c.id} 
+                            label={`${c.product_name}: ${c.cargo_quantity} KT`}
+                            size="small"
+                            color="info"
+                            sx={{ fontSize: '0.75rem' }}
+                          />
                         ))}
                       </Box>
                     ) : (
-                      getProductName(cargo.product_name)
+                      <Chip 
+                        label={getProductName(cargo.product_name)}
+                        size="small"
+                        color="info"
+                      />
                     )}
                   </TableCell>
                   <TableCell>
@@ -2883,30 +2907,38 @@ export default function HomePage() {
                         wordBreak: 'normal'
                       }}>
                         {isCombi && combiCargos ? (
-                          <Box>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                             {combiCargos.map((c) => (
-                              <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
-                                {c.product_name}: {c.cargo_quantity} KT
-                              </Typography>
+                              <Chip 
+                                key={c.id} 
+                                label={`${c.product_name}: ${c.cargo_quantity} KT`}
+                                size="small"
+                                color="info"
+                                sx={{ fontSize: '0.75rem' }}
+                              />
                             ))}
                           </Box>
                         ) : isCombi && combiMonthlyPlans ? (
-                          <Box>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                             {combiMonthlyPlans.map((mp: MonthlyPlan) => {
-                              // Get product name - SPOT contracts have it directly
                               const productName = getProductNameForMonthlyPlan(mp)
                               return (
-                                <Typography key={mp.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
-                                  {productName}: {mp.month_quantity} KT
-                                </Typography>
+                                <Chip 
+                                  key={mp.id} 
+                                  label={`${productName}: ${mp.month_quantity} KT`}
+                                  size="small"
+                                  color="info"
+                                  sx={{ fontSize: '0.75rem' }}
+                                />
                               )
                             })}
                           </Box>
                         ) : (
-                          cargo ? cargo.product_name : (
-                            // For non-combi monthly plans
-                            monthlyPlan ? getProductNameForMonthlyPlan(monthlyPlan) : '-'
-                          )
+                          <Chip 
+                            label={cargo ? cargo.product_name : (monthlyPlan ? getProductNameForMonthlyPlan(monthlyPlan) : '-')}
+                            size="small"
+                            color="info"
+                          />
                         )}
                       </TableCell>
                   <TableCell sx={{ 
