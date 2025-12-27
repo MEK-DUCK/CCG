@@ -677,6 +677,15 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
     if 'load_ports' in update_data:
         _sync_port_operations(db, db_cargo, _parse_load_ports(getattr(db_cargo, "load_ports", None)))
 
+    # If user sets cargo to "Planned", reset all port operations to "Planned"
+    try:
+        if 'status' in update_data and db_cargo.status == CargoStatus.PLANNED:
+            for op in getattr(db_cargo, "port_operations", []) or []:
+                if op.port_code in SUPPORTED_LOAD_PORTS and op.status in [PortOperationStatus.LOADING.value, PortOperationStatus.COMPLETED.value]:
+                    op.status = PortOperationStatus.PLANNED.value
+    except Exception:
+        pass
+    
     # If user sets cargo to "Loading", move all selected port operations into "Loading"
     try:
         if 'status' in update_data and db_cargo.status == CargoStatus.LOADING:
@@ -775,6 +784,14 @@ def sync_combi_cargo_group(
                 
                 if cargo.status in {CargoStatus.PLANNED, CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING}:
                     _recompute_cargo_status_from_port_ops(db, cargo)
+            
+            # If status changed to Planned, reset all port operations to Planned
+            if 'status' in update_data and update_data['status'] == CargoStatus.PLANNED:
+                ops = getattr(cargo, "port_operations", None)
+                if ops:
+                    for op in ops:
+                        if op.status in [PortOperationStatus.LOADING.value, PortOperationStatus.COMPLETED.value]:
+                            op.status = PortOperationStatus.PLANNED.value
             
             # If status changed to Loading, update all port operations to Loading
             if 'status' in update_data and update_data['status'] == CargoStatus.LOADING:
