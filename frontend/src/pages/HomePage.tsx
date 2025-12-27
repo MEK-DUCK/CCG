@@ -4500,6 +4500,8 @@ export default function HomePage() {
                       onChange={(e) => setCargoFormData({ ...cargoFormData, eta_discharge_port: e.target.value })}
                       fullWidth
                       placeholder="Enter ETA to discharge port"
+                      disabled={isCompletedCargo}
+                      sx={isCompletedCargo ? disabledStyle : {}}
                     />
                   </Grid>
                   <Grid item xs={12} md={6}>
@@ -4509,10 +4511,12 @@ export default function HomePage() {
                       onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_port_location: e.target.value })}
                       fullWidth
                       placeholder="Enter discharge port location"
+                      disabled={isCompletedCargo}
+                      sx={isCompletedCargo ? disabledStyle : {}}
                     />
                   </Grid>
-                  {/* Only show 5-ND and ND Delivery Window fields for In-Road CIF cargos */}
-                  {editingCargo && editingCargo.status === 'In-Road (Pending Discharge)' && (
+                  {/* Show 5-ND and ND Delivery Window fields for In-Road CIF cargos and Discharge Complete cargos */}
+                  {editingCargo && (editingCargo.status === 'In-Road (Pending Discharge)' || editingCargo.status === 'Discharge Complete') && (
                     <>
                   <Grid item xs={12} md={6}>
                     <TextField
@@ -4535,6 +4539,8 @@ export default function HomePage() {
                           fullWidth
                           placeholder="Enter narrowed down delivery window"
                           helperText="Narrowed down delivery window after 5-ND"
+                          disabled={isCompletedCargo}
+                          sx={isCompletedCargo ? disabledStyle : {}}
                         />
                       </Grid>
                     </>
@@ -4549,7 +4555,7 @@ export default function HomePage() {
                         Status Management
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 2, alignItems: 'center' }}>
-                        <FormControl size="small" sx={{ minWidth: 200 }}>
+                        <FormControl size="small" sx={{ minWidth: 200 }} disabled={isCompletedCargo}>
                           <InputLabel>Current Status</InputLabel>
                           <Select
                             value={cargoFormData.status}
@@ -4563,6 +4569,7 @@ export default function HomePage() {
                               }
                               setCargoFormData({ ...cargoFormData, status: nextStatus })
                             }}
+                            sx={isCompletedCargo ? disabledStyle : {}}
                           >
                             <MenuItem value="Planned">Planned</MenuItem>
                             <MenuItem
@@ -4606,7 +4613,7 @@ export default function HomePage() {
               )}
               {cargoContract && cargoContract.payment_method === 'LC' && (
                 <Grid item xs={12}>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth disabled={isCompletedCargo} sx={isCompletedCargo ? disabledStyle : {}}>
                     <InputLabel>LC Status</InputLabel>
                     <Select
                       value={cargoFormData.lc_status || ''}
@@ -4633,6 +4640,8 @@ export default function HomePage() {
                   multiline
                   rows={3}
                   fullWidth
+                  disabled={isCompletedCargo}
+                  sx={isCompletedCargo ? disabledStyle : {}}
                 />
               </Grid>
             </Grid>
