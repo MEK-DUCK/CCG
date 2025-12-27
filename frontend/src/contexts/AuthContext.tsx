@@ -31,18 +31,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const TOKEN_KEY = 'oil_lifting_token'
 const USER_KEY = 'oil_lifting_user'
 
-// DEV MODE: Only enabled when VITE_DEV_AUTH=true in development
-// NEVER enable in production - this bypasses all authentication!
-const DEV_MODE = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH === 'true'
-const DEV_USER: User = {
-  id: 1,
-  email: 'dev@oillifting.local',
-  full_name: 'Developer',
-  initials: 'DEV',
-  role: 'admin',
-  status: 'active',
-}
-
 // API endpoints
 const AUTH_ENDPOINTS = {
   login: '/api/auth/login',
@@ -54,22 +42,12 @@ const AUTH_ENDPOINTS = {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(DEV_MODE ? DEV_USER : null)
-  const [token, setToken] = useState<string | null>(DEV_MODE ? 'dev-token' : null)
+  const [user, setUser] = useState<User | null>(null)
+  const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  // Initialize auth state from localStorage (or set DEV user in DEV_MODE)
+  // Initialize auth state from localStorage
   useEffect(() => {
-    if (DEV_MODE) {
-      console.log('🔓 DEV MODE: Authentication bypassed. Logged in as:', DEV_USER.full_name)
-      // Save DEV user to localStorage
-      localStorage.setItem(USER_KEY, JSON.stringify(DEV_USER))
-      localStorage.setItem(TOKEN_KEY, 'dev-token')
-      // Note: In DEV_MODE, the backend should also be in dev mode to accept requests
-      // without valid JWT. Audit logs will show no initials unless backend is configured.
-      return
-    }
-
     setIsLoading(true)
     const storedToken = localStorage.getItem(TOKEN_KEY)
     const storedUser = localStorage.getItem(USER_KEY)
