@@ -301,7 +301,7 @@ class Cargo(Base):
     etd_load_port = Column(DateTime, nullable=True)
     
     # CIF specific fields
-    eta_discharge_port = Column(DateTime)
+    eta_discharge_port = Column(String, nullable=True)  # Free text field for ETA like "Dec 20" or "20/12"
     discharge_port_location = Column(String)
     discharge_completion_time = Column(DateTime)
     five_nd_date = Column(String, nullable=True)  # 5-ND: Narrowing down due date

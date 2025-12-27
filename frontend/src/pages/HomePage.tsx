@@ -685,10 +685,7 @@ export default function HomePage() {
       berthed: cargo.berthed || '',
       commenced: cargo.commenced || '',
       etc: cargo.etc || '',
-      eta_discharge_port: cargo.eta_discharge_port ? (() => {
-        const d = new Date(cargo.eta_discharge_port)
-        return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16)
-      })() : '',
+      eta_discharge_port: cargo.eta_discharge_port || '',
       discharge_port_location: cargo.discharge_port_location || '',
       discharge_completion_time: cargo.discharge_completion_time ? (() => {
         const d = new Date(cargo.discharge_completion_time)
@@ -920,9 +917,9 @@ export default function HomePage() {
           lc_status: cargoFormData.lc_status || undefined,
         }
 
-        // CIF specific fields (only send for CIF, and always ISO format)
+        // CIF specific fields (only send for CIF)
         if (isCIF) {
-          if (cargoFormData.eta_discharge_port) updatePayload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
+          if (cargoFormData.eta_discharge_port) updatePayload.eta_discharge_port = cargoFormData.eta_discharge_port
           if (cargoFormData.discharge_port_location) updatePayload.discharge_port_location = cargoFormData.discharge_port_location
           if (cargoFormData.discharge_completion_time) updatePayload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
           // 5-ND date for In-Road CIF tracking
@@ -1252,7 +1249,7 @@ export default function HomePage() {
 
           // Add CIF specific fields
           if (contract.contract_type === 'CIF') {
-            if (cargoFormData.eta_discharge_port) payload.eta_discharge_port = toISOString(cargoFormData.eta_discharge_port)
+            if (cargoFormData.eta_discharge_port) payload.eta_discharge_port = cargoFormData.eta_discharge_port
             if (cargoFormData.discharge_port_location) payload.discharge_port_location = cargoFormData.discharge_port_location
             if (cargoFormData.discharge_completion_time) payload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
             if (cargoFormData.five_nd_date) payload.five_nd_date = cargoFormData.five_nd_date

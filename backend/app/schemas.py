@@ -460,7 +460,7 @@ class CargoBase(BaseModel):
     loading_start_time: Optional[datetime] = None
     loading_completion_time: Optional[datetime] = None
     etd_load_port: Optional[datetime] = None
-    eta_discharge_port: Optional[datetime] = None
+    eta_discharge_port: Optional[str] = None  # Free text field for ETA like "Dec 20" or "20/12"
     discharge_port_location: Optional[str] = None
     discharge_completion_time: Optional[datetime] = None
     # CIF In-Road tracking fields
@@ -501,7 +501,7 @@ class CargoUpdate(BaseModel):
     loading_start_time: Optional[datetime] = None
     loading_completion_time: Optional[datetime] = None
     etd_load_port: Optional[datetime] = None
-    eta_discharge_port: Optional[datetime] = None
+    eta_discharge_port: Optional[str] = None  # Free text field for ETA like "Dec 20" or "20/12"
     discharge_port_location: Optional[str] = None
     discharge_completion_time: Optional[datetime] = None
     # CIF In-Road tracking fields
