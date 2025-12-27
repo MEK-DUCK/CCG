@@ -3812,8 +3812,11 @@ export default function HomePage() {
                         <TableBody>
                           {rows.map(({ cargo, op }) => {
                             const monthlyPlan = monthlyPlans.find((mp) => mp.id === cargo.monthly_plan_id)
-                            const contract = monthlyPlan ? getContractForMonthlyPlan(monthlyPlan) : null
-                            const customer = contract ? customers.find((c) => c.id === contract.customer_id) : null
+                            // Use cargo.contract_id directly to find contract (more reliable than going through monthly plan)
+                            const contract = contracts.find((c) => c.id === cargo.contract_id) || 
+                                           (monthlyPlan ? getContractForMonthlyPlan(monthlyPlan) : null)
+                            const customer = contract ? customers.find((c) => c.id === contract.customer_id) : 
+                                           (cargo.customer_id ? customers.find((c) => c.id === cargo.customer_id) : null)
                             const laycan = getCargoLaycanForRow(cargo)
 
                             return (
