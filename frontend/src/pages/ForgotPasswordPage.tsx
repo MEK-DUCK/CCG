@@ -13,10 +13,17 @@ import {
 import {
   Email as EmailIcon,
   ArrowBack as ArrowBackIcon,
-  LocalGasStation as OilIcon,
   CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material'
+import SvgIcon from '@mui/material/SvgIcon'
 import { useAuth } from '../contexts/AuthContext'
+
+// Custom Oil Barrel Icon
+const OilIcon = (props: any) => (
+  <SvgIcon {...props} viewBox="0 0 24 24">
+    <path d="M12 2C8.14 2 5 3.57 5 5.5V18.5C5 20.43 8.14 22 12 22C15.86 22 19 20.43 19 18.5V5.5C19 3.57 15.86 2 12 2ZM12 4C14.76 4 17 4.9 17 5.5C17 6.1 14.76 7 12 7C9.24 7 7 6.1 7 5.5C7 4.9 9.24 4 12 4ZM17 18.5C17 19.1 14.76 20 12 20C9.24 20 7 19.1 7 18.5V8.31C8.35 9.04 10.1 9.5 12 9.5C13.9 9.5 15.65 9.04 17 8.31V18.5ZM7 11.5H17V13.5H7V11.5ZM7 15.5H17V17.5H7V15.5Z"/>
+  </SvgIcon>
+)
 
 export default function ForgotPasswordPage() {
   const { forgotPassword } = useAuth()
