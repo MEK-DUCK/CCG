@@ -4217,16 +4217,18 @@ export default function HomePage() {
             {(() => {
               // Check if this is a completed cargo (Completed Loading for FOB, Discharge Complete for CIF)
               const isCompletedCargo = !!(editingCargo && (editingCargo.status === 'Completed Loading' || editingCargo.status === 'Discharge Complete'))
-              // For In-Road CIF tab (value === 2), allow editing Status, LC Status and Remark even for Completed Loading status
+              // For In-Road CIF tab (value === 2), allow editing CIF fields, Status, LC Status and Remark
               const isInRoadCIFTab = value === 2
               // For Completed CIF tab (value === 3), everything should be locked
               const isCompletedCIFTab = value === 3
-              // Fields that should be locked (vessel details) vs fields that can be edited (Status, LC Status, Remark)
+              // Fields that should be locked (basic vessel details like name, ports, inspector)
               const isVesselDetailsLocked = isCompletedCargo
-              // In In-Road CIF tab: Status, LC Status, and Remark can be edited
+              // In In-Road CIF tab: CIF fields, Status, LC Status, and Remark can be edited
               // In Completed CIF tab: Everything is locked
               const isStatusLocked = isCompletedCIFTab || (isCompletedCargo && !isInRoadCIFTab)
               const isLCAndRemarkLocked = isCompletedCIFTab || (isCompletedCargo && !isInRoadCIFTab)
+              // CIF-specific fields (ETA Discharge, Discharge Port, 5-ND, ND Del Window) editable in In-Road CIF tab
+              const isCIFFieldsLocked = isCompletedCIFTab || (isCompletedCargo && !isInRoadCIFTab)
               const disabledStyle = {
                 '& .MuiInputBase-input.Mui-disabled': {
                   WebkitTextFillColor: 'rgba(0, 0, 0, 0.38)',
@@ -4533,8 +4535,8 @@ export default function HomePage() {
                       onChange={(e) => setCargoFormData({ ...cargoFormData, eta_discharge_port: e.target.value })}
                       fullWidth
                       placeholder="Enter ETA to discharge port"
-                      disabled={isCompletedCargo}
-                      sx={isCompletedCargo ? disabledStyle : {}}
+                      disabled={isCIFFieldsLocked}
+                      sx={isCIFFieldsLocked ? disabledStyle : {}}
                     />
                   </Grid>
                   <Grid item xs={12} md={6}>
@@ -4544,12 +4546,12 @@ export default function HomePage() {
                       onChange={(e) => setCargoFormData({ ...cargoFormData, discharge_port_location: e.target.value })}
                       fullWidth
                       placeholder="Enter discharge port location"
-                      disabled={isCompletedCargo}
-                      sx={isCompletedCargo ? disabledStyle : {}}
+                      disabled={isCIFFieldsLocked}
+                      sx={isCIFFieldsLocked ? disabledStyle : {}}
                     />
                   </Grid>
                   {/* Show 5-ND and ND Delivery Window fields for In-Road CIF cargos and Discharge Complete cargos */}
-                  {editingCargo && (editingCargo.status === 'In-Road (Pending Discharge)' || editingCargo.status === 'Discharge Complete') && (
+                  {editingCargo && (editingCargo.status === 'In-Road (Pending Discharge)' || editingCargo.status === 'Discharge Complete' || editingCargo.status === 'Completed Loading') && (
                     <>
                   <Grid item xs={12} md={6}>
                     <TextField
@@ -4558,10 +4560,10 @@ export default function HomePage() {
                         value={cargoFormData.five_nd_date}
                         onChange={(e) => setCargoFormData({ ...cargoFormData, five_nd_date: e.target.value })}
                       fullWidth
-                      disabled={isCompletedCargo}
+                      disabled={isCIFFieldsLocked}
                         InputLabelProps={{ shrink: true }}
                         helperText="Due date for narrowing down delivery window"
-                      sx={isCompletedCargo ? disabledStyle : {}}
+                      sx={isCIFFieldsLocked ? disabledStyle : {}}
                     />
                   </Grid>
                       <Grid item xs={12} md={6}>
@@ -4572,8 +4574,8 @@ export default function HomePage() {
                           fullWidth
                           placeholder="Enter narrowed down delivery window"
                           helperText="Narrowed down delivery window after 5-ND"
-                          disabled={isCompletedCargo}
-                          sx={isCompletedCargo ? disabledStyle : {}}
+                          disabled={isCIFFieldsLocked}
+                          sx={isCIFFieldsLocked ? disabledStyle : {}}
                         />
                       </Grid>
                     </>
