@@ -366,6 +366,7 @@ export default function HomePage() {
   const [activeLoadings, setActiveLoadings] = useState<Cargo[]>([])
   const [completedCargos, setCompletedCargos] = useState<Cargo[]>([])
   const [inRoadCIF, setInRoadCIF] = useState<Cargo[]>([])
+  const [inRoadCIFDeliveryWindows, setInRoadCIFDeliveryWindows] = useState<Map<number, string>>(new Map()) // Cache delivery windows by monthly_plan_id
   const [completedInRoadCIF, setCompletedInRoadCIF] = useState<Cargo[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
@@ -514,6 +515,28 @@ export default function HomePage() {
       setCompletedCargos(completedRes.data || [])
       setInRoadCIF(inRoadRes.data || [])
       setCompletedInRoadCIF(completedInRoadRes.data || [])
+      
+      // Fetch delivery windows for In-Road CIF cargos
+      const inRoadCargos = inRoadRes.data || []
+      if (inRoadCargos.length > 0) {
+        const uniqueMonthlyPlanIds = [...new Set(inRoadCargos.map((c: Cargo) => c.monthly_plan_id))]
+        const deliveryWindowsMap = new Map<number, string>()
+        
+        // Fetch monthly plans to get delivery windows
+        await Promise.all(
+          uniqueMonthlyPlanIds.map(async (planId) => {
+            try {
+              const planRes = await monthlyPlanAPI.getById(planId)
+              if (planRes.data?.delivery_window) {
+                deliveryWindowsMap.set(planId, planRes.data.delivery_window)
+              }
+            } catch (error) {
+              console.error(`Error fetching monthly plan ${planId}:`, error)
+            }
+          })
+        )
+        setInRoadCIFDeliveryWindows(deliveryWindowsMap)
+      }
       
       // Update dynamic options
       if (loadPortsRes.data && loadPortsRes.data.length > 0) {
@@ -1747,19 +1770,17 @@ export default function HomePage() {
       }
     }
 
-    // Get delivery window from monthly plan - store fetched plans to avoid repeated API calls
-    const deliveryWindowCache = new Map<number, string>()
+    // Get delivery window from monthly plan
     const getDeliveryWindow = (cargo: Cargo): string => {
-      // First try from monthlyPlans array
+      // First try from the cached delivery windows (fetched when In-Road CIF data loads)
+      if (inRoadCIFDeliveryWindows.has(cargo.monthly_plan_id)) {
+        return inRoadCIFDeliveryWindows.get(cargo.monthly_plan_id) || '-'
+      }
+      // Then try from monthlyPlans array (for currently selected months)
       const monthlyPlan = monthlyPlans.find(mp => mp.id === cargo.monthly_plan_id)
       if (monthlyPlan?.delivery_window) {
         return monthlyPlan.delivery_window
       }
-      // Check cache
-      if (deliveryWindowCache.has(cargo.monthly_plan_id)) {
-        return deliveryWindowCache.get(cargo.monthly_plan_id) || '-'
-      }
-      // Return placeholder - the actual value will be shown from cargo edit dialog
       return '-'
     }
 
