@@ -2304,34 +2304,54 @@ export default function HomePage() {
       }
 
       // Find the cargo to update
-      const cargoToUpdate = [...portMovement, ...completedCargos, ...inRoadCIF].find(c => c.id === cargoId)
+      const allCargos = [...portMovement, ...completedCargos, ...inRoadCIF]
+      const cargoToUpdate = allCargos.find(c => c.id === cargoId)
       if (!cargoToUpdate) {
         alert('Cargo not found')
         return
       }
       
-      // Save original for rollback
-      const originalCargo = { ...cargoToUpdate }
+      // For combie cargos, find all cargos in the group
+      const combiGroupId = cargoToUpdate.combi_group_id
+      const cargosToUpdate = combiGroupId 
+        ? allCargos.filter(c => c.combi_group_id === combiGroupId)
+        : [cargoToUpdate]
       
-      // OPTIMISTIC UPDATE: Update UI immediately
-      const updatedCargo = { ...cargoToUpdate, ...updateData }
+      // Save originals for rollback
+      const originalCargos = cargosToUpdate.map(c => ({ ...c }))
       
-      setPortMovement(prev => prev.map(c => c.id === cargoId ? updatedCargo : c))
-      setCompletedCargos(prev => prev.map(c => c.id === cargoId ? updatedCargo : c))
-      setInRoadCIF(prev => prev.map(c => c.id === cargoId ? updatedCargo : c))
+      // OPTIMISTIC UPDATE: Update UI immediately for all cargos in the group
+      const updateCargoInList = (prev: Cargo[]) => prev.map(c => {
+        if (combiGroupId ? c.combi_group_id === combiGroupId : c.id === cargoId) {
+          return { ...c, ...updateData }
+        }
+        return c
+      })
       
-      // Send API call in background
-      cargoAPI.update(cargoId, updateData)
+      setPortMovement(updateCargoInList)
+      setCompletedCargos(updateCargoInList)
+      setInRoadCIF(updateCargoInList)
+      
+      // Send API calls for all cargos in the group
+      const updatePromises = cargosToUpdate.map(cargo => 
+        cargoAPI.update(cargo.id, updateData)
+      )
+      
+      Promise.all(updatePromises)
         .then(() => {
           // Success - refresh in background
           loadData()
         })
         .catch((error) => {
-          // Error - revert
+          // Error - revert all cargos
           console.error('Error updating task:', error)
-          setPortMovement(prev => prev.map(c => c.id === cargoId ? originalCargo : c))
-          setCompletedCargos(prev => prev.map(c => c.id === cargoId ? originalCargo : c))
-          setInRoadCIF(prev => prev.map(c => c.id === cargoId ? originalCargo : c))
+          const revertCargoInList = (prev: Cargo[]) => prev.map(c => {
+            const original = originalCargos.find(o => o.id === c.id)
+            return original || c
+          })
+          setPortMovement(revertCargoInList)
+          setCompletedCargos(revertCargoInList)
+          setInRoadCIF(revertCargoInList)
           alert('Error updating task. Changes have been reverted. Please try again.')
         })
     } catch (error) {
