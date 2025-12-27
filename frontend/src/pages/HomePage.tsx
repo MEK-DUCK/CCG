@@ -4217,11 +4217,16 @@ export default function HomePage() {
             {(() => {
               // Check if this is a completed cargo (Completed Loading for FOB, Discharge Complete for CIF)
               const isCompletedCargo = !!(editingCargo && (editingCargo.status === 'Completed Loading' || editingCargo.status === 'Discharge Complete'))
-              // For In-Road CIF tab (value === 2), allow editing LC Status and Remark even for Completed Loading status
+              // For In-Road CIF tab (value === 2), allow editing Status, LC Status and Remark even for Completed Loading status
               const isInRoadCIFTab = value === 2
-              // Fields that should be locked (vessel details) vs fields that can be edited (LC Status, Remark)
+              // For Completed CIF tab (value === 3), everything should be locked
+              const isCompletedCIFTab = value === 3
+              // Fields that should be locked (vessel details) vs fields that can be edited (Status, LC Status, Remark)
               const isVesselDetailsLocked = isCompletedCargo
-              const isLCAndRemarkLocked = isCompletedCargo && !isInRoadCIFTab
+              // In In-Road CIF tab: Status, LC Status, and Remark can be edited
+              // In Completed CIF tab: Everything is locked
+              const isStatusLocked = isCompletedCIFTab || (isCompletedCargo && !isInRoadCIFTab)
+              const isLCAndRemarkLocked = isCompletedCIFTab || (isCompletedCargo && !isInRoadCIFTab)
               const disabledStyle = {
                 '& .MuiInputBase-input.Mui-disabled': {
                   WebkitTextFillColor: 'rgba(0, 0, 0, 0.38)',
@@ -4583,7 +4588,7 @@ export default function HomePage() {
                         Status Management
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 2, alignItems: 'center' }}>
-                        <FormControl size="small" sx={{ minWidth: 200 }} disabled={isLCAndRemarkLocked}>
+                        <FormControl size="small" sx={{ minWidth: 200 }} disabled={isStatusLocked}>
                           <InputLabel>Current Status</InputLabel>
                           <Select
                             value={cargoFormData.status}
@@ -4597,7 +4602,7 @@ export default function HomePage() {
                               }
                               setCargoFormData({ ...cargoFormData, status: nextStatus })
                             }}
-                            sx={isLCAndRemarkLocked ? disabledStyle : {}}
+                            sx={isStatusLocked ? disabledStyle : {}}
                           >
                             <MenuItem value="Planned">Planned</MenuItem>
                             <MenuItem
