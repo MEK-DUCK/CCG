@@ -538,32 +538,60 @@ export default function HomePage() {
       console.log(`[RealTimeSync] Cargo ${event.change_type}:`, event.entity_id, event.entity_data)
       
       if (event.change_type === 'created' && event.entity_data) {
-        // Add new cargo to the appropriate list based on status
+        // Add new cargo to the appropriate list based on status and contract type
         const newCargo = event.entity_data as unknown as Cargo
-        if (newCargo.status === 'Loading') {
-          setActiveLoadings(prev => {
-            // Avoid duplicates
-            if (prev.some(c => c.id === newCargo.id)) return prev
-            return [...prev, newCargo]
-          })
-        } else if (newCargo.status === 'Completed Loading' || newCargo.status === 'Completed Discharge') {
-          setCompletedCargos(prev => {
-            if (prev.some(c => c.id === newCargo.id)) return prev
-            return [...prev, newCargo]
-          })
+        const isCIF = newCargo.contract_type === 'CIF'
+        
+        if (isCIF) {
+          // CIF cargos go to In-Road CIF when completed loading, otherwise to port movement
+          if (newCargo.status === 'Completed Loading') {
+            setInRoadCIF(prev => {
+              if (prev.some(c => c.id === newCargo.id)) return prev
+              return [...prev, newCargo]
+            })
+          } else if (newCargo.status === 'Completed Discharge') {
+            setCompletedInRoadCIF(prev => {
+              if (prev.some(c => c.id === newCargo.id)) return prev
+              return [...prev, newCargo]
+            })
+          } else if (newCargo.status === 'Loading') {
+            setActiveLoadings(prev => {
+              if (prev.some(c => c.id === newCargo.id)) return prev
+              return [...prev, newCargo]
+            })
+          } else {
+            setPortMovement(prev => {
+              if (prev.some(c => c.id === newCargo.id)) return prev
+              return [...prev, newCargo]
+            })
+          }
         } else {
-          // Planned or other status goes to port movement
-          setPortMovement(prev => {
-            if (prev.some(c => c.id === newCargo.id)) return prev
-            return [...prev, newCargo]
-          })
+          // FOB cargos
+          if (newCargo.status === 'Loading') {
+            setActiveLoadings(prev => {
+              if (prev.some(c => c.id === newCargo.id)) return prev
+              return [...prev, newCargo]
+            })
+          } else if (newCargo.status === 'Completed Loading' || newCargo.status === 'Completed Discharge') {
+            setCompletedCargos(prev => {
+              if (prev.some(c => c.id === newCargo.id)) return prev
+              return [...prev, newCargo]
+            })
+          } else {
+            setPortMovement(prev => {
+              if (prev.some(c => c.id === newCargo.id)) return prev
+              return [...prev, newCargo]
+            })
+          }
         }
       } else if (event.change_type === 'updated' && event.entity_data) {
         const updatedCargo = event.entity_data as unknown as Cargo
+        const isCIF = updatedCargo.contract_type === 'CIF'
+        
+        // Update in all lists first (cargo data might have changed)
         const updateInList = (prev: Cargo[]) => 
           prev.map(c => c.id === updatedCargo.id ? { ...c, ...updatedCargo } : c)
         
-        // Update in all lists (cargo might have moved between lists due to status change)
         setPortMovement(updateInList)
         setActiveLoadings(updateInList)
         setCompletedCargos(updateInList)
@@ -571,29 +599,63 @@ export default function HomePage() {
         setCompletedInRoadCIF(updateInList)
         
         // Handle status transitions - move cargo between lists if needed
-        if (updatedCargo.status === 'Loading') {
-          // Move from port movement to active loadings
-          setPortMovement(prev => prev.filter(c => c.id !== updatedCargo.id))
-          setActiveLoadings(prev => {
-            if (prev.some(c => c.id === updatedCargo.id)) return prev
-            return [...prev, updatedCargo]
-          })
-        } else if (updatedCargo.status === 'Completed Loading' || updatedCargo.status === 'Completed Discharge') {
-          // Move to completed
-          setPortMovement(prev => prev.filter(c => c.id !== updatedCargo.id))
-          setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
-          setCompletedCargos(prev => {
-            if (prev.some(c => c.id === updatedCargo.id)) return prev
-            return [...prev, updatedCargo]
-          })
-        } else if (updatedCargo.status === 'Planned') {
-          // Move back to port movement
-          setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
-          setCompletedCargos(prev => prev.filter(c => c.id !== updatedCargo.id))
-          setPortMovement(prev => {
-            if (prev.some(c => c.id === updatedCargo.id)) return prev
-            return [...prev, updatedCargo]
-          })
+        if (isCIF) {
+          // CIF cargo transitions
+          if (updatedCargo.status === 'Loading') {
+            setPortMovement(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setActiveLoadings(prev => {
+              if (prev.some(c => c.id === updatedCargo.id)) return prev
+              return [...prev, updatedCargo]
+            })
+          } else if (updatedCargo.status === 'Completed Loading') {
+            // CIF: Completed Loading -> In-Road CIF
+            setPortMovement(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setInRoadCIF(prev => {
+              if (prev.some(c => c.id === updatedCargo.id)) return prev
+              return [...prev, updatedCargo]
+            })
+          } else if (updatedCargo.status === 'Completed Discharge') {
+            // CIF: Completed Discharge -> Completed In-Road CIF
+            setInRoadCIF(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setCompletedInRoadCIF(prev => {
+              if (prev.some(c => c.id === updatedCargo.id)) return prev
+              return [...prev, updatedCargo]
+            })
+          } else if (updatedCargo.status === 'Planned') {
+            // Move back to port movement
+            setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setInRoadCIF(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setCompletedInRoadCIF(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setPortMovement(prev => {
+              if (prev.some(c => c.id === updatedCargo.id)) return prev
+              return [...prev, updatedCargo]
+            })
+          }
+        } else {
+          // FOB cargo transitions
+          if (updatedCargo.status === 'Loading') {
+            setPortMovement(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setActiveLoadings(prev => {
+              if (prev.some(c => c.id === updatedCargo.id)) return prev
+              return [...prev, updatedCargo]
+            })
+          } else if (updatedCargo.status === 'Completed Loading' || updatedCargo.status === 'Completed Discharge') {
+            setPortMovement(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setCompletedCargos(prev => {
+              if (prev.some(c => c.id === updatedCargo.id)) return prev
+              return [...prev, updatedCargo]
+            })
+          } else if (updatedCargo.status === 'Planned') {
+            setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setCompletedCargos(prev => prev.filter(c => c.id !== updatedCargo.id))
+            setPortMovement(prev => {
+              if (prev.some(c => c.id === updatedCargo.id)) return prev
+              return [...prev, updatedCargo]
+            })
+          }
         }
       } else if (event.change_type === 'deleted') {
         // Remove from all lists
