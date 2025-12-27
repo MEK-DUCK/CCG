@@ -1725,6 +1725,44 @@ export default function HomePage() {
       }
     }
 
+    // Handler for inline ETA Discharge Port update
+    const handleETADischargePortChange = async (cargo: Cargo, newValue: string) => {
+      try {
+        await cargoAPI.update(cargo.id, { eta_discharge_port: newValue || undefined })
+        // Update local state
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, eta_discharge_port: newValue } : c))
+      } catch (error) {
+        console.error('Error updating ETA Discharge Port:', error)
+      }
+    }
+
+    // Handler for inline Discharge Port Location update
+    const handleDischargePortLocationChange = async (cargo: Cargo, newValue: string) => {
+      try {
+        await cargoAPI.update(cargo.id, { discharge_port_location: newValue || undefined })
+        // Update local state
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, discharge_port_location: newValue } : c))
+      } catch (error) {
+        console.error('Error updating Discharge Port Location:', error)
+      }
+    }
+
+    // Get delivery window from monthly plan - store fetched plans to avoid repeated API calls
+    const deliveryWindowCache = new Map<number, string>()
+    const getDeliveryWindow = (cargo: Cargo): string => {
+      // First try from monthlyPlans array
+      const monthlyPlan = monthlyPlans.find(mp => mp.id === cargo.monthly_plan_id)
+      if (monthlyPlan?.delivery_window) {
+        return monthlyPlan.delivery_window
+      }
+      // Check cache
+      if (deliveryWindowCache.has(cargo.monthly_plan_id)) {
+        return deliveryWindowCache.get(cargo.monthly_plan_id) || '-'
+      }
+      // Return placeholder - the actual value will be shown from cargo edit dialog
+      return '-'
+    }
+
     return (
       <TableContainer 
         component={Paper}
@@ -1745,6 +1783,8 @@ export default function HomePage() {
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>5-ND</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Delivery Window</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>ETA Discharge</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Payment Status</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Remark</TableCell>
@@ -1861,7 +1901,48 @@ export default function HomePage() {
                       }}
                     />
                   </TableCell>
-                  <TableCell>{cargo.discharge_port_location || '-'}</TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ 
+                      color: '#64748B',
+                      bgcolor: '#F1F5F9',
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      fontSize: '0.875rem',
+                    }}>
+                      {getDeliveryWindow(cargo)}
+                    </Typography>
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <TextField
+                      size="small"
+                      value={cargo.eta_discharge_port || ''}
+                      onChange={(e) => handleETADischargePortChange(cargo, e.target.value)}
+                      placeholder="Enter ETA"
+                      sx={{ 
+                        width: 120,
+                        '& .MuiInputBase-input': {
+                          fontSize: '0.875rem',
+                          py: 0.5,
+                        },
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <TextField
+                      size="small"
+                      value={cargo.discharge_port_location || ''}
+                      onChange={(e) => handleDischargePortLocationChange(cargo, e.target.value)}
+                      placeholder="Enter port"
+                      sx={{ 
+                        width: 120,
+                        '& .MuiInputBase-input': {
+                          fontSize: '0.875rem',
+                          py: 0.5,
+                        },
+                      }}
+                    />
+                  </TableCell>
                 <TableCell>
                   {(() => {
                     const contract = contracts.find(c => c.id === cargo.contract_id)
