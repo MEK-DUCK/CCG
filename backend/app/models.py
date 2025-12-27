@@ -531,3 +531,27 @@ class ContractAuditLog(Base):
     # User tracking
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     user_initials = Column(String(4), nullable=True, index=True)
+
+
+class GeneralAuditLog(Base):
+    """
+    General audit log for all entity types not covered by specific audit tables.
+    Covers: customers, products, load_ports, inspectors, users
+    """
+    __tablename__ = "general_audit_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    entity_type = Column(String, nullable=False, index=True)  # CUSTOMER, PRODUCT, LOAD_PORT, INSPECTOR, USER
+    entity_id = Column(Integer, nullable=True, index=True)  # ID of the entity
+    entity_name = Column(String, nullable=True)  # Name/identifier for display
+    action = Column(String, nullable=False)  # CREATE, UPDATE, DELETE
+    field_name = Column(String, nullable=True)  # Field that was changed (for UPDATE)
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    entity_snapshot = Column(Text, nullable=True)  # JSON snapshot for deleted entities
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # User tracking
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_initials = Column(String(4), nullable=True, index=True)

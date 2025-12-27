@@ -7,6 +7,7 @@ from sqlalchemy import asc
 from typing import List
 from app.database import get_db
 from app import models, schemas
+from app.general_audit_utils import log_general_action
 import logging
 
 router = APIRouter()
@@ -39,6 +40,18 @@ def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db)
             sort_order=product.sort_order
         )
         db.add(db_product)
+        db.flush()
+        
+        # Audit log
+        log_general_action(
+            db=db,
+            entity_type='PRODUCT',
+            action='CREATE',
+            entity_id=db_product.id,
+            entity_name=db_product.name,
+            description=f"Created product: {db_product.name} ({db_product.code})"
+        )
+        
         db.commit()
         db.refresh(db_product)
         
@@ -133,6 +146,18 @@ def update_product(product_id: int, product: schemas.ProductUpdate, db: Session 
             update_data['code'] = update_data['code'].upper()
         
         for field, value in update_data.items():
+            old_value = getattr(db_product, field, None)
+            if old_value != value:
+                log_general_action(
+                    db=db,
+                    entity_type='PRODUCT',
+                    action='UPDATE',
+                    entity_id=db_product.id,
+                    entity_name=db_product.name,
+                    field_name=field,
+                    old_value=old_value,
+                    new_value=value
+                )
             setattr(db_product, field, value)
         
         db.commit()
@@ -157,6 +182,25 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Product not found")
         
         product_name = db_product.name
+        product_code = db_product.code
+        
+        # Audit log
+        log_general_action(
+            db=db,
+            entity_type='PRODUCT',
+            action='DELETE',
+            entity_id=db_product.id,
+            entity_name=product_name,
+            description=f"Deleted product: {product_name} ({product_code})",
+            entity_snapshot={
+                'id': db_product.id,
+                'code': product_code,
+                'name': product_name,
+                'description': db_product.description,
+                'is_active': db_product.is_active
+            }
+        )
+        
         db.delete(db_product)
         db.commit()
         

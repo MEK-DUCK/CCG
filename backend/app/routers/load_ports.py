@@ -7,6 +7,7 @@ from sqlalchemy import asc
 from typing import List
 from app.database import get_db
 from app import models, schemas
+from app.general_audit_utils import log_general_action
 import logging
 
 router = APIRouter()
@@ -40,6 +41,18 @@ def create_load_port(port: schemas.LoadPortCreate, db: Session = Depends(get_db)
             sort_order=port.sort_order
         )
         db.add(db_port)
+        db.flush()
+        
+        # Audit log
+        log_general_action(
+            db=db,
+            entity_type='LOAD_PORT',
+            action='CREATE',
+            entity_id=db_port.id,
+            entity_name=db_port.name,
+            description=f"Created load port: {db_port.name} ({db_port.code})"
+        )
+        
         db.commit()
         db.refresh(db_port)
         
@@ -134,6 +147,18 @@ def update_load_port(port_id: int, port: schemas.LoadPortUpdate, db: Session = D
             update_data['code'] = update_data['code'].upper()
         
         for field, value in update_data.items():
+            old_value = getattr(db_port, field, None)
+            if old_value != value:
+                log_general_action(
+                    db=db,
+                    entity_type='LOAD_PORT',
+                    action='UPDATE',
+                    entity_id=db_port.id,
+                    entity_name=db_port.name,
+                    field_name=field,
+                    old_value=old_value,
+                    new_value=value
+                )
             setattr(db_port, field, value)
         
         db.commit()
@@ -158,6 +183,25 @@ def delete_load_port(port_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Load port not found")
         
         port_name = db_port.name
+        port_code = db_port.code
+        
+        # Audit log
+        log_general_action(
+            db=db,
+            entity_type='LOAD_PORT',
+            action='DELETE',
+            entity_id=db_port.id,
+            entity_name=port_name,
+            description=f"Deleted load port: {port_name} ({port_code})",
+            entity_snapshot={
+                'id': db_port.id,
+                'code': port_code,
+                'name': port_name,
+                'country': db_port.country,
+                'is_active': db_port.is_active
+            }
+        )
+        
         db.delete(db_port)
         db.commit()
         

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app import models, schemas
+from app.general_audit_utils import log_general_action
 import uuid
 
 router = APIRouter()
@@ -18,6 +19,18 @@ def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(get_
             name=customer.name,
         )
         db.add(db_customer)
+        db.flush()
+        
+        # Audit log
+        log_general_action(
+            db=db,
+            entity_type='CUSTOMER',
+            action='CREATE',
+            entity_id=db_customer.id,
+            entity_name=db_customer.name,
+            description=f"Created customer: {db_customer.name} ({customer_id})"
+        )
+        
         db.commit()
         db.refresh(db_customer)
         return db_customer
@@ -55,7 +68,22 @@ def update_customer(customer_id: int, customer: schemas.CustomerUpdate, db: Sess
             raise HTTPException(status_code=404, detail="Customer not found")
         
         update_data = customer.dict(exclude_unset=True)
+        old_name = db_customer.name
+        
         for field, value in update_data.items():
+            old_value = getattr(db_customer, field, None)
+            if old_value != value:
+                # Audit log for each changed field
+                log_general_action(
+                    db=db,
+                    entity_type='CUSTOMER',
+                    action='UPDATE',
+                    entity_id=db_customer.id,
+                    entity_name=db_customer.name,
+                    field_name=field,
+                    old_value=old_value,
+                    new_value=value
+                )
             setattr(db_customer, field, value)
         
         db.commit()
@@ -75,6 +103,25 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
         db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
         if db_customer is None:
             raise HTTPException(status_code=404, detail="Customer not found")
+        
+        # Store customer info for audit log before deletion
+        customer_name = db_customer.name
+        customer_system_id = db_customer.customer_id
+        
+        # Audit log for deletion
+        log_general_action(
+            db=db,
+            entity_type='CUSTOMER',
+            action='DELETE',
+            entity_id=db_customer.id,
+            entity_name=customer_name,
+            description=f"Deleted customer: {customer_name} ({customer_system_id})",
+            entity_snapshot={
+                'id': db_customer.id,
+                'customer_id': customer_system_id,
+                'name': customer_name
+            }
+        )
         
         # IMPORTANT: audit logs must not block cascading deletes from customer -> contracts -> plans -> cargos.
         contract_ids = [c.id for c in db.query(models.Contract.id).filter(models.Contract.customer_id == customer_id).all()]

@@ -12,7 +12,8 @@ import json
 from app.database import get_db
 from app.models import (
     Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo,
-    CargoAuditLog, MonthlyPlanAuditLog, QuarterlyPlanAuditLog, ContractAuditLog
+    CargoAuditLog, MonthlyPlanAuditLog, QuarterlyPlanAuditLog, ContractAuditLog,
+    GeneralAuditLog
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -753,6 +754,28 @@ def get_all_audit_logs(
                 "product_name": log.product_name,
                 "topup_quantity": log.topup_quantity,
                 "authority_reference": log.authority_reference,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "user_initials": log.user_initials,
+            })
+    
+    # General audit logs (customers, products, load_ports, inspectors, users)
+    general_types = ["customer", "product", "load_port", "inspector", "user"]
+    if not log_type or log_type in general_types or log_type == "general":
+        query = db.query(GeneralAuditLog).order_by(GeneralAuditLog.created_at.desc())
+        if log_type and log_type in general_types:
+            query = query.filter(GeneralAuditLog.entity_type == log_type.upper())
+        general_logs = query.offset(skip).limit(limit).all()
+        for log in general_logs:
+            logs.append({
+                "id": f"general-{log.id}",
+                "type": log.entity_type.lower() if log.entity_type else "general",
+                "entity_id": log.entity_id,
+                "entity_ref": log.entity_name,
+                "action": log.action,
+                "field_name": log.field_name,
+                "old_value": log.old_value,
+                "new_value": log.new_value,
+                "description": log.description,
                 "created_at": log.created_at.isoformat() if log.created_at else None,
                 "user_initials": log.user_initials,
             })

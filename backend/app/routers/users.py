@@ -23,6 +23,7 @@ from app.auth import (
     generate_invite_token,
     get_password_hash,
 )
+from app.general_audit_utils import log_general_action
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,18 @@ def create_user(
     
     try:
         db.add(user)
+        db.flush()
+        
+        # Audit log
+        log_general_action(
+            db=db,
+            entity_type='USER',
+            action='CREATE',
+            entity_id=user.id,
+            entity_name=f"{user.full_name} ({user.initials})",
+            description=f"Created user: {user.full_name} ({user.email}) by {current_user.email}"
+        )
+        
         db.commit()
         db.refresh(user)
     except IntegrityError as e:
@@ -197,6 +210,18 @@ def update_user(
     for field, value in update_data.items():
         if field == "initials" and value:
             value = value.upper()
+        old_value = getattr(user, field, None)
+        if old_value != value:
+            log_general_action(
+                db=db,
+                entity_type='USER',
+                action='UPDATE',
+                entity_id=user.id,
+                entity_name=f"{user.full_name} ({user.initials})",
+                field_name=field,
+                old_value=old_value,
+                new_value=value
+            )
         setattr(user, field, value)
     
     try:
@@ -237,7 +262,22 @@ def deactivate_user(
             detail="User not found"
         )
     
+    old_status = user.status
     user.status = models.UserStatus.INACTIVE
+    
+    # Audit log
+    log_general_action(
+        db=db,
+        entity_type='USER',
+        action='UPDATE',
+        entity_id=user.id,
+        entity_name=f"{user.full_name} ({user.initials})",
+        field_name='status',
+        old_value=old_status.value if old_status else None,
+        new_value='INACTIVE',
+        description=f"Deactivated user: {user.full_name} ({user.email}) by {current_user.email}"
+    )
+    
     db.commit()
     db.refresh(user)
     
@@ -262,11 +302,26 @@ def activate_user(
             detail="User not found"
         )
     
+    old_status = user.status
+    
     # If user never set password, keep as pending
     if user.password_hash:
         user.status = models.UserStatus.ACTIVE
     else:
         user.status = models.UserStatus.PENDING
+    
+    # Audit log
+    log_general_action(
+        db=db,
+        entity_type='USER',
+        action='UPDATE',
+        entity_id=user.id,
+        entity_name=f"{user.full_name} ({user.initials})",
+        field_name='status',
+        old_value=old_status.value if old_status else None,
+        new_value=user.status.value,
+        description=f"Activated user: {user.full_name} ({user.email}) by {current_user.email}"
+    )
     
     db.commit()
     db.refresh(user)
@@ -374,6 +429,28 @@ def delete_user(
         )
     
     email = user.email
+    full_name = user.full_name
+    initials = user.initials
+    user_id_to_delete = user.id
+    
+    # Audit log
+    log_general_action(
+        db=db,
+        entity_type='USER',
+        action='DELETE',
+        entity_id=user_id_to_delete,
+        entity_name=f"{full_name} ({initials})",
+        description=f"Deleted user: {full_name} ({email}) by {current_user.email}",
+        entity_snapshot={
+            'id': user_id_to_delete,
+            'email': email,
+            'full_name': full_name,
+            'initials': initials,
+            'role': user.role.value if user.role else None,
+            'status': user.status.value if user.status else None
+        }
+    )
+    
     db.delete(user)
     db.commit()
     

@@ -7,6 +7,7 @@ from sqlalchemy import asc
 from typing import List
 from app.database import get_db
 from app import models, schemas
+from app.general_audit_utils import log_general_action
 import logging
 
 router = APIRouter()
@@ -39,6 +40,18 @@ def create_inspector(inspector: schemas.InspectorCreate, db: Session = Depends(g
             sort_order=inspector.sort_order
         )
         db.add(db_inspector)
+        db.flush()
+        
+        # Audit log
+        log_general_action(
+            db=db,
+            entity_type='INSPECTOR',
+            action='CREATE',
+            entity_id=db_inspector.id,
+            entity_name=db_inspector.name,
+            description=f"Created inspector: {db_inspector.name} ({db_inspector.code})"
+        )
+        
         db.commit()
         db.refresh(db_inspector)
         
@@ -133,6 +146,18 @@ def update_inspector(inspector_id: int, inspector: schemas.InspectorUpdate, db: 
             update_data['code'] = update_data['code'].upper()
         
         for field, value in update_data.items():
+            old_value = getattr(db_inspector, field, None)
+            if old_value != value:
+                log_general_action(
+                    db=db,
+                    entity_type='INSPECTOR',
+                    action='UPDATE',
+                    entity_id=db_inspector.id,
+                    entity_name=db_inspector.name,
+                    field_name=field,
+                    old_value=old_value,
+                    new_value=value
+                )
             setattr(db_inspector, field, value)
         
         db.commit()
@@ -157,6 +182,25 @@ def delete_inspector(inspector_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Inspector not found")
         
         inspector_name = db_inspector.name
+        inspector_code = db_inspector.code
+        
+        # Audit log
+        log_general_action(
+            db=db,
+            entity_type='INSPECTOR',
+            action='DELETE',
+            entity_id=db_inspector.id,
+            entity_name=inspector_name,
+            description=f"Deleted inspector: {inspector_name} ({inspector_code})",
+            entity_snapshot={
+                'id': db_inspector.id,
+                'code': inspector_code,
+                'name': inspector_name,
+                'description': db_inspector.description,
+                'is_active': db_inspector.is_active
+            }
+        )
+        
         db.delete(db_inspector)
         db.commit()
         
