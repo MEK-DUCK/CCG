@@ -4217,6 +4217,11 @@ export default function HomePage() {
             {(() => {
               // Check if this is a completed cargo (Completed Loading for FOB, Discharge Complete for CIF)
               const isCompletedCargo = !!(editingCargo && (editingCargo.status === 'Completed Loading' || editingCargo.status === 'Discharge Complete'))
+              // For In-Road CIF tab (value === 2), allow editing LC Status and Remark even for Completed Loading status
+              const isInRoadCIFTab = value === 2
+              // Fields that should be locked (vessel details) vs fields that can be edited (LC Status, Remark)
+              const isVesselDetailsLocked = isCompletedCargo
+              const isLCAndRemarkLocked = isCompletedCargo && !isInRoadCIFTab
               const disabledStyle = {
                 '& .MuiInputBase-input.Mui-disabled': {
                   WebkitTextFillColor: 'rgba(0, 0, 0, 0.38)',
@@ -4578,7 +4583,7 @@ export default function HomePage() {
                         Status Management
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 2, alignItems: 'center' }}>
-                        <FormControl size="small" sx={{ minWidth: 200 }} disabled={isCompletedCargo}>
+                        <FormControl size="small" sx={{ minWidth: 200 }} disabled={isLCAndRemarkLocked}>
                           <InputLabel>Current Status</InputLabel>
                           <Select
                             value={cargoFormData.status}
@@ -4592,7 +4597,7 @@ export default function HomePage() {
                               }
                               setCargoFormData({ ...cargoFormData, status: nextStatus })
                             }}
-                            sx={isCompletedCargo ? disabledStyle : {}}
+                            sx={isLCAndRemarkLocked ? disabledStyle : {}}
                           >
                             <MenuItem value="Planned">Planned</MenuItem>
                             <MenuItem
@@ -4636,7 +4641,7 @@ export default function HomePage() {
               )}
               {cargoContract && cargoContract.payment_method === 'LC' && (
                 <Grid item xs={12}>
-                  <FormControl fullWidth disabled={isCompletedCargo} sx={isCompletedCargo ? disabledStyle : {}}>
+                  <FormControl fullWidth disabled={isLCAndRemarkLocked} sx={isLCAndRemarkLocked ? disabledStyle : {}}>
                     <InputLabel>LC Status</InputLabel>
                     <Select
                       value={cargoFormData.lc_status || ''}
@@ -4663,8 +4668,8 @@ export default function HomePage() {
                   multiline
                   rows={3}
                   fullWidth
-                  disabled={isCompletedCargo}
-                  sx={isCompletedCargo ? disabledStyle : {}}
+                  disabled={isLCAndRemarkLocked}
+                  sx={isLCAndRemarkLocked ? disabledStyle : {}}
                 />
               </Grid>
             </Grid>
