@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   Button,
@@ -12,6 +12,8 @@ import {
 } from '@mui/material'
 import { Save, CalendarMonth, Add } from '@mui/icons-material'
 import { quarterlyPlanAPI, contractAPI } from '../api/client'
+import { usePresence, PresenceUser } from '../hooks/usePresence'
+import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 
 interface QuarterlyPlanFormProps {
   contractId: number
@@ -123,6 +125,29 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
   const [productPlans, setProductPlans] = useState<ProductPlanData[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [selectedYear, setSelectedYear] = useState(1)
+  const [editingUser, setEditingUser] = useState<{ user: PresenceUser; field: string } | null>(null)
+  
+  // Real-time presence tracking for this contract's quarterly plan
+  const handleDataChanged = useCallback(() => {
+    // Another user saved changes - reload the data
+    onPlanCreated()
+  }, [onPlanCreated])
+  
+  const handleUserEditing = useCallback((user: PresenceUser, field: string) => {
+    setEditingUser({ user, field })
+    // Clear after 5 seconds
+    setTimeout(() => setEditingUser(null), 5000)
+  }, [])
+  
+  const { otherUsers, isConnected, notifyEditing, notifyStoppedEditing } = usePresence(
+    'quarterly-plan',
+    contractId.toString(),
+    {
+      onDataChanged: handleDataChanged,
+      onUserEditing: handleUserEditing,
+      onUserStoppedEditing: () => setEditingUser(null),
+    }
+  )
   
   // Get fiscal start month from contract, default to 1 (January)
   const fiscalStartMonth = contractData?.fiscal_start_month || 1
@@ -218,6 +243,9 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
 
 
   const handleQuantityChange = (productName: string, contractYear: number, quarter: 'q1' | 'q2' | 'q3' | 'q4', value: string) => {
+    // Notify others that we're editing this field
+    notifyEditing(`${productName} ${quarter.toUpperCase()}`)
+    
     setProductPlans(prev => {
       return prev.map(p => {
         if (p.productName === productName && p.contractYear === contractYear) {
@@ -226,6 +254,11 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
         return p
       })
     })
+  }
+  
+  // Notify when user stops editing (on blur)
+  const handleFieldBlur = () => {
+    notifyStoppedEditing()
   }
 
   const getProductTotal = (plan: ProductPlanData): number => {
@@ -314,9 +347,27 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
 
   return (
     <Paper sx={{ p: 3 }}>
-      <Typography variant="h6" gutterBottom>
-        {existingPlans.length > 0 ? 'Edit Quarterly Plan' : 'Create Quarterly Plan'}
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+        <Typography variant="h6">
+          {existingPlans.length > 0 ? 'Edit Quarterly Plan' : 'Create Quarterly Plan'}
+        </Typography>
+        <ActiveUsersIndicator 
+          users={otherUsers} 
+          isConnected={isConnected}
+          variant="avatars"
+          showConnectionStatus
+          label="Also editing"
+        />
+      </Box>
+      
+      {/* Warning banner when others are editing */}
+      <EditingWarningBanner
+        otherUsers={otherUsers}
+        isConnected={isConnected}
+        resourceType="quarterly plan"
+        onRefresh={onPlanCreated}
+        editingUser={editingUser}
+      />
       
       {isMultiProduct && (
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -402,6 +453,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                           size="small"
                           value={plan[fieldKey]}
                           onChange={(e) => handleQuantityChange(plan.productName, plan.contractYear, fieldKey, e.target.value)}
+                          onBlur={handleFieldBlur}
                           fullWidth
                           InputProps={{
                             endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>

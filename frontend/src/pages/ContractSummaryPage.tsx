@@ -156,6 +156,13 @@ export default function ContractSummaryPage() {
     return arr.length ? arr : [new Date().getFullYear()]
   }, [contracts])
 
+  // Sync selectedYear with availableYears when the current selection is not available
+  useEffect(() => {
+    if (availableYears.length > 0 && !availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[0])
+    }
+  }, [availableYears, selectedYear])
+
   const filteredContracts = useMemo(() => {
     const yearStart = `${selectedYear}-01-01`
     const yearEnd = `${selectedYear}-12-31`

@@ -225,20 +225,23 @@ def get_analytics(db: Session = Depends(get_db)):
         print(f"Error getting status stats: {e}")
     
     # Product volume analytics - COMPLETED cargos only
+    # Status enum names: COMPLETED_LOADING, DISCHARGE_COMPLETE are considered completed
     product_stats = []
     try:
         # Get completed cargo quantities per product
+        # Use COALESCE to fall back to quarterly_plan's product_name if monthly_plan's is NULL
         completed_query = db.execute(text('''
             SELECT 
-                mp.product_name,
+                COALESCE(mp.product_name, qp.product_name) as product_name,
                 SUM(ca.cargo_quantity) as completed_quantity,
                 COUNT(ca.id) as cargo_count
             FROM cargos ca
             JOIN monthly_plans mp ON ca.monthly_plan_id = mp.id
-            WHERE mp.product_name IS NOT NULL 
-            AND mp.product_name != ''
-            AND ca.status = 'COMPLETED'
-            GROUP BY mp.product_name
+            LEFT JOIN quarterly_plans qp ON mp.quarterly_plan_id = qp.id
+            WHERE COALESCE(mp.product_name, qp.product_name) IS NOT NULL 
+            AND COALESCE(mp.product_name, qp.product_name) != ''
+            AND ca.status IN ('COMPLETED_LOADING', 'DISCHARGE_COMPLETE')
+            GROUP BY COALESCE(mp.product_name, qp.product_name)
             ORDER BY completed_quantity DESC
         ''')).fetchall()
         

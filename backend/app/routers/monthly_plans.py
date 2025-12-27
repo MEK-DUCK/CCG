@@ -237,6 +237,12 @@ def read_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
 
 @router.put("/{plan_id}", response_model=schemas.MonthlyPlan)
 def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Session = Depends(get_db)):
+    """
+    Update a monthly plan with optimistic locking.
+    
+    If client sends 'version', we verify it matches the current version
+    to prevent lost updates from concurrent edits.
+    """
     # Lock the monthly plan row to prevent concurrent modifications
     db_plan = db.query(models.MonthlyPlan).filter(
         models.MonthlyPlan.id == plan_id
@@ -247,7 +253,17 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
     # Check if plan has completed cargos (locked)
     cargo_info = get_cargo_info(plan_id, db)
     
+    # Use exclude_unset=True but keep explicitly set None/empty values
+    # This allows clearing fields by sending null or empty string
     update_data = plan.dict(exclude_unset=True)
+    
+    # Optimistic locking check - if client sends version, verify it matches
+    client_version = update_data.pop('version', None)
+    if client_version is not None and client_version != getattr(db_plan, 'version', 1):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Monthly plan was modified by another user. Please refresh and try again. (Expected version {client_version}, found {getattr(db_plan, 'version', 1)})"
+        )
     
     # Validate month/year if being updated
     if 'month' in update_data:
@@ -320,6 +336,9 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
                     log_monthly_plan_action(db=db, action='UPDATE', monthly_plan=db_plan, field_name=field, old_value=old_val, new_value=value)
             else:
                 log_monthly_plan_action(db=db, action='UPDATE', monthly_plan=db_plan, field_name=field, old_value=old_val, new_value=value)
+    
+    # Increment version for optimistic locking
+    db_plan.version = getattr(db_plan, 'version', 1) + 1
     
     db.commit()
     db.refresh(db_plan)

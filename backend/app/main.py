@@ -10,7 +10,7 @@ from threading import Lock
 from app.database import engine, Base, ensure_schema
 from app.routers import customers, contracts, quarterly_plans, monthly_plans, cargos, audit_logs, documents
 from app.routers import config_router, admin, products, load_ports, inspectors
-from app.routers import auth_router, users
+from app.routers import auth_router, users, presence_router
 from app.errors import AppError, handle_app_error, handle_unexpected_error
 
 # Configure logging
@@ -68,7 +68,9 @@ app.add_middleware(
 # Rate Limiting (simple in-memory implementation)
 # =============================================================================
 # In production, use Redis-based rate limiting for distributed systems
-RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))  # requests per window
+# High limit to handle React Strict Mode double renders, parallel API calls,
+# and heavy pages like HomePage/Port Movement with many cargos
+RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "2000"))  # requests per window
 RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # window in seconds
 
 class RateLimiter:
@@ -146,12 +148,13 @@ from app.auth import decode_token
 @app.middleware("http")
 async def extract_user_initials(request: Request, call_next):
     """
-    Extract user initials from JWT token for audit logging.
+    Extract user info from JWT token for audit logging and real-time sync.
     
-    SECURITY: We extract initials from the validated JWT token, NOT from
-    a client-provided header. This prevents clients from spoofing initials.
+    SECURITY: We extract info from the validated JWT token, NOT from
+    a client-provided header. This prevents clients from spoofing identity.
     """
     user_initials = None
+    user_id = None
     
     # Get Authorization header
     auth_header = request.headers.get("Authorization")
@@ -159,10 +162,21 @@ async def extract_user_initials(request: Request, call_next):
         token = auth_header[7:]  # Remove "Bearer " prefix
         payload = decode_token(token)
         if payload:
-            # Extract initials from the validated JWT payload
+            # Extract info from the validated JWT payload
             user_initials = payload.get("initials")
+            user_id = payload.get("sub")  # User ID is stored in 'sub' claim
+            if user_id:
+                try:
+                    user_id = int(user_id)
+                except (ValueError, TypeError):
+                    user_id = None
     
+    # Set for audit logging
     set_current_user_initials(user_initials)
+    
+    # Set on request.state for real-time broadcast
+    request.state.user_id = user_id
+    request.state.user_initials = user_initials
     
     response = await call_next(request)
     return response
@@ -210,6 +224,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Auth routes (no /api prefix for cleaner URLs)
 app.include_router(auth_router.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
+
+# WebSocket routes for real-time presence
+app.include_router(presence_router.router, prefix="/api", tags=["presence"])
 
 # Business routes
 app.include_router(customers.router, prefix="/api/customers", tags=["customers"])

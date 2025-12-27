@@ -31,6 +31,8 @@ import {
   useTheme,
   InputAdornment,
   IconButton,
+  Snackbar,
+  Alert,
 } from '@mui/material'
 import { FileDownload, Search, Description, Clear } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
@@ -42,6 +44,9 @@ import { getLaycanAlertSeverity, getAlertColor, getAlertMessage } from '../utils
 import { Tooltip, Badge } from '@mui/material'
 import NotificationBadge from '../components/Notifications/NotificationBadge'
 import { useLaycanAlerts } from '../hooks/useLaycanAlerts'
+import { usePresence, PresenceUser } from '../hooks/usePresence'
+import { useRealTimeSync, DataSyncEvent } from '../hooks/useRealTimeSync'
+import { useConflictHandler, EditingWarningBanner, ActiveUsersIndicator } from '../components/Presence'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -109,6 +114,8 @@ export default function HomePage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
+  const [dataChangedNotification, setDataChangedNotification] = useState<string | null>(null)
+
   // Dynamic load ports and inspectors from API
   const [loadPortOptions, setLoadPortOptions] = useState<string[]>(['MAA', 'MAB', 'SHU'])
   const [inspectorOptions, setInspectorOptions] = useState<string[]>(['SGS', 'Intertek', 'Saybolt'])
@@ -162,6 +169,7 @@ export default function HomePage() {
     // Dynamic import of xlsx to avoid issues if not installed
     import('xlsx')
       .then((XLSX) => {
+        // ===== SHEET 1: Port Movement =====
         const exportData: any[] = []
 
         rows.forEach(({ cargo, contract, customer, laycan, monthlyPlan }) => {
@@ -216,6 +224,86 @@ export default function HomePage() {
 
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, 'Port Movement')
+
+        // ===== SHEET 2: Active Loadings (by Load Port) =====
+        const activeLoadingsData: any[] = []
+        
+        // Process each port section
+        PORT_SECTIONS.forEach((port) => {
+          // Get all active loading cargos for this port
+          const allRows = activeLoadings
+            .map((cargo) => ({ cargo, op: getPortOpForCargo(cargo, port) }))
+            .filter((x) => x.op && (x.op.status === 'Loading' || x.op.status === 'Completed Loading'))
+          
+          // Group combie cargos - only show one row per combi_group_id
+          const seenCombiGroups = new Set<string>()
+          const portRows = allRows.filter(({ cargo }) => {
+            if (cargo.combi_group_id) {
+              if (seenCombiGroups.has(cargo.combi_group_id)) {
+                return false
+              }
+              seenCombiGroups.add(cargo.combi_group_id)
+            }
+            return true
+          })
+          
+          // Add rows for this port
+          portRows.forEach(({ cargo, op }) => {
+            // Get contract and customer info
+            const contract = contracts.find(c => c.id === cargo.contract_id)
+            const customer = contract ? customers.find(cu => cu.id === contract.customer_id) : null
+            
+            // For combi cargos, get all products and quantities
+            let products = cargo.product_name || '-'
+            let quantities = cargo.cargo_quantity?.toString() || '-'
+            
+            if (cargo.combi_group_id) {
+              const combiCargos = activeLoadings.filter(c => c.combi_group_id === cargo.combi_group_id)
+              products = combiCargos.map(c => c.product_name || '-').join(' / ')
+              quantities = combiCargos.map(c => c.cargo_quantity || 0).join(' / ')
+            }
+            
+            activeLoadingsData.push({
+              'Load Port': port,
+              'Vessel Name': cargo.vessel_name || 'TBA',
+              'Customer': customer?.name || '-',
+              'Contract Number': contract?.contract_number || '-',
+              'FOB/CIF': contract?.contract_type || '-',
+              'Product(s)': products,
+              'Quantity (KT)': quantities,
+              'Port Status': op?.status || '-',
+              'ETA': op?.eta || '-',
+              'Berthed': op?.berthed || '-',
+              'Commenced': op?.commenced || '-',
+              'ETC': op?.etc || '-',
+              'Inspector': cargo.inspector_name || '-',
+              'Laycan Window': cargo.laycan_window || '-',
+              'Notes': op?.notes || cargo.notes || '-',
+            })
+          })
+        })
+        
+        if (activeLoadingsData.length > 0) {
+          const wsActive = XLSX.utils.json_to_sheet(activeLoadingsData)
+          wsActive['!cols'] = [
+            { wch: 12 }, // Load Port
+            { wch: 20 }, // Vessel Name
+            { wch: 20 }, // Customer
+            { wch: 15 }, // Contract Number
+            { wch: 10 }, // FOB/CIF
+            { wch: 25 }, // Product(s)
+            { wch: 15 }, // Quantity
+            { wch: 18 }, // Port Status
+            { wch: 12 }, // ETA
+            { wch: 12 }, // Berthed
+            { wch: 12 }, // Commenced
+            { wch: 12 }, // ETC
+            { wch: 15 }, // Inspector
+            { wch: 15 }, // Laycan Window
+            { wch: 30 }, // Notes
+          ]
+          XLSX.utils.book_append_sheet(wb, wsActive, 'Active Loadings')
+        }
 
         const dateStr = new Date().toISOString().split('T')[0]
         const filename = `Port_Movement_${dateStr}.xlsx`
@@ -389,6 +477,7 @@ export default function HomePage() {
   const [inRoadCIFFilterCustomers, setInRoadCIFFilterCustomers] = useState<number[]>([])
   const [cargoDialogOpen, setCargoDialogOpen] = useState(false)
   const [editingCargo, setEditingCargo] = useState<Cargo | null>(null)
+  const [cargoEditingUser, setCargoEditingUser] = useState<{ user: PresenceUser; field: string } | null>(null)
   const [cargoMonthlyPlanId, setCargoMonthlyPlanId] = useState<number | null>(null)
   const [cargoMonthlyPlan, setCargoMonthlyPlan] = useState<MonthlyPlan | null>(null) // Fetched monthly plan for editing
   const [cargoContractId, setCargoContractId] = useState<number | null>(null)
@@ -417,6 +506,106 @@ export default function HomePage() {
   })
 
   const [isInitialLoad, setIsInitialLoad] = useState(true)
+
+  // Presence tracking for cargo editing - only active when dialog is open with a valid cargo
+  const cargoPresence = usePresence(
+    'cargo',
+    editingCargo?.id?.toString() || 'none',
+    {
+      enabled: cargoDialogOpen && !!editingCargo?.id,  // Only connect when editing a real cargo
+      onDataChanged: () => {
+        // Another user saved changes to this cargo - reload
+        loadData()
+        loadPortMovement()
+        loadActiveLoadings()
+      },
+      onUserEditing: (user, field) => {
+        setCargoEditingUser({ user, field })
+        setTimeout(() => setCargoEditingUser(null), 5000)
+      },
+      onUserStoppedEditing: () => setCargoEditingUser(null),
+    }
+  )
+  
+  const cargoOtherUsers = cargoPresence.otherUsers
+  const cargoIsConnected = cargoPresence.isConnected
+  const notifyCargoEditing = cargoPresence.notifyEditing
+  const notifyCargoStoppedEditing = cargoPresence.notifyStoppedEditing
+
+  // Real-time sync for port movement page - receives live updates when other users make changes
+  const { isConnected: isRealTimeSyncConnected } = useRealTimeSync('port-movement', {
+    onCargoChange: useCallback((event: DataSyncEvent) => {
+      console.log(`[RealTimeSync] Cargo ${event.change_type}:`, event.entity_id, event.entity_data)
+      
+      if (event.change_type === 'created' && event.entity_data) {
+        // Add new cargo to the appropriate list based on status
+        const newCargo = event.entity_data as unknown as Cargo
+        if (newCargo.status === 'Loading') {
+          setActiveLoadings(prev => {
+            // Avoid duplicates
+            if (prev.some(c => c.id === newCargo.id)) return prev
+            return [...prev, newCargo]
+          })
+        } else if (newCargo.status === 'Completed Loading' || newCargo.status === 'Completed Discharge') {
+          setCompletedCargos(prev => {
+            if (prev.some(c => c.id === newCargo.id)) return prev
+            return [...prev, newCargo]
+          })
+        } else {
+          // Planned or other status goes to port movement
+          setPortMovement(prev => {
+            if (prev.some(c => c.id === newCargo.id)) return prev
+            return [...prev, newCargo]
+          })
+        }
+      } else if (event.change_type === 'updated' && event.entity_data) {
+        const updatedCargo = event.entity_data as unknown as Cargo
+        const updateInList = (prev: Cargo[]) => 
+          prev.map(c => c.id === updatedCargo.id ? { ...c, ...updatedCargo } : c)
+        
+        // Update in all lists (cargo might have moved between lists due to status change)
+        setPortMovement(updateInList)
+        setActiveLoadings(updateInList)
+        setCompletedCargos(updateInList)
+        setInRoadCIF(updateInList)
+        setCompletedInRoadCIF(updateInList)
+        
+        // Handle status transitions - move cargo between lists if needed
+        if (updatedCargo.status === 'Loading') {
+          // Move from port movement to active loadings
+          setPortMovement(prev => prev.filter(c => c.id !== updatedCargo.id))
+          setActiveLoadings(prev => {
+            if (prev.some(c => c.id === updatedCargo.id)) return prev
+            return [...prev, updatedCargo]
+          })
+        } else if (updatedCargo.status === 'Completed Loading' || updatedCargo.status === 'Completed Discharge') {
+          // Move to completed
+          setPortMovement(prev => prev.filter(c => c.id !== updatedCargo.id))
+          setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
+          setCompletedCargos(prev => {
+            if (prev.some(c => c.id === updatedCargo.id)) return prev
+            return [...prev, updatedCargo]
+          })
+        } else if (updatedCargo.status === 'Planned') {
+          // Move back to port movement
+          setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
+          setCompletedCargos(prev => prev.filter(c => c.id !== updatedCargo.id))
+          setPortMovement(prev => {
+            if (prev.some(c => c.id === updatedCargo.id)) return prev
+            return [...prev, updatedCargo]
+          })
+        }
+      } else if (event.change_type === 'deleted') {
+        // Remove from all lists
+        const removeFromList = (prev: Cargo[]) => prev.filter(c => c.id !== event.entity_id)
+        setPortMovement(removeFromList)
+        setActiveLoadings(removeFromList)
+        setCompletedCargos(removeFromList)
+        setInRoadCIF(removeFromList)
+        setCompletedInRoadCIF(removeFromList)
+      }
+    }, []),
+  })
 
   const formatSelectedMonthsLabel = (months: number[], year: number) => {
     const sorted = [...(months || [])].sort((a, b) => a - b)
@@ -3587,16 +3776,33 @@ export default function HomePage() {
 
   return (
     <Box>
-        {laycanAlerts.totalCount > 0 && (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <NotificationBadge
-            alerts={laycanAlerts.alerts}
-            criticalCount={laycanAlerts.criticalCount}
-            warningCount={laycanAlerts.warningCount}
-            infoCount={laycanAlerts.infoCount}
-          />
-      </Box>
-      )}
+        {/* Header with notifications */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2 }}>
+          {laycanAlerts.totalCount > 0 && (
+            <NotificationBadge
+              alerts={laycanAlerts.alerts}
+              criticalCount={laycanAlerts.criticalCount}
+              warningCount={laycanAlerts.warningCount}
+              infoCount={laycanAlerts.infoCount}
+            />
+          )}
+        </Box>
+
+        {/* Notification when another user makes changes */}
+        <Snackbar
+          open={!!dataChangedNotification}
+          autoHideDuration={5000}
+          onClose={() => setDataChangedNotification(null)}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert
+            severity="info"
+            onClose={() => setDataChangedNotification(null)}
+            sx={{ width: '100%' }}
+          >
+            {dataChangedNotification} - Data may have changed. Consider refreshing.
+          </Alert>
+        </Snackbar>
       <Paper sx={{ mt: 3 }}>
         <Box sx={{ borderBottom: '1px solid rgba(148, 163, 184, 0.12)' }}>
           <Tabs 
@@ -4210,9 +4416,34 @@ export default function HomePage() {
         }}
       >
         <DialogTitle sx={{ fontSize: isMobile ? '1.25rem' : '1.5rem', pb: isMobile ? 1 : 2 }}>
-          {editingCargo ? 'Edit Vessel Details' : 'Add Vessel Details'}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{editingCargo ? 'Edit Vessel Details' : 'Add Vessel Details'}</span>
+            {editingCargo && (
+              <ActiveUsersIndicator 
+                users={cargoOtherUsers} 
+                isConnected={cargoIsConnected}
+                variant="avatars"
+                showConnectionStatus
+                label="Also editing"
+              />
+            )}
+          </Box>
         </DialogTitle>
         <DialogContent sx={{ px: isMobile ? 2 : 3, pt: isMobile ? 3 : 4, pb: isMobile ? 2 : 3, overflowY: 'auto' }}>
+          {/* Warning when others are editing this cargo */}
+          {editingCargo && (
+            <EditingWarningBanner
+              otherUsers={cargoOtherUsers}
+              isConnected={cargoIsConnected}
+              resourceType="cargo"
+              onRefresh={() => {
+                loadData()
+                loadPortMovement()
+                loadActiveLoadings()
+              }}
+              editingUser={cargoEditingUser}
+            />
+          )}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1.5 : 2, pt: 1 }}>
             {(() => {
               // Check if this is a completed cargo (Completed Loading for FOB, Discharge Complete for CIF)
@@ -4381,7 +4612,11 @@ export default function HomePage() {
                 <TextField
                   label="Vessel Name"
                   value={cargoFormData.vessel_name}
-                  onChange={(e) => setCargoFormData({ ...cargoFormData, vessel_name: e.target.value })}
+                  onChange={(e) => {
+                    notifyCargoEditing('Vessel Name')
+                    setCargoFormData({ ...cargoFormData, vessel_name: e.target.value })
+                  }}
+                  onBlur={notifyCargoStoppedEditing}
                   required
                   fullWidth
                       disabled={isCompletedCargo}
@@ -4596,6 +4831,7 @@ export default function HomePage() {
                             value={cargoFormData.status}
                             label="Current Status"
                             onChange={(e) => {
+                              notifyCargoEditing('Status')
                               const nextStatus = e.target.value as CargoStatus
                               const hasPorts = Array.isArray(cargoFormData.load_ports) && cargoFormData.load_ports.filter(Boolean).length > 0
                               if ((nextStatus === 'Loading' || nextStatus === 'Completed Loading') && !hasPorts) {
@@ -4604,6 +4840,7 @@ export default function HomePage() {
                               }
                               setCargoFormData({ ...cargoFormData, status: nextStatus })
                             }}
+                            onClose={notifyCargoStoppedEditing}
                             sx={isStatusLocked ? disabledStyle : {}}
                           >
                             <MenuItem value="Planned">Planned</MenuItem>
@@ -4671,7 +4908,11 @@ export default function HomePage() {
                 <TextField
                   label="Remark"
                   value={cargoFormData.notes}
-                  onChange={(e) => setCargoFormData({ ...cargoFormData, notes: e.target.value })}
+                  onChange={(e) => {
+                    notifyCargoEditing('Remark')
+                    setCargoFormData({ ...cargoFormData, notes: e.target.value })
+                  }}
+                  onBlur={notifyCargoStoppedEditing}
                   multiline
                   rows={3}
                   fullWidth

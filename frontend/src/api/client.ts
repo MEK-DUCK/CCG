@@ -29,7 +29,7 @@ client.interceptors.request.use(
   }
 )
 
-// Add response interceptor for debugging
+// Add response interceptor for debugging and auth error handling
 client.interceptors.response.use(
   (response) => {
     console.log('✅ Axios Response:', response.status, response.config.url, 'Data length:', response.data?.length || 'N/A')
@@ -47,6 +47,23 @@ client.interceptors.response.use(
     }
     if (error.response) {
       console.error('❌ Error response data:', error.response.data)
+      
+      // Handle 401 Unauthorized - token expired or invalid
+      // Only auto-logout if we had a token (authenticated request)
+      if (error.response.status === 401 && client.defaults.headers.common['Authorization']) {
+        const errorDetail = error.response.data?.detail || ''
+        if (errorDetail.includes('Invalid or expired token') || errorDetail.includes('Not authenticated')) {
+          console.warn('🔒 Authentication expired - clearing session')
+          // Clear stored auth data
+          localStorage.removeItem('oil_lifting_token')
+          localStorage.removeItem('oil_lifting_user')
+          delete client.defaults.headers.common['Authorization']
+          // Redirect to login if not already there
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login?expired=true'
+          }
+        }
+      }
     }
     if (error.request) {
       console.error('❌ Request was made but no response received:', error.request)

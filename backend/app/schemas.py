@@ -213,6 +213,7 @@ class ContractUpdate(BaseModel):
     concluded_memo_received_date: Optional[date] = None
     remarks: Optional[str] = Field(None, max_length=10000)
     customer_id: Optional[int] = None
+    version: Optional[int] = None  # Optimistic locking - send to detect conflicts
 
     @model_validator(mode="after")
     def _validate_contract_period(self):
@@ -225,6 +226,7 @@ class Contract(ContractBase):
     id: int
     contract_id: str
     customer_id: int
+    version: int = 1  # Optimistic locking version
     created_at: datetime
     updated_at: Optional[datetime] = None
     
@@ -259,10 +261,12 @@ class QuarterlyPlanUpdate(BaseModel):
     q2_topup: Optional[float] = Field(None, ge=0)
     q3_topup: Optional[float] = Field(None, ge=0)
     q4_topup: Optional[float] = Field(None, ge=0)
+    version: Optional[int] = None  # Optimistic locking - send to detect conflicts
 
 class QuarterlyPlan(QuarterlyPlanBase):
     id: int
     contract_id: int
+    version: int = 1  # Optimistic locking version
     created_at: datetime
     updated_at: Optional[datetime] = None
     
@@ -324,11 +328,13 @@ class MonthlyPlanUpdate(BaseModel):
     authority_topup_reference: Optional[str] = Field(None, max_length=100)
     authority_topup_reason: Optional[str] = Field(None, max_length=500)
     authority_topup_date: Optional[date] = None
+    version: Optional[int] = None  # Optimistic locking - send to detect conflicts
 
 class MonthlyPlan(MonthlyPlanBase):
     id: int
     quarterly_plan_id: Optional[int] = None  # Optional for SPOT contracts
     contract_id: Optional[int] = None  # Direct link for SPOT contracts
+    version: int = 1  # Optimistic locking version
     created_at: datetime
     updated_at: Optional[datetime] = None
     

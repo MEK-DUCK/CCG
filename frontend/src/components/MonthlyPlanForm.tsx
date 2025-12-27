@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Box,
   TextField,
@@ -29,6 +29,8 @@ import {
 import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp, CalendarMonth } from '@mui/icons-material'
 import { monthlyPlanAPI, contractAPI, MonthlyPlanTopUpRequest } from '../api/client'
 import { MonthlyPlanStatus } from '../types'
+import { usePresence, PresenceUser } from '../hooks/usePresence'
+import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 
 // Simple UUID generator
 const generateUUID = (): string => {
@@ -126,6 +128,34 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const [contractMonths, setContractMonths] = useState<Array<{ month: number, year: number }>>([])
   const [planStatuses, setPlanStatuses] = useState<Record<number, MonthlyPlanStatus>>({})
   const autosaveTimersRef = useRef<Record<string, number>>({})
+  const [editingUser, setEditingUser] = useState<{ user: PresenceUser; field: string } | null>(null)
+  
+  // Real-time presence tracking for this contract's monthly plan
+  const handleDataChanged = useCallback(() => {
+    // Another user saved changes - reload the data
+    onPlanCreated()
+  }, [onPlanCreated])
+  
+  const handleUserEditing = useCallback((user: PresenceUser, field: string) => {
+    setEditingUser({ user, field })
+    // Clear after 5 seconds
+    setTimeout(() => setEditingUser(null), 5000)
+  }, [])
+  
+  const { otherUsers, isConnected, notifyEditing, notifyStoppedEditing } = usePresence(
+    'monthly-plan',
+    contractId.toString(),
+    {
+      onDataChanged: handleDataChanged,
+      onUserEditing: handleUserEditing,
+      onUserStoppedEditing: () => setEditingUser(null),
+    }
+  )
+  
+  // Notify when user stops editing (on blur)
+  const handleFieldBlur = () => {
+    notifyStoppedEditing()
+  }
   
   // Year tab state for multi-year contracts
   const [selectedYear, setSelectedYear] = useState(1)
@@ -449,6 +479,10 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     field: 'laycan_5_days' | 'laycan_2_days' | 'laycan_2_days_remark' | 'loading_month' | 'loading_window' | 'delivery_month' | 'delivery_window' | 'delivery_window_remark',
     value: string
   ) => {
+    // Notify others that we're editing this field
+    const fieldLabel = field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    notifyEditing(`${getMonthName(month)} ${year} ${fieldLabel}`)
+    
     const key = `${month}-${year}`
     const entries = monthEntries[key] || []
     const updatedEntries = [...entries]
@@ -468,6 +502,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   }
 
   const handleQuantityChange = (month: number, year: number, entryIndex: number, value: string) => {
+    // Notify others that we're editing this field
+    notifyEditing(`${getMonthName(month)} ${year} quantity`)
+    
     const key = `${month}-${year}`
     const entries = monthEntries[key] || []
     const updatedEntries = [...entries]
@@ -834,14 +871,15 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           const updateData: any = {
             month_quantity: productQty,
             number_of_liftings: 1,
-            laycan_5_days: contractType === 'FOB' && productQty > 0 ? (entry.laycan_5_days || undefined) : undefined,
-            laycan_2_days: contractType === 'FOB' && productQty > 0 ? (entry.laycan_2_days || undefined) : undefined,
-            laycan_2_days_remark: contractType === 'FOB' && productQty > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
-            loading_month: contractType === 'CIF' && productQty > 0 ? (entry.loading_month || undefined) : undefined,
-            loading_window: contractType === 'CIF' && productQty > 0 ? (entry.loading_window || undefined) : undefined,
-            delivery_month: contractType === 'CIF' && productQty > 0 ? (entry.delivery_month || undefined) : undefined,
-            delivery_window: contractType === 'CIF' && productQty > 0 ? (entry.delivery_window || undefined) : undefined,
-            delivery_window_remark: contractType === 'CIF' && productQty > 0 ? (entry.delivery_window_remark || undefined) : undefined,
+            // Always send the field values (even empty string) to allow clearing
+            laycan_5_days: contractType === 'FOB' ? (entry.laycan_5_days ?? null) : null,
+            laycan_2_days: contractType === 'FOB' ? (entry.laycan_2_days ?? null) : null,
+            laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark ?? null) : null,
+            loading_month: contractType === 'CIF' ? (entry.loading_month ?? null) : null,
+            loading_window: contractType === 'CIF' ? (entry.loading_window ?? null) : null,
+            delivery_month: contractType === 'CIF' ? (entry.delivery_month ?? null) : null,
+            delivery_window: contractType === 'CIF' ? (entry.delivery_window ?? null) : null,
+            delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark ?? null) : null,
           }
           
           try {
@@ -863,17 +901,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         const entry = entries.find(e => e.id === existingPlan.id && !e.is_combi)
           
           if (entry) {
+            const qty = parseFloat(entry.quantity || '0')
             const updateData: any = {
-              month_quantity: parseFloat(entry.quantity || '0'),
+              month_quantity: qty,
               number_of_liftings: 1,
-              laycan_5_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_5_days || undefined) : undefined,
-              laycan_2_days: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days || undefined) : undefined,
-              laycan_2_days_remark: contractType === 'FOB' && parseFloat(entry.quantity || '0') > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
-              loading_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_month || undefined) : undefined,
-              loading_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.loading_window || undefined) : undefined,
-              delivery_month: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_month || undefined) : undefined,
-              delivery_window: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window || undefined) : undefined,
-              delivery_window_remark: contractType === 'CIF' && parseFloat(entry.quantity || '0') > 0 ? (entry.delivery_window_remark || undefined) : undefined,
+              // Always send the field values (even empty string) to allow clearing
+              laycan_5_days: contractType === 'FOB' ? (entry.laycan_5_days ?? null) : null,
+              laycan_2_days: contractType === 'FOB' ? (entry.laycan_2_days ?? null) : null,
+              laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark ?? null) : null,
+              loading_month: contractType === 'CIF' ? (entry.loading_month ?? null) : null,
+              loading_window: contractType === 'CIF' ? (entry.loading_window ?? null) : null,
+              delivery_month: contractType === 'CIF' ? (entry.delivery_month ?? null) : null,
+              delivery_window: contractType === 'CIF' ? (entry.delivery_window ?? null) : null,
+              delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark ?? null) : null,
             }
             
             try {
@@ -991,23 +1031,41 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   if (isSpotContract) {
     return (
       <Paper sx={{ p: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <Typography variant="h6">
-            Spot Contract - Monthly Plan
-          </Typography>
-          {isMultiProduct && (
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
-              {products.map((p: any) => (
-                <Chip
-                  key={p.name}
-                  label={p.name}
-                  size="small"
-                  sx={{ bgcolor: '#DBEAFE', color: '#1D4ED8' }}
-                />
-              ))}
-            </Box>
-          )}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6">
+              Spot Contract - Monthly Plan
+            </Typography>
+            {isMultiProduct && (
+              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                {products.map((p: any) => (
+                  <Chip
+                    key={p.name}
+                    label={p.name}
+                    size="small"
+                    sx={{ bgcolor: '#DBEAFE', color: '#1D4ED8' }}
+                  />
+                ))}
+              </Box>
+            )}
+          </Box>
+          <ActiveUsersIndicator 
+            users={otherUsers} 
+            isConnected={isConnected}
+            variant="avatars"
+            showConnectionStatus
+            label="Also editing"
+          />
         </Box>
+        
+        {/* Warning banner when others are editing */}
+        <EditingWarningBanner
+          otherUsers={otherUsers}
+          isConnected={isConnected}
+          resourceType="monthly plan"
+          onRefresh={onPlanCreated}
+          editingUser={editingUser}
+        />
         
         {/* Contract Period Info */}
         <Box sx={{ mb: 3, p: 2, bgcolor: '#F8FAFC', borderRadius: 2, border: '1px solid #E2E8F0' }}>
@@ -1108,6 +1166,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           type="number"
                           value={entry.quantity}
                           onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
+                          onBlur={handleFieldBlur}
                           fullWidth
                           sx={{ mb: 1 }}
                         />
@@ -1182,23 +1241,41 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
 
   return (
     <Paper sx={{ p: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <Typography variant="h6">
-          Monthly Plan
-        </Typography>
-        {isMultiProduct && (
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {products.map((p: any) => (
-              <Chip
-                key={p.name}
-                label={p.name}
-                size="small"
-                sx={{ bgcolor: '#DBEAFE', color: '#1D4ED8' }}
-              />
-            ))}
-          </Box>
-        )}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h6">
+            Monthly Plan
+          </Typography>
+          {isMultiProduct && (
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              {products.map((p: any) => (
+                <Chip
+                  key={p.name}
+                  label={p.name}
+                  size="small"
+                  sx={{ bgcolor: '#DBEAFE', color: '#1D4ED8' }}
+                />
+              ))}
+            </Box>
+          )}
+        </Box>
+        <ActiveUsersIndicator 
+          users={otherUsers} 
+          isConnected={isConnected}
+          variant="avatars"
+          showConnectionStatus
+          label="Also editing"
+        />
       </Box>
+      
+      {/* Warning banner when others are editing */}
+      <EditingWarningBanner
+        otherUsers={otherUsers}
+        isConnected={isConnected}
+        resourceType="monthly plan"
+        onRefresh={onPlanCreated}
+        editingUser={editingUser}
+      />
       
       {/* Year Tabs for multi-year contracts */}
       {numContractYears > 1 && (
@@ -1541,6 +1618,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                   type="number"
                                   value={entry.quantity}
                                   onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
+                                  onBlur={handleFieldBlur}
                                   required
                                   fullWidth
                                   disabled={isLocked}

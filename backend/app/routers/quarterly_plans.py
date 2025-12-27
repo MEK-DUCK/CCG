@@ -215,9 +215,27 @@ def read_quarterly_plan(plan_id: int, db: Session = Depends(get_db)):
 
 @router.put("/{plan_id}", response_model=schemas.QuarterlyPlan)
 def update_quarterly_plan(plan_id: int, plan: schemas.QuarterlyPlanUpdate, db: Session = Depends(get_db)):
-    db_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == plan_id).first()
+    """
+    Update a quarterly plan with optimistic locking.
+    
+    If client sends 'version', we verify it matches the current version
+    to prevent lost updates from concurrent edits.
+    """
+    # Lock the row to prevent concurrent modifications
+    db_plan = db.query(models.QuarterlyPlan).filter(
+        models.QuarterlyPlan.id == plan_id
+    ).with_for_update().first()
     if db_plan is None:
         raise to_http_exception(quarterly_plan_not_found(plan_id))
+    
+    # Get update data and check optimistic locking
+    update_data_raw = plan.dict(exclude_unset=True)
+    client_version = update_data_raw.pop('version', None)
+    if client_version is not None and client_version != getattr(db_plan, 'version', 1):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Quarterly plan was modified by another user. Please refresh and try again. (Expected version {client_version}, found {getattr(db_plan, 'version', 1)})"
+        )
     
     contract = db.query(models.Contract).filter(models.Contract.id == db_plan.contract_id).first()
     if not contract:
@@ -284,6 +302,9 @@ def update_quarterly_plan(plan_id: int, plan: schemas.QuarterlyPlanUpdate, db: S
             old_values[field] = getattr(db_plan, field)
     
     update_data = plan.dict(exclude_unset=True)
+    # Remove version from update_data since we already handled it
+    update_data.pop('version', None)
+    
     for field, value in update_data.items():
         old_val = old_values.get(field)
         setattr(db_plan, field, value)
@@ -297,6 +318,9 @@ def update_quarterly_plan(plan_id: int, plan: schemas.QuarterlyPlanUpdate, db: S
                 old_value=old_val,
                 new_value=value
             )
+    
+    # Increment version for optimistic locking
+    db_plan.version = getattr(db_plan, 'version', 1) + 1
     
     db.commit()
     db.refresh(db_plan)

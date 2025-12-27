@@ -216,6 +216,9 @@ class Contract(Base):
     total_quantity = Column(Float, nullable=True, default=0)
     product_id = Column(Integer, nullable=True)  # Deprecated
     
+    # Optimistic locking - prevents lost updates in concurrent edits
+    version = Column(Integer, nullable=False, default=1)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     

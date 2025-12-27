@@ -1276,8 +1276,8 @@ export default function AdminPage() {
             </TableHead>
             <TableBody>
               {integrityIssues.map((issue, idx) => (
-                <>
-                  <TableRow key={idx} hover onClick={() => toggleRowExpand(`issue-${idx}`)} sx={{ cursor: 'pointer' }}>
+                <React.Fragment key={idx}>
+                  <TableRow hover onClick={() => toggleRowExpand(`issue-${idx}`)} sx={{ cursor: 'pointer' }}>
                     <TableCell>
                       <IconButton size="small">
                         {expandedRows.has(`issue-${idx}`) ? <ExpandLess /> : <ExpandMore />}
@@ -1308,7 +1308,7 @@ export default function AdminPage() {
                       </Collapse>
                     </TableCell>
                   </TableRow>
-                </>
+                </React.Fragment>
               ))}
             </TableBody>
           </Table>

@@ -6,6 +6,7 @@ from app.database import get_db
 from app import models, schemas
 from app.models import ContractCategory
 from app.utils.fiscal_year import calculate_contract_years, generate_quarterly_plan_periods, generate_monthly_plan_periods
+from app.contract_audit_utils import log_contract_action, log_contract_field_changes, get_contract_snapshot
 import uuid
 import logging
 
@@ -95,6 +96,15 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         db.add(db_contract)
         db.commit()
         db.refresh(db_contract)
+        
+        # Log contract creation
+        log_contract_action(
+            db=db,
+            action='CREATE',
+            contract=db_contract,
+            description=f"Created contract {db_contract.contract_number} for customer {customer.name}"
+        )
+        db.commit()
         
         # Auto-generate quarterly plans for TERM and SEMI_TERM contracts
         if contract_category != ContractCategory.SPOT:
@@ -289,19 +299,38 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
 
 @router.put("/{contract_id}", response_model=schemas.Contract)
 def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Session = Depends(get_db)):
+    """
+    Update a contract with optimistic locking.
+    
+    If client sends 'version', we verify it matches the current version
+    to prevent lost updates from concurrent edits.
+    """
     import json
     has_remarks = _contracts_has_column(db, "remarks")
     has_additives_required = _contracts_has_column(db, "additives_required")
+    
+    # Use SELECT FOR UPDATE to prevent concurrent modifications
     query = db.query(models.Contract)
     if not has_remarks:
         query = query.options(defer(models.Contract.remarks))
     if not has_additives_required:
         query = query.options(defer(models.Contract.additives_required))
-    db_contract = query.filter(models.Contract.id == contract_id).first()
+    db_contract = query.filter(models.Contract.id == contract_id).with_for_update().first()
     if db_contract is None:
         raise HTTPException(status_code=404, detail="Contract not found")
     
+    # Capture old values for audit logging
+    old_values = get_contract_snapshot(db_contract)
+    
     update_data = contract.dict(exclude_unset=True)
+    
+    # Optimistic locking check - if client sends version, verify it matches
+    client_version = update_data.pop('version', None)
+    if client_version is not None and client_version != getattr(db_contract, 'version', 1):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Contract was modified by another user. Please refresh and try again. (Expected version {client_version}, found {getattr(db_contract, 'version', 1)})"
+        )
 
     if "remarks" in update_data and not has_remarks:
         raise HTTPException(
@@ -359,8 +388,16 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
     for field, value in update_data.items():
         setattr(db_contract, field, value)
     
+    # Increment version for optimistic locking
+    db_contract.version = getattr(db_contract, 'version', 1) + 1
+    
     db.commit()
     db.refresh(db_contract)
+    
+    # Log contract update with field changes
+    new_values = get_contract_snapshot(db_contract)
+    log_contract_field_changes(db, db_contract, old_values, new_values)
+    db.commit()
     
     # Convert products JSON string to list for response
     contract_dict = {
@@ -381,6 +418,7 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
         **({"remarks": getattr(db_contract, "remarks", None)} if has_remarks else {}),
         "customer_id": db_contract.customer_id,
+        "version": getattr(db_contract, 'version', 1),
         "created_at": db_contract.created_at,
         "updated_at": db_contract.updated_at
     }
@@ -491,6 +529,21 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db)):
         db_contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
         if db_contract is None:
             raise HTTPException(status_code=404, detail="Contract not found")
+        
+        # Capture contract info for audit log before deletion
+        contract_number = db_contract.contract_number
+        customer = db.query(models.Customer).filter(models.Customer.id == db_contract.customer_id).first()
+        customer_name = customer.name if customer else None
+        contract_snapshot = get_contract_snapshot(db_contract)
+        
+        # Log contract deletion before actually deleting
+        log_contract_action(
+            db=db,
+            action='DELETE',
+            contract=db_contract,
+            description=f"Deleted contract {contract_number}" + (f" ({customer_name})" if customer_name else ""),
+            contract_snapshot=contract_snapshot
+        )
 
         # IMPORTANT: audit logs must not block cascading deletes.
         # Null FK references first, preserve history via snapshots + identifiers.
@@ -513,6 +566,12 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db)):
                 {models.QuarterlyPlanAuditLog.quarterly_plan_id: None, models.QuarterlyPlanAuditLog.quarterly_plan_db_id: models.QuarterlyPlanAuditLog.quarterly_plan_id},
                 synchronize_session=False
             )
+        
+        # Null out contract audit log FK references
+        db.query(models.ContractAuditLog).filter(models.ContractAuditLog.contract_id == contract_id).update(
+            {models.ContractAuditLog.contract_id: None},
+            synchronize_session=False
+        )
 
         db.delete(db_contract)
         db.commit()

@@ -21,6 +21,8 @@ import {
   useTheme,
   Tabs,
   Tab,
+  Snackbar,
+  Alert,
 } from '@mui/material'
 import { FileDownload, PictureAsPdf } from '@mui/icons-material'
 import { customerAPI, contractAPI, quarterlyPlanAPI, monthlyPlanAPI, cargoAPI } from '../api/client'
@@ -93,6 +95,7 @@ export default function LiftingPlanPage() {
   const [contractData, setContractData] = useState<Map<number, ContractQuarterlyData>>(new Map())
   const [notes, setNotes] = useState<Map<number, string>>(new Map()) // contractId -> notes
   const [loading, setLoading] = useState(true)
+  const [dataChangedNotification, setDataChangedNotification] = useState<string | null>(null)
   
   // Resizable columns state
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
@@ -1036,19 +1039,37 @@ export default function LiftingPlanPage() {
 
   return (
     <Box>
-      <Typography 
-        variant="h4" 
-        gutterBottom
-        sx={{
-          fontWeight: 700,
-          color: '#000000',
-          mb: 4,
-          fontSize: { xs: '1.75rem', md: '2rem' },
-          letterSpacing: '-0.02em',
-        }}
+      {/* Notification when another user makes changes */}
+      <Snackbar
+        open={!!dataChangedNotification}
+        autoHideDuration={5000}
+        onClose={() => setDataChangedNotification(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
-        Lifting Plan - Quarterly Summary
-      </Typography>
+        <Alert
+          severity="info"
+          onClose={() => setDataChangedNotification(null)}
+          sx={{ width: '100%' }}
+        >
+          {dataChangedNotification} - Data may have changed. Consider refreshing.
+        </Alert>
+      </Snackbar>
+
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4 }}>
+        <Typography 
+          variant="h4" 
+          gutterBottom
+          sx={{
+            fontWeight: 700,
+            color: '#000000',
+            mb: 0,
+            fontSize: { xs: '1.75rem', md: '2rem' },
+            letterSpacing: '-0.02em',
+          }}
+        >
+          Lifting Plan - Quarterly Summary
+        </Typography>
+      </Box>
       
       <Box 
         sx={{ 

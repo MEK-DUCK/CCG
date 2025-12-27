@@ -27,12 +27,15 @@ import {
   Checkbox,
   TablePagination,
   Paper,
+  Snackbar,
+  Alert,
 } from '@mui/material'
 import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-material'
 import client, { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity } from '../types'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
+import { useConflictHandler } from '../components/Presence'
 
 // Fallback product options if API fails
 const DEFAULT_PRODUCT_OPTIONS = ['JET A-1', 'GASOIL', 'GASOIL 10PPM', 'HFO', 'LSFO']
@@ -78,6 +81,13 @@ export default function ContractManagement() {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [productOptions, setProductOptions] = useState<string[]>(DEFAULT_PRODUCT_OPTIONS)
+  const [dataChangedNotification, setDataChangedNotification] = useState<string | null>(null)
+
+  // Conflict handler for optimistic locking
+  const { handleApiError, ConflictDialogComponent } = useConflictHandler({
+    onRefresh: () => loadContracts(),
+    entityName: 'Contract'
+  })
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
   const [open, setOpen] = useState(false)
@@ -542,6 +552,25 @@ export default function ContractManagement() {
 
   return (
     <Box>
+      {/* Conflict dialog for optimistic locking */}
+      {ConflictDialogComponent}
+
+      {/* Notification when another user makes changes */}
+      <Snackbar
+        open={!!dataChangedNotification}
+        autoHideDuration={5000}
+        onClose={() => setDataChangedNotification(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert
+          severity="info"
+          onClose={() => setDataChangedNotification(null)}
+          sx={{ width: '100%' }}
+        >
+          {dataChangedNotification} - Data may have changed. Consider refreshing.
+        </Alert>
+      </Snackbar>
+
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4, flexWrap: 'wrap', gap: 2 }}>
         <Box>

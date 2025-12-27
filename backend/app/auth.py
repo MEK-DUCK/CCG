@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Secret key for JWT - generate a secure one in production!
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production-" + secrets.token_hex(16))
+# Using a stable default key for development to avoid invalidating tokens on server restart
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "oil-lifting-dev-secret-key-change-in-production-2024")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 hours default
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))  # 7 days default
 
 # Bearer token security
 security = HTTPBearer(auto_error=False)

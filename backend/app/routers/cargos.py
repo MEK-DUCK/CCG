@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from typing import List, Optional
@@ -6,11 +6,13 @@ from datetime import datetime
 import logging
 import uuid
 import json
+import asyncio
 
 from app.database import get_db
 from app import models, schemas
 from app.models import ContractType, CargoStatus, LCStatus
 from app.audit_utils import log_cargo_action
+from app.presence import presence_manager
 from app.config import (
     SUPPORTED_LOAD_PORTS,
     PORT_OP_ALLOWED_STATUSES,
@@ -36,6 +38,76 @@ from app.errors import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _cargo_to_broadcast_dict(cargo: models.Cargo) -> dict:
+    """Convert a cargo model to a dict for broadcasting."""
+    # Handle lc_status - it might be stored as string or enum
+    lc_status_val = cargo.lc_status
+    if lc_status_val and hasattr(lc_status_val, 'value'):
+        lc_status_val = lc_status_val.value
+    
+    # Handle contract_type - might be enum
+    contract_type_val = cargo.contract_type
+    if contract_type_val and hasattr(contract_type_val, 'value'):
+        contract_type_val = contract_type_val.value
+    
+    # Handle status - might be enum
+    status_val = cargo.status
+    if status_val and hasattr(status_val, 'value'):
+        status_val = status_val.value
+    
+    # Safely get customer name - relationship might not be loaded after commit
+    customer_name = None
+    try:
+        if hasattr(cargo, 'customer') and cargo.customer:
+            customer_name = cargo.customer.name
+    except Exception:
+        pass  # Relationship not loaded, skip
+    
+    return {
+        "id": cargo.id,
+        "cargo_id": cargo.cargo_id,
+        "vessel_name": cargo.vessel_name,
+        "customer_id": cargo.customer_id,
+        "customer_name": customer_name,
+        "product_name": cargo.product_name,
+        "contract_id": cargo.contract_id,
+        "contract_type": contract_type_val,
+        "cargo_quantity": cargo.cargo_quantity,
+        "status": status_val,
+        "laycan_window": cargo.laycan_window,
+        "load_ports": cargo.load_ports,
+        "monthly_plan_id": cargo.monthly_plan_id,
+        "combi_group_id": cargo.combi_group_id,
+        "lc_status": lc_status_val,
+        "notes": cargo.notes,
+    }
+
+
+async def _broadcast_cargo_change(
+    change_type: str,
+    cargo_id: int,
+    cargo_data: Optional[dict] = None,
+    user_id: Optional[int] = None,
+    user_initials: Optional[str] = None
+):
+    """Broadcast cargo change to all users viewing port movement page."""
+    logger.info(f"[BROADCAST] _broadcast_cargo_change called: {change_type} cargo:{cargo_id} by user:{user_id}")
+    try:
+        await presence_manager.broadcast_data_change(
+            resource_type="page",
+            resource_id="port-movement",
+            change_type=change_type,
+            entity_type="cargo",
+            entity_id=cargo_id,
+            entity_data=cargo_data,
+            changed_by_user_id=user_id,
+            changed_by_initials=user_initials
+        )
+        logger.info(f"[BROADCAST] broadcast_data_change completed for cargo:{cargo_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast cargo change: {e}", exc_info=True)
 
 
 def _parse_load_ports(load_ports: Optional[str]) -> List[str]:
@@ -122,7 +194,11 @@ def update_cargo_status(cargo: models.Cargo, db: Session):
 
 
 @router.post("/", response_model=schemas.Cargo)
-def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
+async def create_cargo(
+    cargo: schemas.CargoCreate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
     logger.info(f"Creating cargo: vessel={cargo.vessel_name}, contract={cargo.contract_id}, monthly_plan={cargo.monthly_plan_id}")
     
     # Verify all related entities exist
@@ -221,7 +297,6 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_cargo)
         logger.info(f"Cargo created: id={db_cargo.id}, cargo_id={db_cargo.cargo_id}")
-        return db_cargo
         
     except IntegrityError as e:
         db.rollback()
@@ -247,6 +322,23 @@ def create_cargo(cargo: schemas.CargoCreate, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"Unexpected error creating cargo: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred")
+    
+    # Broadcast the new cargo to all users viewing port movement (non-blocking)
+    try:
+        user_id = getattr(request.state, 'user_id', None)
+        user_initials = getattr(request.state, 'user_initials', None)
+        await _broadcast_cargo_change(
+            change_type="created",
+            cargo_id=db_cargo.id,
+            cargo_data=_cargo_to_broadcast_dict(db_cargo),
+            user_id=user_id,
+            user_initials=user_initials
+        )
+    except Exception as e:
+        # Don't fail the request if broadcast fails
+        logger.error(f"Failed to broadcast cargo creation: {e}")
+    
+    return db_cargo
 
 
 @router.get("/", response_model=List[schemas.Cargo])
@@ -507,7 +599,12 @@ def upsert_port_operation(
 
 
 @router.put("/{cargo_id}", response_model=schemas.Cargo)
-def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depends(get_db)):
+async def update_cargo(
+    cargo_id: int,
+    cargo: schemas.CargoUpdate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """Update cargo - handles lc_status conversion from string to enum.
     
     Implements optimistic locking: if client sends 'version', we verify it matches
@@ -735,11 +832,29 @@ def update_cargo(cargo_id: int, cargo: schemas.CargoUpdate, db: Session = Depend
         db.commit()
         db.refresh(db_cargo)
         logger.info(f"Cargo {cargo_id} updated successfully (version {db_cargo.version})")
-        return db_cargo
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Database error updating cargo {cargo_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error saving cargo update")
+    
+    # Broadcast the update to all users viewing port movement (non-blocking)
+    try:
+        user_id = getattr(request.state, 'user_id', None)
+        user_initials = getattr(request.state, 'user_initials', None)
+        logger.info(f"[BROADCAST] Starting broadcast for cargo {db_cargo.id}, user_id={user_id}, initials={user_initials}")
+        await _broadcast_cargo_change(
+            change_type="updated",
+            cargo_id=db_cargo.id,
+            cargo_data=_cargo_to_broadcast_dict(db_cargo),
+            user_id=user_id,
+            user_initials=user_initials
+        )
+        logger.info(f"[BROADCAST] Completed broadcast for cargo {db_cargo.id}")
+    except Exception as e:
+        # Don't fail the request if broadcast fails
+        logger.error(f"Failed to broadcast cargo update: {e}", exc_info=True)
+    
+    return db_cargo
 
 
 @router.put("/combi-group/{combi_group_id}/sync")
@@ -884,7 +999,7 @@ def sync_combi_cargo_group(
 
 
 @router.delete("/{cargo_id}")
-def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
+async def delete_cargo(cargo_id: int, request: Request, db: Session = Depends(get_db)):
     db_cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
     if db_cargo is None:
         raise to_http_exception(cargo_not_found(cargo_id))
@@ -910,10 +1025,26 @@ def delete_cargo(cargo_id: int, db: Session = Depends(get_db)):
         db.delete(db_cargo)
         db.commit()
         logger.info(f"Cargo {cargo_id} deleted successfully")
-        return {"message": "Cargo deleted successfully"}
     except HTTPException:
         raise
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Database error deleting cargo {cargo_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error deleting cargo")
+    
+    # Broadcast the deletion to all users viewing port movement (non-blocking)
+    try:
+        user_id = getattr(request.state, 'user_id', None)
+        user_initials = getattr(request.state, 'user_initials', None)
+        await _broadcast_cargo_change(
+            change_type="deleted",
+            cargo_id=cargo_id,
+            cargo_data=None,
+            user_id=user_id,
+            user_initials=user_initials
+        )
+    except Exception as e:
+        # Don't fail the request if broadcast fails
+        logger.error(f"Failed to broadcast cargo deletion: {e}")
+    
+    return {"message": "Cargo deleted successfully"}
