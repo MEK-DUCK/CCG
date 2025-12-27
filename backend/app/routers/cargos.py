@@ -418,13 +418,12 @@ def read_in_road_cif(db: Session = Depends(get_db)):
 
 @router.get("/completed-in-road-cif", response_model=List[schemas.Cargo])
 def read_completed_in_road_cif(db: Session = Depends(get_db)):
-    """Get CIF cargos that are IN_ROAD and have completed discharge"""
+    """Get CIF cargos that have Discharge Complete status"""
     try:
         from sqlalchemy import and_
         query = db.query(models.Cargo).filter(and_(
             models.Cargo.contract_type == ContractType.CIF,
-            models.Cargo.discharge_completion_time.is_not(None),
-            models.Cargo.status.in_([CargoStatus.COMPLETED_LOADING, CargoStatus.IN_ROAD]),
+            models.Cargo.status == CargoStatus.DISCHARGE_COMPLETE,
         ))
         return query.all()
     except SQLAlchemyError as e:

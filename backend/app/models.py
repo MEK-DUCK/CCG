@@ -45,6 +45,7 @@ class CargoStatus(str, enum.Enum):
     LOADING = "Loading"
     COMPLETED_LOADING = "Completed Loading"
     IN_ROAD = "In-Road (Pending Discharge)"
+    DISCHARGE_COMPLETE = "Discharge Complete"
     PENDING_NOMINATION = "Pending Nomination"
     PENDING_TL_APPROVAL = "Pending TL Approval"
     NOMINATION_RELEASED = "Nomination Released"

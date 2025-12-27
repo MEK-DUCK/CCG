@@ -517,10 +517,12 @@ export default function HomePage() {
       setInRoadCIF(inRoadRes.data || [])
       setCompletedInRoadCIF(completedInRoadRes.data || [])
       
-      // Fetch delivery windows for In-Road CIF cargos
+      // Fetch delivery windows for In-Road CIF cargos and Completed In-Road CIF cargos
       const inRoadCargos = inRoadRes.data || []
-      if (inRoadCargos.length > 0) {
-        const uniqueMonthlyPlanIds = [...new Set(inRoadCargos.map((c: Cargo) => c.monthly_plan_id))]
+      const completedInRoadCargos = completedInRoadRes.data || []
+      const allCIFCargos = [...inRoadCargos, ...completedInRoadCargos]
+      if (allCIFCargos.length > 0) {
+        const uniqueMonthlyPlanIds = [...new Set(allCIFCargos.map((c: Cargo) => c.monthly_plan_id))]
         const deliveryWindowsMap = new Map<number, string>()
         
         // Fetch monthly plans to get delivery windows
@@ -1992,6 +1994,268 @@ export default function HomePage() {
                         },
                       }}
                     />
+                  </TableCell>
+                <TableCell>
+                  {(() => {
+                    const contract = contracts.find(c => c.id === cargo.contract_id)
+                    if (contract?.payment_method === 'LC') {
+                      return cargo.lc_status ? (
+                        <Chip 
+                          label={cargo.lc_status} 
+                          size="small"
+                          {...getLCStatusChipProps(cargo.lc_status)}
+                        />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">-</Typography>
+                      )
+                    } else {
+                      return <Typography variant="body2" color="text.secondary">T/T</Typography>
+                    }
+                  })()}
+                </TableCell>
+                <TableCell>{cargo.notes || '-'}</TableCell>
+              </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    )
+  }
+
+  // Render Completed In-Road CIF table (read-only version)
+  const renderCompletedInRoadCIFTable = (cargos: Cargo[]) => {
+    if (loading) {
+      return (
+        <Box display="flex" justifyContent="center" p={4}>
+          <CircularProgress />
+        </Box>
+      )
+    }
+
+    // Group combie cargos - only show one row per combi_group_id
+    const seenCombiGroups = new Set<string>()
+    const groupedCargos = cargos.filter((cargo) => {
+      if (cargo.combi_group_id) {
+        if (seenCombiGroups.has(cargo.combi_group_id)) {
+          return false // Skip duplicate combie rows
+        }
+        seenCombiGroups.add(cargo.combi_group_id)
+      }
+      return true
+    })
+
+    if (groupedCargos.length === 0) {
+      return (
+        <Typography variant="body1" color="text.secondary" sx={{ p: 2 }}>
+          No Completed CIF cargos found
+        </Typography>
+      )
+    }
+
+    // Get delivery window from monthly plan (same as renderInRoadCIFTable)
+    const getDeliveryWindowForCompleted = (cargo: Cargo): string => {
+      // First try from the cached delivery windows
+      if (inRoadCIFDeliveryWindows.has(cargo.monthly_plan_id)) {
+        return inRoadCIFDeliveryWindows.get(cargo.monthly_plan_id) || '-'
+      }
+      // Then try from monthlyPlans array
+      const monthlyPlan = monthlyPlans.find(mp => mp.id === cargo.monthly_plan_id)
+      if (monthlyPlan?.delivery_window) {
+        return monthlyPlan.delivery_window
+      }
+      return '-'
+    }
+
+    return (
+      <TableContainer 
+        component={Paper}
+        sx={{
+          maxWidth: '100%',
+          overflowX: 'auto',
+          '& .MuiTable-root': {
+            minWidth: isMobile ? 900 : 'auto',
+          },
+        }}
+      >
+        <Table stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Vessel Name</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Customer</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>5-ND</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>ND Del Window</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Delivery Window</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>ETA Discharge</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Payment Status</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Remark</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {groupedCargos.map((cargo) => {
+              // Get all cargos in combie group for display
+              const allCargosForLookup = [...portMovement, ...completedCargos, ...inRoadCIF, ...completedInRoadCIF, ...activeLoadings, ...cargos]
+              const combieCargos = cargo.combi_group_id 
+                ? allCargosForLookup
+                    .filter(c => c.combi_group_id === cargo.combi_group_id)
+                    .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i) // dedupe
+                : [cargo]
+              
+              return (
+              <TableRow 
+                  key={cargo.combi_group_id ? `combi-${cargo.combi_group_id}` : cargo.id}
+                sx={{ 
+                  cursor: 'default', 
+                  bgcolor: '#F8FAFC', // Slightly grey background to indicate read-only
+                  '& td': { 
+                    minHeight: isMobile ? 56 : 48,
+                    py: isMobile ? 1.5 : 1,
+                    },
+                  }}
+                >
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {cargo.vessel_name}
+                      {cargo.combi_group_id && (
+                        <Chip 
+                          label="Combie" 
+                          size="small" 
+                          sx={{ 
+                            bgcolor: '#F59E0B', 
+                            color: 'white', 
+                            fontWeight: 600,
+                            fontSize: '0.7rem',
+                            height: 20,
+                          }} 
+                        />
+                      )}
+                      <Chip 
+                        label="Completed" 
+                        size="small" 
+                        sx={{ 
+                          bgcolor: '#10B981', 
+                          color: 'white', 
+                          fontWeight: 600,
+                          fontSize: '0.7rem',
+                          height: 20,
+                        }} 
+                      />
+                    </Box>
+                  </TableCell>
+                <TableCell>{getCustomerName(cargo.customer_id)}</TableCell>
+                <TableCell>{getContractNumber(cargo.contract_id)}</TableCell>
+                  <TableCell>
+                    {cargo.combi_group_id ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        {combieCargos.map(c => (
+                          <Chip 
+                            key={c.id} 
+                            label={`${c.product_name}: ${c.cargo_quantity} KT`}
+                            size="small"
+                            sx={{ fontSize: '0.75rem', ...getProductColor(c.product_name) }}
+                          />
+                        ))}
+                      </Box>
+                    ) : (
+                      <Chip 
+                        label={getProductName(cargo.product_name)}
+                        size="small"
+                        sx={getProductColor(cargo.product_name)}
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {cargo.combi_group_id ? (
+                      <Box>
+                        {(() => {
+                          const totalQty = combieCargos.reduce((sum, c) => sum + c.cargo_quantity, 0)
+                          const totalTopup = combieCargos.reduce((sum, c) => sum + ((c as any).authority_topup_quantity || 0), 0)
+                          return (
+                            <>
+                              <Typography variant="body2" fontWeight={600}>
+                                {totalQty} KT
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: totalTopup > 0 ? '#10B981' : 'text.secondary' }}>
+                                (Total{totalTopup > 0 ? `, incl. ${totalTopup} top-up` : ''})
+                              </Typography>
+                            </>
+                          )
+                        })()}
+                      </Box>
+                    ) : (
+                      <>
+                        {cargo.cargo_quantity}
+                        {((cargo as any).authority_topup_quantity || 0) > 0 && (
+                          <Typography variant="caption" sx={{ display: 'block', color: '#10B981' }}>
+                            (incl. {(cargo as any).authority_topup_quantity} top-up)
+                          </Typography>
+                        )}
+                      </>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ 
+                      color: '#64748B',
+                      bgcolor: '#F1F5F9',
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      fontSize: '0.875rem',
+                    }}>
+                      {cargo.five_nd_date || '-'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ 
+                      color: '#64748B',
+                      bgcolor: '#F1F5F9',
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      fontSize: '0.875rem',
+                    }}>
+                      {cargo.nd_delivery_window || '-'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ 
+                      color: '#64748B',
+                      bgcolor: '#F1F5F9',
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      fontSize: '0.875rem',
+                    }}>
+                      {getDeliveryWindowForCompleted(cargo)}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ 
+                      color: '#64748B',
+                      bgcolor: '#F1F5F9',
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      fontSize: '0.875rem',
+                    }}>
+                      {cargo.eta_discharge_port || '-'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ 
+                      color: '#64748B',
+                      bgcolor: '#F1F5F9',
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      fontSize: '0.875rem',
+                    }}>
+                      {cargo.discharge_port_location || '-'}
+                    </Typography>
                   </TableCell>
                 <TableCell>
                   {(() => {
@@ -3899,9 +4163,9 @@ export default function HomePage() {
         </TabPanel>
         <TabPanel value={value} index={3}>
           <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B', mb: 2 }}>
-            Completed In-Road CIF Cargos
+            Completed CIF Cargos (Discharge Complete)
           </Typography>
-          {renderCargoTable(completedInRoadCIF)}
+          {renderCompletedInRoadCIFTable(completedInRoadCIF)}
         </TabPanel>
       </Paper>
 
@@ -4323,6 +4587,13 @@ export default function HomePage() {
                             >
                               Completed Loading
                             </MenuItem>
+                            {/* Show In-Road and Discharge Complete only for CIF contracts */}
+                            {editingCargo?.contract_type === 'CIF' && (
+                              <MenuItem value="In-Road (Pending Discharge)">In-Road (Pending Discharge)</MenuItem>
+                            )}
+                            {editingCargo?.contract_type === 'CIF' && editingCargo?.status === 'In-Road (Pending Discharge)' && (
+                              <MenuItem value="Discharge Complete">Discharge Complete</MenuItem>
+                            )}
                           </Select>
                         </FormControl>
                       </Box>

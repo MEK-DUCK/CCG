@@ -8,6 +8,7 @@ export type CargoStatus =
   | 'Loading'
   | 'Completed Loading'
   | 'In-Road (Pending Discharge)'
+  | 'Discharge Complete'
   | 'Pending Nomination'
   | 'Pending TL Approval'
   | 'Nomination Released'
