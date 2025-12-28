@@ -51,7 +51,11 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         products_json = json.dumps([p.dict() for p in contract.products])
         
         # Calculate total quantity from products for backward compatibility with old schema
-        total_quantity = sum(p.total_quantity for p in contract.products)
+        # Support both fixed mode (total_quantity) and min/max mode (max_quantity)
+        total_quantity = sum(
+            (p.total_quantity or 0) if p.total_quantity is not None else (p.max_quantity or 0)
+            for p in contract.products
+        )
         
         has_remarks = _contracts_has_column(db, "remarks")
         has_additives_required = _contracts_has_column(db, "additives_required")
@@ -60,6 +64,11 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         authority_topups_json = None
         if contract.authority_topups:
             authority_topups_json = json.dumps([t.dict() for t in contract.authority_topups], default=str)
+        
+        # Handle authority amendments if provided
+        authority_amendments_json = None
+        if getattr(contract, 'authority_amendments', None):
+            authority_amendments_json = json.dumps([a.dict() for a in contract.authority_amendments], default=str)
         
         # Determine fiscal start month (default to contract start month if not provided)
         fiscal_start_month = getattr(contract, "fiscal_start_month", None)
@@ -82,6 +91,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             fiscal_start_month=fiscal_start_month,
             products=products_json,
             authority_topups=authority_topups_json,
+            authority_amendments=authority_amendments_json,
             discharge_ranges=getattr(contract, "discharge_ranges", None),
             **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
             fax_received=getattr(contract, "fax_received", None),
@@ -200,6 +210,12 @@ def read_contracts(
             except json.JSONDecodeError:
                 authority_topups = None
             
+            # Parse authority amendments
+            try:
+                authority_amendments = json.loads(contract.authority_amendments) if contract.authority_amendments else None
+            except json.JSONDecodeError:
+                authority_amendments = None
+            
             contract_dict = {
                 "id": contract.id,
                 "contract_id": contract.contract_id,
@@ -212,6 +228,7 @@ def read_contracts(
                 "fiscal_start_month": getattr(contract, "fiscal_start_month", 1),
                 "products": products,
                 "authority_topups": authority_topups,
+                "authority_amendments": authority_amendments,
                 "discharge_ranges": getattr(contract, "discharge_ranges", None),
                 **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
                 "fax_received": getattr(contract, "fax_received", None),
@@ -220,6 +237,7 @@ def read_contracts(
                 "concluded_memo_received_date": getattr(contract, "concluded_memo_received_date", None),
                 **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
                 "customer_id": contract.customer_id,
+                "version": getattr(contract, 'version', 1),
                 "created_at": contract.created_at,
                 "updated_at": contract.updated_at
             }
@@ -264,6 +282,14 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
             except json.JSONDecodeError:
                 authority_topups_list = None
         
+        # Parse authority amendments
+        authority_amendments_list = None
+        if contract.authority_amendments:
+            try:
+                authority_amendments_list = json.loads(contract.authority_amendments)
+            except json.JSONDecodeError:
+                authority_amendments_list = None
+        
         # Convert products JSON string to list for response
         contract_dict = {
             "id": contract.id,
@@ -277,6 +303,7 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
             "fiscal_start_month": getattr(contract, "fiscal_start_month", 1),
             "products": products_list,
             "authority_topups": authority_topups_list,
+            "authority_amendments": authority_amendments_list,
             "discharge_ranges": getattr(contract, "discharge_ranges", None),
             **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
             "fax_received": getattr(contract, "fax_received", None),
@@ -285,6 +312,7 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
             "concluded_memo_received_date": getattr(contract, "concluded_memo_received_date", None),
             **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
             "customer_id": contract.customer_id,
+            "version": getattr(contract, 'version', 1),
             "created_at": contract.created_at,
             "updated_at": contract.updated_at
         }
@@ -385,6 +413,27 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         else:
             update_data["authority_topups"] = None
     
+    # Handle authority_amendments conversion to JSON
+    if "authority_amendments" in update_data:
+        if update_data["authority_amendments"]:
+            # Validate that amendment products exist in contract products
+            contract_products = json.loads(db_contract.products) if db_contract.products else []
+            if "products" in update_data:
+                contract_products = json.loads(update_data["products"])
+            product_names = {p.get('name') for p in contract_products}
+            
+            for amendment in update_data["authority_amendments"]:
+                if amendment.get("product_name") not in product_names:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Amendment product '{amendment.get('product_name')}' not found in contract products: {product_names}"
+                    )
+            
+            # Convert to JSON, handling date serialization
+            update_data["authority_amendments"] = json.dumps(update_data["authority_amendments"], default=str)
+        else:
+            update_data["authority_amendments"] = None
+    
     # Verify customer if being updated
     if "customer_id" in update_data:
         customer = db.query(models.Customer).filter(models.Customer.id == update_data["customer_id"]).first()
@@ -411,11 +460,14 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         "contract_id": db_contract.contract_id,
         "contract_number": db_contract.contract_number,
         "contract_type": db_contract.contract_type,
+        "contract_category": getattr(db_contract, "contract_category", "TERM"),
         "payment_method": db_contract.payment_method,
         "start_period": db_contract.start_period,
         "end_period": db_contract.end_period,
+        "fiscal_start_month": getattr(db_contract, "fiscal_start_month", None),
         "products": json.loads(db_contract.products) if db_contract.products else [],
         "authority_topups": json.loads(db_contract.authority_topups) if db_contract.authority_topups else None,
+        "authority_amendments": json.loads(db_contract.authority_amendments) if db_contract.authority_amendments else None,
         "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
         **({"additives_required": getattr(db_contract, "additives_required", None)} if has_additives_required else {}),
         "fax_received": getattr(db_contract, "fax_received", None),

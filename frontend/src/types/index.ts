@@ -23,15 +23,36 @@ export interface Customer {
 // Per-year quantity for multi-year contracts
 export interface YearQuantity {
   year: number  // Contract year (1, 2, 3, etc.)
-  quantity: number  // Quantity for this year in KT
+  // Fixed quantity mode (legacy/simple)
+  quantity?: number  // Fixed quantity for this year in KT
   optional_quantity?: number  // Optional quantity for this year in KT
+  // Min/Max quantity mode (range-based)
+  min_quantity?: number  // Minimum quantity for this year in KT
+  max_quantity?: number  // Maximum quantity for this year in KT
 }
 
 export interface ContractProduct {
   name: string  // JET A-1, GASOIL, GASOIL 10PPM, HFO, LSFO
-  total_quantity: number  // Total quantity in KT (sum of all years, or single year for short contracts)
-  optional_quantity?: number  // Optional quantity in KT
+  // Fixed quantity mode (legacy/simple) - total_quantity = fixed amount, optional_quantity = extra allowed
+  total_quantity?: number  // Total fixed quantity in KT (sum of all years)
+  optional_quantity?: number  // Optional quantity in KT (on top of total)
+  // Min/Max quantity mode (range-based) - customer can lift anywhere between min and max
+  min_quantity?: number  // Minimum contract quantity in KT
+  max_quantity?: number  // Maximum contract quantity in KT
   year_quantities?: YearQuantity[]  // Per-year quantities for multi-year contracts
+}
+
+// Authority Amendment for mid-contract min/max adjustments
+export interface AuthorityAmendment {
+  product_name: string  // Must match a product in the contract
+  amendment_type: 'increase_max' | 'decrease_max' | 'increase_min' | 'decrease_min' | 'set_min' | 'set_max'
+  quantity_change?: number  // Amount to add/subtract
+  new_min_quantity?: number  // New absolute min value
+  new_max_quantity?: number  // New absolute max value
+  authority_reference: string  // Reference number
+  reason?: string  // Reason for the amendment
+  effective_date?: string  // When the amendment takes effect
+  year?: number  // Specific contract year affected (null = all years)
 }
 
 export interface Contract {
@@ -44,7 +65,8 @@ export interface Contract {
   start_period: string
   end_period: string
   fiscal_start_month?: number  // 1-12, when Q1 starts for this contract
-  products: ContractProduct[]  // List of products with quantities
+  products: ContractProduct[]  // List of products with quantities (fixed or min/max)
+  authority_amendments?: AuthorityAmendment[]  // Mid-contract min/max adjustments
   discharge_ranges?: string
   additives_required?: boolean
   fax_received?: boolean
@@ -55,6 +77,7 @@ export interface Contract {
   customer_id: number
   created_at: string
   updated_at?: string
+  version?: number  // For optimistic locking
 }
 
 export interface QuarterlyPlan {

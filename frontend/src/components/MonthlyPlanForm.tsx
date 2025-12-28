@@ -146,7 +146,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   }, [])
   
   const { otherUsers, isConnected, notifyEditing, notifyStoppedEditing } = usePresence(
-    'monthly-plan',
+    'contract-monthly-plans',  // Use contract-specific resource type since we're editing monthly plans for a contract
     contractId.toString(),
     {
       onDataChanged: handleDataChanged,
@@ -1279,7 +1279,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           
           {/* Quantity validation for each product */}
           {products.map((p: any) => {
-            const totalQuantity = (p.total_quantity || 0) + (p.optional_quantity || 0)
+            // Support both fixed quantity mode and min/max range mode
+            // Use != null to check for both null and undefined, and ensure value > 0
+            const isMinMaxMode = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
+            const minQuantity = p.min_quantity || 0
+            const maxQuantity = isMinMaxMode ? (p.max_quantity || 0) : (p.total_quantity || 0) + (p.optional_quantity || 0)
+            const totalQuantity = isMinMaxMode ? maxQuantity : (p.total_quantity || 0) + (p.optional_quantity || 0)
+            
             // Calculate total allocated across all months for this product
             const allocated = Object.values(monthEntries).reduce((sum, entries) => {
               return sum + entries.reduce((entrySum, entry) => {
@@ -1291,39 +1297,72 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 return entrySum
               }, 0)
             }, 0)
-            const remaining = totalQuantity - allocated
-            const isComplete = remaining === 0
-            const percentage = totalQuantity > 0 ? Math.round((allocated / totalQuantity) * 100) : 0
+            
+            // For min/max mode: valid when allocated is between min and max
+            // For fixed mode: valid when allocated equals total
+            const remaining = maxQuantity - allocated
+            const isComplete = isMinMaxMode 
+              ? (allocated >= minQuantity && allocated <= maxQuantity)
+              : remaining === 0
+            const isBelowMin = isMinMaxMode && allocated < minQuantity
+            const isAboveMax = allocated > maxQuantity
+            const percentage = maxQuantity > 0 ? Math.round((allocated / maxQuantity) * 100) : 0
+            const minPercentage = maxQuantity > 0 ? Math.round((minQuantity / maxQuantity) * 100) : 0
             
             return (
-              <Box key={p.name} sx={{ mt: 1.5, p: 1.5, bgcolor: isComplete ? 'rgba(34, 197, 94, 0.08)' : '#FFFFFF', borderRadius: 1, border: '1px solid #E2E8F0' }}>
+              <Box key={p.name} sx={{ mt: 1.5, p: 1.5, bgcolor: isComplete ? 'rgba(34, 197, 94, 0.08)' : isAboveMax ? 'rgba(239, 68, 68, 0.08)' : '#FFFFFF', borderRadius: 1, border: '1px solid #E2E8F0' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight="bold" sx={{ color: isComplete ? 'success.main' : 'text.primary' }}>
-                    {p.name} {isComplete && '✓'}
+                  <Typography variant="body2" fontWeight="bold" sx={{ color: isComplete ? 'success.main' : isAboveMax ? 'error.main' : 'text.primary' }}>
+                    {p.name} {isComplete && '✓'} {isAboveMax && '⚠'}
                   </Typography>
-                  <Typography variant="body2" sx={{ color: isComplete ? 'success.main' : 'text.secondary' }}>
+                  <Typography variant="body2" sx={{ color: isComplete ? 'success.main' : isAboveMax ? 'error.main' : 'text.secondary' }}>
                     {percentage}%
                   </Typography>
                 </Box>
-                <Box sx={{ mt: 0.5 }}>
+                <Box sx={{ mt: 0.5, position: 'relative' }}>
                   <Box sx={{ 
                     height: 6, 
                     bgcolor: '#E2E8F0', 
                     borderRadius: 1, 
-                    overflow: 'hidden' 
+                    overflow: 'hidden',
+                    position: 'relative'
                   }}>
+                    {/* Min threshold marker for min/max mode */}
+                    {isMinMaxMode && minQuantity > 0 && (
+                      <Box sx={{
+                        position: 'absolute',
+                        left: `${minPercentage}%`,
+                        top: 0,
+                        bottom: 0,
+                        width: 2,
+                        bgcolor: isBelowMin ? '#F59E0B' : '#94A3B8',
+                        zIndex: 2
+                      }} />
+                    )}
                     <Box sx={{ 
                       height: '100%', 
                       width: `${Math.min(percentage, 100)}%`, 
-                      bgcolor: isComplete ? '#22C55E' : percentage > 100 ? '#EF4444' : '#3B82F6',
+                      bgcolor: isComplete ? '#22C55E' : isAboveMax ? '#EF4444' : isBelowMin ? '#F59E0B' : '#3B82F6',
                       transition: 'width 0.3s ease'
                     }} />
                   </Box>
                 </Box>
-                <Typography variant="caption" sx={{ color: isComplete ? 'success.main' : 'text.secondary', display: 'block', mt: 0.5 }}>
-                  Contract: {totalQuantity.toLocaleString()} KT
-                  {p.optional_quantity > 0 && ` (incl. ${p.optional_quantity.toLocaleString()} KT optional)`}
-                  {' | '}Allocated: {allocated.toLocaleString()} KT | Remaining: {remaining.toLocaleString()} KT
+                <Typography variant="caption" sx={{ color: isComplete ? 'success.main' : isAboveMax ? 'error.main' : 'text.secondary', display: 'block', mt: 0.5 }}>
+                  {isMinMaxMode ? (
+                    <>
+                      Range: {minQuantity.toLocaleString()} - {maxQuantity.toLocaleString()} KT | 
+                      Allocated: {allocated.toLocaleString()} KT
+                      {isBelowMin && ` (${(minQuantity - allocated).toLocaleString()} KT below min)`}
+                      {isAboveMax && ` (${(allocated - maxQuantity).toLocaleString()} KT over max)`}
+                      {isComplete && ' ✓ Within range'}
+                    </>
+                  ) : (
+                    <>
+                      Contract: {totalQuantity.toLocaleString()} KT
+                      {p.optional_quantity > 0 && ` (incl. ${p.optional_quantity.toLocaleString()} KT optional)`}
+                      {' | '}Allocated: {allocated.toLocaleString()} KT | Remaining: {remaining.toLocaleString()} KT
+                    </>
+                  )}
                 </Typography>
               </Box>
             )

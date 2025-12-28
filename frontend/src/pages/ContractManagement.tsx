@@ -29,10 +29,13 @@ import {
   Paper,
   Snackbar,
   Alert,
+  Switch,
+  FormControlLabel,
+  Tooltip,
 } from '@mui/material'
 import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-material'
 import client, { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
-import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity } from '../types'
+import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity, AuthorityAmendment } from '../types'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
 import { useConflictHandler } from '../components/Presence'
@@ -83,9 +86,16 @@ export default function ContractManagement() {
   const [productOptions, setProductOptions] = useState<string[]>(DEFAULT_PRODUCT_OPTIONS)
   const [dataChangedNotification, setDataChangedNotification] = useState<string | null>(null)
 
-  // Conflict handler for optimistic locking
+  // Conflict handler for optimistic locking - loadData is defined below
   const { handleApiError, ConflictDialogComponent } = useConflictHandler({
-    onRefresh: () => loadContracts(),
+    onRefresh: async () => {
+      const [contractsRes, customersRes] = await Promise.all([
+        contractAPI.getAll(),
+        customerAPI.getAll()
+      ])
+      setContracts(contractsRes.data)
+      setCustomers(customersRes.data)
+    },
     entityName: 'Contract'
   })
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
@@ -115,6 +125,7 @@ export default function ContractManagement() {
     end_period: '',
     fiscal_start_month: '' as '' | number,  // When Q1 starts (1-12), auto-detected from start_period
     products: [] as ContractProduct[],  // Array of products with quantities
+    authority_amendments: [] as AuthorityAmendment[],  // Mid-contract min/max adjustments
     discharge_ranges: '',
     additives_required: '' as '' | 'yes' | 'no',
     fax_received: '' as '' | 'yes' | 'no',
@@ -208,6 +219,7 @@ export default function ContractManagement() {
         end_period: contract.end_period,
         fiscal_start_month: contract.fiscal_start_month || '',
         products: contract.products || [],
+        authority_amendments: contract.authority_amendments || [],
         discharge_ranges: contract.discharge_ranges || '',
         additives_required: contract.additives_required === true ? 'yes' : contract.additives_required === false ? 'no' : '',
         fax_received: contract.fax_received === true ? 'yes' : contract.fax_received === false ? 'no' : '',
@@ -227,6 +239,7 @@ export default function ContractManagement() {
         end_period: '',
         fiscal_start_month: '',
         products: [],
+        authority_amendments: [],
         discharge_ranges: '',
         additives_required: '',
         fax_received: '',
@@ -241,6 +254,13 @@ export default function ContractManagement() {
   // Calculate number of years for the current contract period
   const numContractYears = calculateContractYears(formData.start_period, formData.end_period)
   
+  // Determine if a product uses min/max mode (range-based) vs fixed mode
+  // Use != null to check for both null and undefined
+  const isMinMaxMode = (product: ContractProduct): boolean => {
+    return (product.min_quantity != null && product.min_quantity > 0) ||
+           (product.max_quantity != null && product.max_quantity > 0)
+  }
+
   const handleAddProduct = () => {
     // Initialize year_quantities for multi-year contracts
     const yearQuantities: YearQuantity[] = numContractYears > 1 
@@ -253,9 +273,53 @@ export default function ContractManagement() {
         name: '', 
         total_quantity: 0, 
         optional_quantity: 0,
+        min_quantity: undefined,
+        max_quantity: undefined,
         year_quantities: yearQuantities.length > 0 ? yearQuantities : undefined
       }]
     })
+  }
+  
+  // Toggle between fixed and min/max mode for a product
+  const handleToggleQuantityMode = (productIndex: number) => {
+    const updatedProducts = [...formData.products]
+    const product = updatedProducts[productIndex]
+    
+    if (isMinMaxMode(product)) {
+      // Switch to fixed mode - convert max to total_quantity
+      product.total_quantity = product.max_quantity || 0
+      product.optional_quantity = 0
+      product.min_quantity = undefined
+      product.max_quantity = undefined
+      // Update year_quantities if present
+      if (product.year_quantities) {
+        product.year_quantities = product.year_quantities.map(yq => ({
+          ...yq,
+          quantity: yq.max_quantity || yq.quantity || 0,
+          optional_quantity: 0,
+          min_quantity: undefined,
+          max_quantity: undefined
+        }))
+      }
+    } else {
+      // Switch to min/max mode - convert total_quantity to max
+      product.min_quantity = 0
+      product.max_quantity = (product.total_quantity || 0) + (product.optional_quantity || 0)
+      product.total_quantity = undefined
+      product.optional_quantity = undefined
+      // Update year_quantities if present
+      if (product.year_quantities) {
+        product.year_quantities = product.year_quantities.map(yq => ({
+          ...yq,
+          min_quantity: 0,
+          max_quantity: (yq.quantity || 0) + (yq.optional_quantity || 0),
+          quantity: undefined,
+          optional_quantity: undefined
+        }))
+      }
+    }
+    
+    setFormData({ ...formData, products: updatedProducts })
   }
 
   const handleRemoveProduct = (index: number) => {
@@ -271,18 +335,48 @@ export default function ContractManagement() {
     setFormData({ ...formData, products: updatedProducts })
   }
   
-  // Handle year-specific quantity changes
-  const handleYearQuantityChange = (productIndex: number, year: number, field: 'quantity' | 'optional_quantity', value: number) => {
+  // Authority Amendment handlers
+  const handleAddAmendment = () => {
+    const newAmendment: AuthorityAmendment = {
+      product_name: formData.products[0]?.name || '',
+      amendment_type: 'increase_max',
+      quantity_change: 0,
+      authority_reference: '',
+      reason: '',
+      effective_date: new Date().toISOString().split('T')[0],
+    }
+    setFormData({
+      ...formData,
+      authority_amendments: [...formData.authority_amendments, newAmendment]
+    })
+  }
+  
+  const handleRemoveAmendment = (index: number) => {
+    setFormData({
+      ...formData,
+      authority_amendments: formData.authority_amendments.filter((_, i) => i !== index)
+    })
+  }
+  
+  const handleAmendmentChange = (index: number, field: keyof AuthorityAmendment, value: any) => {
+    const updatedAmendments = [...formData.authority_amendments]
+    updatedAmendments[index] = { ...updatedAmendments[index], [field]: value }
+    setFormData({ ...formData, authority_amendments: updatedAmendments })
+  }
+  
+  // Handle year-specific quantity changes (supports both fixed and min/max modes)
+  const handleYearQuantityChange = (productIndex: number, year: number, field: 'quantity' | 'optional_quantity' | 'min_quantity' | 'max_quantity', value: number) => {
     const updatedProducts = [...formData.products]
     const product = updatedProducts[productIndex]
+    const useMinMax = isMinMaxMode(product)
     
     // Initialize year_quantities if needed
     if (!product.year_quantities) {
-      product.year_quantities = Array.from({ length: numContractYears }, (_, i) => ({ 
-        year: i + 1, 
-        quantity: 0, 
-        optional_quantity: 0 
-      }))
+      product.year_quantities = Array.from({ length: numContractYears }, (_, i) => 
+        useMinMax 
+          ? { year: i + 1, min_quantity: 0, max_quantity: 0 }
+          : { year: i + 1, quantity: 0, optional_quantity: 0 }
+      )
     }
     
     // Find and update the specific year
@@ -294,9 +388,14 @@ export default function ContractManagement() {
       }
     }
     
-    // Recalculate total_quantity from year_quantities
-    product.total_quantity = product.year_quantities.reduce((sum, yq) => sum + (yq.quantity || 0), 0)
-    product.optional_quantity = product.year_quantities.reduce((sum, yq) => sum + (yq.optional_quantity || 0), 0)
+    // Recalculate totals from year_quantities
+    if (useMinMax) {
+      product.min_quantity = product.year_quantities.reduce((sum, yq) => sum + (yq.min_quantity || 0), 0)
+      product.max_quantity = product.year_quantities.reduce((sum, yq) => sum + (yq.max_quantity || 0), 0)
+    } else {
+      product.total_quantity = product.year_quantities.reduce((sum, yq) => sum + (yq.quantity || 0), 0)
+      product.optional_quantity = product.year_quantities.reduce((sum, yq) => sum + (yq.optional_quantity || 0), 0)
+    }
     
     setFormData({ ...formData, products: updatedProducts })
   }
@@ -342,6 +441,7 @@ export default function ContractManagement() {
       end_period: '',
       fiscal_start_month: '',
       products: [],
+      authority_amendments: [],
       discharge_ranges: '',
       additives_required: '',
       fax_received: '',
@@ -372,9 +472,22 @@ export default function ContractManagement() {
           alert(`Invalid product. Must be one of: ${productOptions.join(', ')}`)
           return
         }
-        if (!product.total_quantity || product.total_quantity <= 0) {
-          alert(`Total quantity must be greater than 0 for ${product.name}`)
-          return
+        // Validate quantities based on mode
+        const useMinMax = isMinMaxMode(product)
+        if (useMinMax) {
+          if (!product.max_quantity || product.max_quantity <= 0) {
+            alert(`Maximum quantity must be greater than 0 for ${product.name}`)
+            return
+          }
+          if (product.min_quantity !== undefined && product.min_quantity > product.max_quantity) {
+            alert(`Minimum quantity cannot exceed maximum quantity for ${product.name}`)
+            return
+          }
+        } else {
+          if (!product.total_quantity || product.total_quantity <= 0) {
+            alert(`Total quantity must be greater than 0 for ${product.name}`)
+            return
+          }
         }
       }
 
@@ -387,18 +500,25 @@ export default function ContractManagement() {
         start_period: formData.start_period,
         end_period: formData.end_period,
         fiscal_start_month: formData.fiscal_start_month || undefined,
-        products: formData.products.map(p => ({
-          name: p.name,
-          total_quantity: p.total_quantity,
-          optional_quantity: p.optional_quantity || 0,
-          year_quantities: p.year_quantities && p.year_quantities.length > 0 ? p.year_quantities : undefined
-        })),
+        products: formData.products.map(p => {
+          const useMinMax = isMinMaxMode(p)
+          return {
+            name: p.name,
+            // Include both modes - backend will use whichever is set
+            total_quantity: useMinMax ? undefined : p.total_quantity,
+            optional_quantity: useMinMax ? undefined : (p.optional_quantity || 0),
+            min_quantity: useMinMax ? (p.min_quantity || 0) : undefined,
+            max_quantity: useMinMax ? p.max_quantity : undefined,
+            year_quantities: p.year_quantities && p.year_quantities.length > 0 ? p.year_quantities : undefined
+          }
+        }),
         discharge_ranges: formData.discharge_ranges || undefined,
         additives_required: jetA1Selected ? (formData.additives_required === '' ? undefined : formData.additives_required === 'yes') : undefined,
         fax_received: formData.fax_received === '' ? undefined : formData.fax_received === 'yes',
         fax_received_date: formData.fax_received === 'yes' && formData.fax_received_date ? formData.fax_received_date : undefined,
         concluded_memo_received: formData.concluded_memo_received === '' ? undefined : formData.concluded_memo_received === 'yes',
         concluded_memo_received_date: formData.concluded_memo_received === 'yes' && formData.concluded_memo_received_date ? formData.concluded_memo_received_date : undefined,
+        authority_amendments: formData.authority_amendments.length > 0 ? formData.authority_amendments : undefined,
       }
       
       // Include version for optimistic locking when updating
@@ -828,11 +948,37 @@ export default function ContractManagement() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8125rem' }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                         {contract.products && Array.isArray(contract.products) && contract.products.length > 0
-                          ? contract.products.map((p: any) => (typeof p === 'object' ? p.name : p)).join(', ')
-                          : '—'}
-                      </Typography>
+                          ? contract.products.map((p: any, idx: number) => {
+                              // Check if min/max mode - must have actual values (not null/undefined)
+                              const isMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
+                              const qtyDisplay = isMinMax 
+                                ? `${(p.min_quantity || 0).toLocaleString()} - ${(p.max_quantity || 0).toLocaleString()} KT`
+                                : `${((p.total_quantity || 0) + (p.optional_quantity || 0)).toLocaleString()} KT`
+                              return (
+                                <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8125rem' }}>
+                                    {typeof p === 'object' ? p.name : p}: {typeof p === 'object' ? qtyDisplay : ''}
+                                  </Typography>
+                                  {isMinMax && (
+                                    <Chip 
+                                      label="Range" 
+                                      size="small" 
+                                      sx={{ 
+                                        height: 16, 
+                                        fontSize: '0.625rem',
+                                        bgcolor: '#FAF5FF', 
+                                        color: '#7C3AED',
+                                        '& .MuiChip-label': { px: 0.5 }
+                                      }} 
+                                    />
+                                  )}
+                                </Box>
+                              )
+                            })
+                          : <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>}
+                      </Box>
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ color: '#64748B', fontSize: '0.8125rem' }}>
@@ -1241,27 +1387,70 @@ export default function ContractManagement() {
                     {/* Single year contract - show simple quantity inputs */}
                     {numContractYears === 1 && (
                       <>
-                        <Grid item xs={12} md={4}>
-                          <TextField
-                            label="Total Quantity (KT)"
-                            type="number"
-                            value={product.total_quantity}
-                            onChange={(e) => handleProductChange(index, 'total_quantity', parseFloat(e.target.value) || 0)}
-                            required
-                            fullWidth
-                            inputProps={{ min: 0, step: 0.01 }}
-                          />
+                        <Grid item xs={12} md={2}>
+                          <Tooltip title="Fixed: Set total + optional quantity. Min/Max: Set a range the customer can lift within.">
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  checked={isMinMaxMode(product)}
+                                  onChange={() => handleToggleQuantityMode(index)}
+                                  size="small"
+                                />
+                              }
+                              label={isMinMaxMode(product) ? "Min/Max" : "Fixed"}
+                              sx={{ mt: 1 }}
+                            />
+                          </Tooltip>
                         </Grid>
-                        <Grid item xs={12} md={4}>
-                          <TextField
-                            label="Optional Quantity (KT)"
-                            type="number"
-                            value={product.optional_quantity || 0}
-                            onChange={(e) => handleProductChange(index, 'optional_quantity', parseFloat(e.target.value) || 0)}
-                            fullWidth
-                            inputProps={{ min: 0, step: 0.01 }}
-                          />
-                        </Grid>
+                        {isMinMaxMode(product) ? (
+                          <>
+                            <Grid item xs={12} md={3}>
+                              <TextField
+                                label="Minimum Quantity (KT)"
+                                type="number"
+                                value={product.min_quantity || 0}
+                                onChange={(e) => handleProductChange(index, 'min_quantity', parseFloat(e.target.value) || 0)}
+                                fullWidth
+                                inputProps={{ min: 0, step: 0.01 }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                              <TextField
+                                label="Maximum Quantity (KT)"
+                                type="number"
+                                value={product.max_quantity || 0}
+                                onChange={(e) => handleProductChange(index, 'max_quantity', parseFloat(e.target.value) || 0)}
+                                required
+                                fullWidth
+                                inputProps={{ min: 0, step: 0.01 }}
+                              />
+                            </Grid>
+                          </>
+                        ) : (
+                          <>
+                            <Grid item xs={12} md={3}>
+                              <TextField
+                                label="Total Quantity (KT)"
+                                type="number"
+                                value={product.total_quantity || 0}
+                                onChange={(e) => handleProductChange(index, 'total_quantity', parseFloat(e.target.value) || 0)}
+                                required
+                                fullWidth
+                                inputProps={{ min: 0, step: 0.01 }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                              <TextField
+                                label="Optional Quantity (KT)"
+                                type="number"
+                                value={product.optional_quantity || 0}
+                                onChange={(e) => handleProductChange(index, 'optional_quantity', parseFloat(e.target.value) || 0)}
+                                fullWidth
+                                inputProps={{ min: 0, step: 0.01 }}
+                              />
+                            </Grid>
+                          </>
+                        )}
                       </>
                     )}
                   </Grid>
@@ -1274,16 +1463,28 @@ export default function ContractManagement() {
                       borderRadius: 1, 
                       border: '1px solid #E2E8F0' 
                     }}>
-                      <Typography variant="caption" sx={{ 
-                        color: '#64748B', 
-                        fontWeight: 600, 
-                        textTransform: 'uppercase', 
-                        letterSpacing: '0.5px',
-                        display: 'block',
-                        mb: 2
-                      }}>
-                        Quantities per Year
-                      </Typography>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="caption" sx={{ 
+                          color: '#64748B', 
+                          fontWeight: 600, 
+                          textTransform: 'uppercase', 
+                          letterSpacing: '0.5px',
+                        }}>
+                          Quantities per Year
+                        </Typography>
+                        <Tooltip title="Fixed: Set total + optional quantity. Min/Max: Set a range the customer can lift within.">
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={isMinMaxMode(product)}
+                                onChange={() => handleToggleQuantityMode(index)}
+                                size="small"
+                              />
+                            }
+                            label={isMinMaxMode(product) ? "Min/Max Mode" : "Fixed Mode"}
+                          />
+                        </Tooltip>
+                      </Box>
                       
                       <Grid container spacing={2}>
                         {Array.from({ length: numContractYears }, (_, yearIndex) => {
@@ -1307,25 +1508,51 @@ export default function ContractManagement() {
                                 }}>
                                   Year {year} ({calendarYear})
                                 </Typography>
-                                <TextField
-                                  label="Quantity (KT)"
-                                  type="number"
-                                  size="small"
-                                  value={yearQty?.quantity || 0}
-                                  onChange={(e) => handleYearQuantityChange(index, year, 'quantity', parseFloat(e.target.value) || 0)}
-                                  fullWidth
-                                  inputProps={{ min: 0, step: 0.01 }}
-                                  sx={{ mb: 1 }}
-                                />
-                                <TextField
-                                  label="Optional (KT)"
-                                  type="number"
-                                  size="small"
-                                  value={yearQty?.optional_quantity || 0}
-                                  onChange={(e) => handleYearQuantityChange(index, year, 'optional_quantity', parseFloat(e.target.value) || 0)}
-                                  fullWidth
-                                  inputProps={{ min: 0, step: 0.01 }}
-                                />
+                                {isMinMaxMode(product) ? (
+                                  <>
+                                    <TextField
+                                      label="Min Qty (KT)"
+                                      type="number"
+                                      size="small"
+                                      value={yearQty?.min_quantity || 0}
+                                      onChange={(e) => handleYearQuantityChange(index, year, 'min_quantity', parseFloat(e.target.value) || 0)}
+                                      fullWidth
+                                      inputProps={{ min: 0, step: 0.01 }}
+                                      sx={{ mb: 1 }}
+                                    />
+                                    <TextField
+                                      label="Max Qty (KT)"
+                                      type="number"
+                                      size="small"
+                                      value={yearQty?.max_quantity || 0}
+                                      onChange={(e) => handleYearQuantityChange(index, year, 'max_quantity', parseFloat(e.target.value) || 0)}
+                                      fullWidth
+                                      inputProps={{ min: 0, step: 0.01 }}
+                                    />
+                                  </>
+                                ) : (
+                                  <>
+                                    <TextField
+                                      label="Quantity (KT)"
+                                      type="number"
+                                      size="small"
+                                      value={yearQty?.quantity || 0}
+                                      onChange={(e) => handleYearQuantityChange(index, year, 'quantity', parseFloat(e.target.value) || 0)}
+                                      fullWidth
+                                      inputProps={{ min: 0, step: 0.01 }}
+                                      sx={{ mb: 1 }}
+                                    />
+                                    <TextField
+                                      label="Optional (KT)"
+                                      type="number"
+                                      size="small"
+                                      value={yearQty?.optional_quantity || 0}
+                                      onChange={(e) => handleYearQuantityChange(index, year, 'optional_quantity', parseFloat(e.target.value) || 0)}
+                                      fullWidth
+                                      inputProps={{ min: 0, step: 0.01 }}
+                                    />
+                                  </>
+                                )}
                               </Box>
                             </Grid>
                           )
@@ -1340,13 +1567,26 @@ export default function ContractManagement() {
                         display: 'flex',
                         gap: 3
                       }}>
-                        <Typography variant="body2" sx={{ color: '#64748B' }}>
-                          <strong>Total:</strong> {product.total_quantity.toLocaleString()} KT
-                        </Typography>
-                        {(product.optional_quantity || 0) > 0 && (
-                          <Typography variant="body2" sx={{ color: '#64748B' }}>
-                            <strong>Optional:</strong> {(product.optional_quantity || 0).toLocaleString()} KT
-                          </Typography>
+                        {isMinMaxMode(product) ? (
+                          <>
+                            <Typography variant="body2" sx={{ color: '#64748B' }}>
+                              <strong>Min:</strong> {(product.min_quantity || 0).toLocaleString()} KT
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: '#64748B' }}>
+                              <strong>Max:</strong> {(product.max_quantity || 0).toLocaleString()} KT
+                            </Typography>
+                          </>
+                        ) : (
+                          <>
+                            <Typography variant="body2" sx={{ color: '#64748B' }}>
+                              <strong>Total:</strong> {(product.total_quantity || 0).toLocaleString()} KT
+                            </Typography>
+                            {(product.optional_quantity || 0) > 0 && (
+                              <Typography variant="body2" sx={{ color: '#64748B' }}>
+                                <strong>Optional:</strong> {(product.optional_quantity || 0).toLocaleString()} KT
+                              </Typography>
+                            )}
+                          </>
                         )}
                       </Box>
                     </Box>
@@ -1358,6 +1598,201 @@ export default function ContractManagement() {
                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
                   No products added. Click "Add Product" to add products to this contract.
                 </Typography>
+              )}
+
+              {/* Authority Amendments Section - Only show for existing contracts with min/max products */}
+              {editingContract && formData.products.some(p => isMinMaxMode(p)) && (
+                <Box sx={{ mt: 3 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="subtitle1" fontWeight="bold" sx={{ color: '#7C3AED' }}>
+                      Authority Amendments
+                    </Typography>
+                    <Button
+                      size="small"
+                      startIcon={<Add />}
+                      onClick={handleAddAmendment}
+                      sx={{ color: '#7C3AED' }}
+                    >
+                      Add Amendment
+                    </Button>
+                  </Box>
+                  
+                  {formData.authority_amendments.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
+                      No amendments recorded. Use amendments to adjust min/max quantities mid-contract.
+                    </Typography>
+                  ) : (
+                    formData.authority_amendments.map((amendment, index) => (
+                      <Box 
+                        key={index} 
+                        sx={{ 
+                          mb: 2, 
+                          p: 2, 
+                          border: '1px solid #E9D5FF', 
+                          borderRadius: 2,
+                          bgcolor: '#FAF5FF'
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                          <Typography variant="caption" sx={{ color: '#7C3AED', fontWeight: 600 }}>
+                            Amendment #{index + 1}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleRemoveAmendment(index)}
+                            sx={{ color: '#EF4444' }}
+                          >
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Box>
+                        
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              label="Product"
+                              value={amendment.product_name}
+                              onChange={(e) => handleAmendmentChange(index, 'product_name', e.target.value)}
+                              select
+                              fullWidth
+                              size="small"
+                              required
+                            >
+                              {formData.products.filter(p => isMinMaxMode(p)).map((p) => (
+                                <MenuItem key={p.name} value={p.name}>
+                                  {p.name}
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                          </Grid>
+                          
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              label="Amendment Type"
+                              value={amendment.amendment_type}
+                              onChange={(e) => handleAmendmentChange(index, 'amendment_type', e.target.value)}
+                              select
+                              fullWidth
+                              size="small"
+                              required
+                            >
+                              <MenuItem value="increase_max">Increase Maximum</MenuItem>
+                              <MenuItem value="decrease_max">Decrease Maximum</MenuItem>
+                              <MenuItem value="increase_min">Increase Minimum</MenuItem>
+                              <MenuItem value="decrease_min">Decrease Minimum</MenuItem>
+                              <MenuItem value="set_min">Set New Minimum</MenuItem>
+                              <MenuItem value="set_max">Set New Maximum</MenuItem>
+                            </TextField>
+                          </Grid>
+                          
+                          {['increase_max', 'decrease_max', 'increase_min', 'decrease_min'].includes(amendment.amendment_type) && (
+                            <Grid item xs={12} sm={6}>
+                              <TextField
+                                label="Quantity Change (KT)"
+                                type="number"
+                                value={amendment.quantity_change || ''}
+                                onChange={(e) => handleAmendmentChange(index, 'quantity_change', parseFloat(e.target.value) || 0)}
+                                fullWidth
+                                size="small"
+                                required
+                                inputProps={{ min: 0, step: 0.01 }}
+                              />
+                            </Grid>
+                          )}
+                          
+                          {amendment.amendment_type === 'set_min' && (
+                            <Grid item xs={12} sm={6}>
+                              <TextField
+                                label="New Minimum Quantity (KT)"
+                                type="number"
+                                value={amendment.new_min_quantity || ''}
+                                onChange={(e) => handleAmendmentChange(index, 'new_min_quantity', parseFloat(e.target.value) || 0)}
+                                fullWidth
+                                size="small"
+                                required
+                                inputProps={{ min: 0, step: 0.01 }}
+                              />
+                            </Grid>
+                          )}
+                          
+                          {amendment.amendment_type === 'set_max' && (
+                            <Grid item xs={12} sm={6}>
+                              <TextField
+                                label="New Maximum Quantity (KT)"
+                                type="number"
+                                value={amendment.new_max_quantity || ''}
+                                onChange={(e) => handleAmendmentChange(index, 'new_max_quantity', parseFloat(e.target.value) || 0)}
+                                fullWidth
+                                size="small"
+                                required
+                                inputProps={{ min: 0, step: 0.01 }}
+                              />
+                            </Grid>
+                          )}
+                          
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              label="Authority Reference"
+                              value={amendment.authority_reference}
+                              onChange={(e) => handleAmendmentChange(index, 'authority_reference', e.target.value)}
+                              fullWidth
+                              size="small"
+                              required
+                              placeholder="e.g., AUTH-2024-001"
+                            />
+                          </Grid>
+                          
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              label="Effective Date"
+                              type="date"
+                              value={amendment.effective_date}
+                              onChange={(e) => handleAmendmentChange(index, 'effective_date', e.target.value)}
+                              fullWidth
+                              size="small"
+                              required
+                              InputLabelProps={{ shrink: true }}
+                            />
+                          </Grid>
+                          
+                          {numContractYears > 1 && (
+                            <Grid item xs={12} sm={6}>
+                              <TextField
+                                label="Contract Year (optional)"
+                                value={amendment.year || ''}
+                                onChange={(e) => handleAmendmentChange(index, 'year', e.target.value ? parseInt(e.target.value) : undefined)}
+                                select
+                                fullWidth
+                                size="small"
+                              >
+                                <MenuItem value="">
+                                  <em>All Years</em>
+                                </MenuItem>
+                                {Array.from({ length: numContractYears }, (_, i) => (
+                                  <MenuItem key={i + 1} value={i + 1}>
+                                    Year {i + 1}
+                                  </MenuItem>
+                                ))}
+                              </TextField>
+                            </Grid>
+                          )}
+                          
+                          <Grid item xs={12}>
+                            <TextField
+                              label="Reason / Notes"
+                              value={amendment.reason || ''}
+                              onChange={(e) => handleAmendmentChange(index, 'reason', e.target.value)}
+                              fullWidth
+                              size="small"
+                              multiline
+                              rows={2}
+                              placeholder="Optional: Explain the reason for this amendment"
+                            />
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    ))
+                  )}
+                </Box>
               )}
 
               {jetA1Selected && (

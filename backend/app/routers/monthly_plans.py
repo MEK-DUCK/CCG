@@ -65,14 +65,26 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         if not contract:
             raise HTTPException(status_code=404, detail=f"Contract {plan.contract_id} not found")
         
-        # For SPOT contracts, validate against contract total quantity from products JSON
-        # Products is a JSON array: [{"name": "JET A-1", "total_quantity": 1000, "optional_quantity": 200}]
+        # For SPOT contracts, validate against contract quantity from products JSON
+        # Products support both fixed mode and min/max mode:
+        # Fixed: {"name": "JET A-1", "total_quantity": 1000, "optional_quantity": 200}
+        # Min/Max: {"name": "JET A-1", "min_quantity": 800, "max_quantity": 1200}
         products = json.loads(contract.products) if contract.products else []
         
-        # Sum up total_quantity and optional_quantity from all products
-        contract_total = sum(p.get('total_quantity', 0) or 0 for p in products)
-        optional_quantity = sum(p.get('optional_quantity', 0) or 0 for p in products)
-        max_allowed = contract_total + optional_quantity
+        # Calculate max allowed quantity - supports both fixed and min/max modes
+        max_allowed = 0
+        min_required = 0
+        is_min_max_mode = False
+        
+        for p in products:
+            if p.get('min_quantity') is not None or p.get('max_quantity') is not None:
+                # Min/Max mode
+                is_min_max_mode = True
+                max_allowed += p.get('max_quantity', 0) or 0
+                min_required += p.get('min_quantity', 0) or 0
+            else:
+                # Fixed quantity mode
+                max_allowed += (p.get('total_quantity', 0) or 0) + (p.get('optional_quantity', 0) or 0)
         
         # Get existing monthly plans for this SPOT contract
         existing_monthly_plans = db.query(models.MonthlyPlan).filter(
@@ -84,10 +96,16 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         remaining_quantity = max_allowed - used_quantity
         
         if plan.month_quantity > remaining_quantity:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Monthly quantity ({plan.month_quantity:,.0f} KT) exceeds remaining contract quantity ({remaining_quantity:,.0f} KT). Contract total: {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
-            )
+            if is_min_max_mode:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Monthly quantity ({plan.month_quantity:,.0f} KT) exceeds remaining contract max ({remaining_quantity:,.0f} KT). Contract range: {min_required:,.0f} - {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
+                )
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Monthly quantity ({plan.month_quantity:,.0f} KT) exceeds remaining contract quantity ({remaining_quantity:,.0f} KT). Contract total: {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
+                )
         
         db_plan = models.MonthlyPlan(
             month=plan.month,
@@ -332,13 +350,26 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
     is_spot_contract = db_plan.quarterly_plan_id is None and db_plan.contract_id is not None
     
     if is_spot_contract:
-        # SPOT contract - validate against contract total from products JSON
+        # SPOT contract - validate against contract quantity from products JSON
+        # Supports both fixed mode and min/max mode
         contract = db.query(models.Contract).filter(models.Contract.id == db_plan.contract_id).first()
         if contract:
             products = json.loads(contract.products) if contract.products else []
-            contract_total = sum(p.get('total_quantity', 0) or 0 for p in products)
-            optional_quantity = sum(p.get('optional_quantity', 0) or 0 for p in products)
-            max_allowed = contract_total + optional_quantity
+            
+            # Calculate max allowed quantity - supports both fixed and min/max modes
+            max_allowed = 0
+            min_required = 0
+            is_min_max_mode = False
+            
+            for p in products:
+                if p.get('min_quantity') is not None or p.get('max_quantity') is not None:
+                    # Min/Max mode
+                    is_min_max_mode = True
+                    max_allowed += p.get('max_quantity', 0) or 0
+                    min_required += p.get('min_quantity', 0) or 0
+                else:
+                    # Fixed quantity mode
+                    max_allowed += (p.get('total_quantity', 0) or 0) + (p.get('optional_quantity', 0) or 0)
             
             # Get existing monthly plans for this SPOT contract (excluding current plan)
             existing_monthly_plans = db.query(models.MonthlyPlan).filter(
@@ -351,10 +382,16 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
             remaining_quantity = max_allowed - used_quantity
             
             if new_month_quantity > remaining_quantity:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Monthly quantity ({new_month_quantity:,.0f} KT) exceeds remaining contract quantity ({remaining_quantity:,.0f} KT). Contract total: {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
-                )
+                if is_min_max_mode:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Monthly quantity ({new_month_quantity:,.0f} KT) exceeds remaining contract max ({remaining_quantity:,.0f} KT). Contract range: {min_required:,.0f} - {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Monthly quantity ({new_month_quantity:,.0f} KT) exceeds remaining contract quantity ({remaining_quantity:,.0f} KT). Contract total: {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
+                    )
     else:
         # Term contract - validate against quarterly plan
         quarterly_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == db_plan.quarterly_plan_id).first()

@@ -108,16 +108,58 @@ class Customer(CustomerBase):
 # Per-year quantity for multi-year contracts
 class YearQuantity(BaseModel):
     year: int = Field(..., ge=1)  # Contract year (1, 2, 3, etc.)
-    quantity: float = Field(..., ge=0)  # Quantity for this year in KT
+    # Fixed quantity mode (legacy/simple)
+    quantity: Optional[float] = Field(None, ge=0)  # Fixed quantity for this year in KT
     optional_quantity: Optional[float] = Field(0, ge=0)  # Optional quantity for this year in KT
+    # Min/Max quantity mode (range-based)
+    min_quantity: Optional[float] = Field(None, ge=0)  # Minimum quantity for this year in KT
+    max_quantity: Optional[float] = Field(None, ge=0)  # Maximum quantity for this year in KT
 
 
 # Contract Product Schema (for products array in contract)
 class ContractProduct(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)  # JET A-1, GASOIL, GASOIL 10PPM, HFO, LSFO
-    total_quantity: float = Field(..., ge=0)  # Total quantity in KT (sum of all years)
-    optional_quantity: Optional[float] = Field(0, ge=0)  # Optional quantity in KT
+    # Fixed quantity mode (legacy/simple) - total_quantity = fixed amount, optional_quantity = extra allowed
+    total_quantity: Optional[float] = Field(None, ge=0)  # Total fixed quantity in KT (sum of all years)
+    optional_quantity: Optional[float] = Field(0, ge=0)  # Optional quantity in KT (on top of total)
+    # Min/Max quantity mode (range-based) - customer can lift anywhere between min and max
+    min_quantity: Optional[float] = Field(None, ge=0)  # Minimum contract quantity in KT
+    max_quantity: Optional[float] = Field(None, ge=0)  # Maximum contract quantity in KT
+    # Per-year breakdown (for multi-year contracts)
     year_quantities: Optional[List[YearQuantity]] = None  # Per-year quantities for multi-year contracts
+    
+    @model_validator(mode="after")
+    def _validate_quantity_mode(self):
+        """Ensure either fixed or min/max mode is used, not both mixed incorrectly."""
+        has_fixed = self.total_quantity is not None and self.total_quantity > 0
+        has_minmax = (self.min_quantity is not None and self.min_quantity > 0) or \
+                     (self.max_quantity is not None and self.max_quantity > 0)
+        
+        # Allow both for backward compatibility - fixed mode takes precedence if both set
+        # If min/max mode, validate min <= max
+        if has_minmax and self.min_quantity is not None and self.max_quantity is not None:
+            if self.min_quantity > self.max_quantity:
+                raise ValueError(f"min_quantity ({self.min_quantity}) cannot be greater than max_quantity ({self.max_quantity})")
+        
+        return self
+
+
+# Authority Amendment Schema (for mid-contract min/max adjustments)
+class AuthorityAmendment(BaseModel):
+    """
+    Represents an authorized amendment to contract quantities mid-contract.
+    Used when customer receives authority to adjust min/max quantities.
+    """
+    product_name: str = Field(..., min_length=1, max_length=64)  # Must match a product in the contract
+    amendment_type: str = Field(..., pattern="^(increase_max|decrease_max|increase_min|decrease_min|set_min|set_max)$")
+    # Either specify the change amount OR the new absolute value
+    quantity_change: Optional[float] = Field(None)  # Amount to add/subtract (positive value)
+    new_min_quantity: Optional[float] = Field(None, ge=0)  # New absolute min value (if set_min)
+    new_max_quantity: Optional[float] = Field(None, ge=0)  # New absolute max value (if set_max)
+    authority_reference: str = Field(..., min_length=1, max_length=100)  # Reference number
+    reason: Optional[str] = Field(None, max_length=500)  # Reason for the amendment
+    effective_date: Optional[str] = None  # When the amendment takes effect
+    year: Optional[int] = Field(None, ge=1)  # Specific contract year affected (None = all years)
 
 
 # Authority Top-Up Schema (for authorized quantity increases beyond contract)
@@ -156,8 +198,9 @@ class ContractBase(BaseModel):
     start_period: date
     end_period: date
     fiscal_start_month: Optional[int] = Field(1, ge=1, le=12)  # When Q1 starts (1=Jan, 7=Jul, etc.)
-    products: List[ContractProduct]  # List of products with quantities
-    authority_topups: Optional[List[AuthorityTopUp]] = None  # Authorized top-ups beyond contract
+    products: List[ContractProduct]  # List of products with quantities (fixed or min/max)
+    authority_topups: Optional[List[AuthorityTopUp]] = None  # Authorized top-ups beyond contract (legacy)
+    authority_amendments: Optional[List[AuthorityAmendment]] = None  # Mid-contract min/max adjustments
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
     additives_required: Optional[bool] = None
     fax_received: Optional[bool] = None
@@ -204,7 +247,8 @@ class ContractUpdate(BaseModel):
     end_period: Optional[date] = None
     fiscal_start_month: Optional[int] = Field(None, ge=1, le=12)
     products: Optional[List[ContractProduct]] = None
-    authority_topups: Optional[List[AuthorityTopUp]] = None  # Can add/update top-ups
+    authority_topups: Optional[List[AuthorityTopUp]] = None  # Can add/update top-ups (legacy)
+    authority_amendments: Optional[List[AuthorityAmendment]] = None  # Mid-contract min/max adjustments
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
     additives_required: Optional[bool] = None
     fax_received: Optional[bool] = None
