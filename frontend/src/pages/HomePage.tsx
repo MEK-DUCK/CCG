@@ -1505,20 +1505,20 @@ export default function HomePage() {
               // Create the duplicate cargo
               const duplicateResponse = await cargoAPI.create(duplicatePayload)
               
-              // Immediately update it to "In-Road (Pending Discharge)" status
+              // Immediately update it to "Completed Loading" status (which shows in In-Road CIF tab for CIF cargos)
               if (duplicateResponse.data && duplicateResponse.data.id) {
                 const duplicateId = duplicateResponse.data.id
                 
                 // Optimistically add to In-Road CIF list
                 const duplicateCargo: Cargo = {
                   ...duplicateResponse.data,
-                  status: 'In-Road (Pending Discharge)' as CargoStatus,
+                  status: 'Completed Loading' as CargoStatus,
                 }
                 setInRoadCIF(prev => [...prev, duplicateCargo])
                 
                 // Update status via API (include version for optimistic locking)
                 await cargoAPI.update(duplicateId, {
-                  status: 'In-Road (Pending Discharge)',
+                  status: 'Completed Loading',
                   version: duplicateResponse.data.version || 1,
                 })
                 
@@ -1769,7 +1769,6 @@ export default function HomePage() {
       'Pending TL Approval': 'error', // Will use custom red styling instead
       'Nomination Released': 'success', // Will use custom light green styling instead
       'Completed Loading': 'success',
-      'In-Road (Pending Discharge)': 'secondary',
     }
     return colors[status] || 'default'
   }
@@ -1838,17 +1837,6 @@ export default function HomePage() {
           color: '#1b5e20',
           '&:hover': {
             backgroundColor: '#a5d6a7',
-          }
-        }
-      }
-    }
-    if (status === 'In-Road (Pending Discharge)') {
-      return {
-        sx: {
-          backgroundColor: '#e0e0e0', // Light grey
-          color: '#424242',
-          '&:hover': {
-            backgroundColor: '#d5d5d5',
           }
         }
       }
@@ -3491,7 +3479,6 @@ export default function HomePage() {
                   <MenuItem value="Planned" sx={{ fontSize: '0.875rem' }}>Planned</MenuItem>
                   <MenuItem value="Loading" sx={{ fontSize: '0.875rem' }}>Loading</MenuItem>
                   <MenuItem value="Completed Loading" sx={{ fontSize: '0.875rem' }}>Completed Loading</MenuItem>
-                  <MenuItem value="In-Road (Pending Discharge)" sx={{ fontSize: '0.875rem' }}>In-Road (Pending Discharge)</MenuItem>
                   <MenuItem value="Not Created" sx={{ fontSize: '0.875rem' }}>Not Created</MenuItem>
                 </Select>
               </FormControl>
@@ -3965,13 +3952,13 @@ export default function HomePage() {
     <Box>
         {/* Header with notifications */}
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2 }}>
-          {laycanAlerts.totalCount > 0 && (
-            <NotificationBadge
-              alerts={laycanAlerts.alerts}
-              criticalCount={laycanAlerts.criticalCount}
-              warningCount={laycanAlerts.warningCount}
-              infoCount={laycanAlerts.infoCount}
-            />
+        {laycanAlerts.totalCount > 0 && (
+          <NotificationBadge
+            alerts={laycanAlerts.alerts}
+            criticalCount={laycanAlerts.criticalCount}
+            warningCount={laycanAlerts.warningCount}
+            infoCount={laycanAlerts.infoCount}
+          />
           )}
         </Box>
 
@@ -4972,8 +4959,8 @@ export default function HomePage() {
                       sx={isCIFFieldsLocked ? disabledStyle : {}}
                     />
                   </Grid>
-                  {/* Show 5-ND and ND Delivery Window fields for In-Road CIF cargos and Discharge Complete cargos */}
-                  {editingCargo && (editingCargo.status === 'In-Road (Pending Discharge)' || editingCargo.status === 'Discharge Complete' || editingCargo.status === 'Completed Loading') && (
+                  {/* Show 5-ND and ND Delivery Window fields for CIF cargos with Completed Loading or Discharge Complete status */}
+                  {editingCargo && (editingCargo.status === 'Discharge Complete' || editingCargo.status === 'Completed Loading') && (
                     <>
                   <Grid item xs={12} md={6}>
                     <TextField
@@ -5055,10 +5042,6 @@ export default function HomePage() {
                             >
                               Completed Loading
                             </MenuItem>
-                            {/* Show In-Road only for CIF contracts when NOT in In-Road CIF tab or Completed CIF tab */}
-                            {editingCargo?.contract_type === 'CIF' && value !== 2 && value !== 3 && (
-                              <MenuItem value="In-Road (Pending Discharge)">In-Road (Pending Discharge)</MenuItem>
-                            )}
                             {/* Show Discharge Complete for CIF contracts only in In-Road CIF tab (value === 2) */}
                             {editingCargo?.contract_type === 'CIF' && value === 2 && (
                               <MenuItem value="Discharge Complete">Discharge Complete</MenuItem>
@@ -5127,26 +5110,26 @@ export default function HomePage() {
             )}
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button 
-              onClick={() => setCargoDialogOpen(false)}
-              sx={{ 
-                minHeight: isMobile ? 48 : 36,
-                minWidth: isMobile ? 100 : 'auto',
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCargoSubmit}
-              variant="contained"
-              disabled={!cargoFormData.vessel_name || !cargoFormData.cargo_quantity}
-              sx={{ 
-                minHeight: isMobile ? 48 : 36,
-                minWidth: isMobile ? 120 : 'auto',
-              }}
-            >
-              {editingCargo ? 'Update Vessel' : 'Create Vessel'}
-            </Button>
+          <Button 
+            onClick={() => setCargoDialogOpen(false)}
+            sx={{ 
+              minHeight: isMobile ? 48 : 36,
+              minWidth: isMobile ? 100 : 'auto',
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCargoSubmit}
+            variant="contained"
+            disabled={!cargoFormData.vessel_name || !cargoFormData.cargo_quantity}
+            sx={{ 
+              minHeight: isMobile ? 48 : 36,
+              minWidth: isMobile ? 120 : 'auto',
+            }}
+          >
+            {editingCargo ? 'Update Vessel' : 'Create Vessel'}
+          </Button>
           </Box>
         </DialogActions>
       </Dialog>

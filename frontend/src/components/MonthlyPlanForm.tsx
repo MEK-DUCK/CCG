@@ -27,7 +27,7 @@ import {
   Tab,
 } from '@mui/material'
 import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp, CalendarMonth, History } from '@mui/icons-material'
-import { monthlyPlanAPI, contractAPI, MonthlyPlanTopUpRequest } from '../api/client'
+import { monthlyPlanAPI, contractAPI, cargoAPI, MonthlyPlanTopUpRequest } from '../api/client'
 import { MonthlyPlanStatus } from '../types'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
@@ -365,6 +365,90 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
 
   useEffect(() => {
     const loadExistingMonthlyPlans = async () => {
+      // For SPOT contracts, load by contract_id; for term contracts, load by quarterly plans
+      if (isSpotContract) {
+        if (!contractId) return
+        
+        try {
+          const monthlyRes = await monthlyPlanAPI.getByContractId(contractId)
+          console.log('Loaded SPOT monthly plans for contract', contractId, ':', monthlyRes.data)
+          const allPlans = (monthlyRes.data || []).map((p: any) => ({
+            ...p,
+            product_name: p.product_name || products[0]?.name || 'Unknown'
+          }))
+          console.log('All loaded SPOT plans:', allPlans.map((p: any) => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
+          setExistingMonthlyPlans(allPlans)
+          
+          // Load status for all plans
+          const statusMap: Record<number, MonthlyPlanStatus> = {}
+          const planIds = allPlans.map((p: any) => p.id).filter((id: number) => id != null)
+          
+          if (planIds.length > 0) {
+            try {
+              const bulkStatusRes = await monthlyPlanAPI.getStatusBulk(planIds)
+              for (const status of bulkStatusRes.data || []) {
+                statusMap[status.monthly_plan_id] = status
+              }
+            } catch (error) {
+              console.error('Error fetching bulk status:', error)
+            }
+            
+            for (const plan of allPlans) {
+              if (!statusMap[plan.id]) {
+                statusMap[plan.id] = {
+                  monthly_plan_id: plan.id,
+                  month: plan.month,
+                  year: plan.year,
+                  is_locked: false,
+                  has_cargos: false,
+                  has_completed_cargos: false,
+                  total_cargos: 0,
+                  completed_cargos: 0,
+                  cargo_ids: [],
+                  completed_cargo_ids: []
+                }
+              }
+            }
+          }
+          setPlanStatuses(statusMap)
+          
+          // Convert to monthEntries format (non-combi only for SPOT)
+          const entries: Record<string, MonthlyPlanEntry[]> = {}
+          for (const plan of allPlans) {
+            const key = `${plan.month}-${plan.year}`
+            if (!entries[key]) {
+              entries[key] = []
+            }
+            
+            console.log('Creating SPOT entry with id:', plan.id, 'from plan:', plan)
+            entries[key].push({
+              id: plan.id,
+              quarterly_plan_id: null,
+              product_name: plan.product_name,
+              quantity: plan.month_quantity?.toString() || '',
+              laycan_5_days: plan.laycan_5_days || '',
+              laycan_2_days: plan.laycan_2_days || '',
+              laycan_2_days_remark: plan.laycan_2_days_remark || '',
+              loading_month: plan.loading_month || '',
+              loading_window: plan.loading_window || '',
+              delivery_month: plan.delivery_month || '',
+              delivery_window: plan.delivery_window || '',
+              delivery_window_remark: plan.delivery_window_remark || '',
+              is_combi: false,
+              combi_quantities: {},
+              authority_topup_quantity: plan.authority_topup_quantity || 0,
+              authority_topup_reference: plan.authority_topup_reference || '',
+              version: plan.version
+            })
+          }
+          setMonthEntries(entries)
+        } catch (error) {
+          console.error('Error loading SPOT monthly plans:', error)
+        }
+        return
+      }
+      
+      // Term contracts - load from quarterly plans
       if (!quarterlyPlans || quarterlyPlans.length === 0) return
       
       try {
@@ -382,24 +466,36 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         console.log('All loaded plans:', allPlans.map(p => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
         setExistingMonthlyPlans(allPlans)
         
-        // Load status for each plan
+        // Load status for all plans in a single bulk request (optimization)
         const statusMap: Record<number, MonthlyPlanStatus> = {}
-        for (const plan of allPlans) {
+        const planIds = allPlans.map(p => p.id).filter(id => id != null)
+        
+        if (planIds.length > 0) {
           try {
-            const statusRes = await monthlyPlanAPI.getStatus(plan.id)
-            statusMap[plan.id] = statusRes.data
+            const bulkStatusRes = await monthlyPlanAPI.getStatusBulk(planIds)
+            // Map the results by plan ID
+            for (const status of bulkStatusRes.data || []) {
+              statusMap[status.monthly_plan_id] = status
+            }
           } catch (error) {
-            statusMap[plan.id] = {
-              monthly_plan_id: plan.id,
-              month: plan.month,
-              year: plan.year,
-              is_locked: false,
-              has_cargos: false,
-              has_completed_cargos: false,
-              total_cargos: 0,
-              completed_cargos: 0,
-              cargo_ids: [],
-              completed_cargo_ids: []
+            console.error('Error fetching bulk status:', error)
+          }
+          
+          // Fill in defaults for any plans that didn't get status
+          for (const plan of allPlans) {
+            if (!statusMap[plan.id]) {
+              statusMap[plan.id] = {
+                monthly_plan_id: plan.id,
+                month: plan.month,
+                year: plan.year,
+                is_locked: false,
+                has_cargos: false,
+                has_completed_cargos: false,
+                total_cargos: 0,
+                completed_cargos: 0,
+                cargo_ids: [],
+                completed_cargo_ids: []
+              }
             }
           }
         }
@@ -510,7 +606,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     }
     
     loadExistingMonthlyPlans()
-  }, [quarterlyPlans, products])
+  }, [quarterlyPlans, products, isSpotContract, contractId])
 
   const handleProductChange = (month: number, year: number, entryIndex: number, productName: string) => {
     const key = `${month}-${year}`
@@ -695,9 +791,49 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     })
   }
 
-  const handleRemoveEntry = (month: number, year: number, entryIndex: number) => {
+  const handleRemoveEntry = async (month: number, year: number, entryIndex: number) => {
     const key = `${month}-${year}`
     const entries = monthEntries[key] || []
+    const entry = entries[entryIndex]
+    
+    // Check if this entry has cargos that need to be deleted first
+    if (entry?.id) {
+      const status = planStatuses[entry.id]
+      if (status?.has_cargos && status.cargo_ids && status.cargo_ids.length > 0) {
+        // Ask for confirmation to delete cargos
+        const confirmed = window.confirm(
+          `This monthly plan has ${status.cargo_ids.length} cargo(s) associated with it.\n\n` +
+          `To delete this entry, the cargo(s) must be deleted first.\n\n` +
+          `Do you want to delete the cargo(s) and the monthly plan entry?`
+        )
+        
+        if (!confirmed) {
+          return
+        }
+        
+        // Delete all cargos associated with this monthly plan
+        try {
+          for (const cargoId of status.cargo_ids) {
+            await cargoAPI.delete(cargoId)
+          }
+          // Update the status to reflect no cargos
+          setPlanStatuses(prev => ({
+            ...prev,
+            [entry.id!]: {
+              ...prev[entry.id!],
+              has_cargos: false,
+              total_cargos: 0,
+              cargo_ids: []
+            }
+          }))
+        } catch (error: any) {
+          console.error('Error deleting cargos:', error)
+          alert(`Failed to delete cargo(s): ${error?.response?.data?.detail || error?.message || 'Unknown error'}`)
+          return
+        }
+      }
+    }
+    
     const updatedEntries = entries.filter((_, index) => index !== entryIndex)
     setMonthEntries({
       ...monthEntries,
@@ -1135,14 +1271,63 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           editingUser={editingUser}
         />
         
-        {/* Contract Period Info */}
+        {/* Contract Period Info with Quantity Validation */}
         <Box sx={{ mb: 3, p: 2, bgcolor: '#F8FAFC', borderRadius: 2, border: '1px solid #E2E8F0' }}>
           <Typography variant="body2" sx={{ color: '#64748B' }}>
             Contract Period: <strong>{new Date(contract.start_period).toLocaleDateString()} - {new Date(contract.end_period).toLocaleDateString()}</strong>
           </Typography>
-          <Typography variant="body2" sx={{ color: '#64748B', mt: 0.5 }}>
-            Products: {products.map((p: any) => `${p.name} (${p.total_quantity} KT)`).join(', ')}
-          </Typography>
+          
+          {/* Quantity validation for each product */}
+          {products.map((p: any) => {
+            const totalQuantity = (p.total_quantity || 0) + (p.optional_quantity || 0)
+            // Calculate total allocated across all months for this product
+            const allocated = Object.values(monthEntries).reduce((sum, entries) => {
+              return sum + entries.reduce((entrySum, entry) => {
+                if (entry.is_combi) {
+                  return entrySum + (parseFloat(entry.combi_quantities[p.name] || '0') || 0)
+                } else if (entry.product_name === p.name) {
+                  return entrySum + (parseFloat(entry.quantity || '0') || 0)
+                }
+                return entrySum
+              }, 0)
+            }, 0)
+            const remaining = totalQuantity - allocated
+            const isComplete = remaining === 0
+            const percentage = totalQuantity > 0 ? Math.round((allocated / totalQuantity) * 100) : 0
+            
+            return (
+              <Box key={p.name} sx={{ mt: 1.5, p: 1.5, bgcolor: isComplete ? 'rgba(34, 197, 94, 0.08)' : '#FFFFFF', borderRadius: 1, border: '1px solid #E2E8F0' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" fontWeight="bold" sx={{ color: isComplete ? 'success.main' : 'text.primary' }}>
+                    {p.name} {isComplete && '✓'}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: isComplete ? 'success.main' : 'text.secondary' }}>
+                    {percentage}%
+                  </Typography>
+                </Box>
+                <Box sx={{ mt: 0.5 }}>
+                  <Box sx={{ 
+                    height: 6, 
+                    bgcolor: '#E2E8F0', 
+                    borderRadius: 1, 
+                    overflow: 'hidden' 
+                  }}>
+                    <Box sx={{ 
+                      height: '100%', 
+                      width: `${Math.min(percentage, 100)}%`, 
+                      bgcolor: isComplete ? '#22C55E' : percentage > 100 ? '#EF4444' : '#3B82F6',
+                      transition: 'width 0.3s ease'
+                    }} />
+                  </Box>
+                </Box>
+                <Typography variant="caption" sx={{ color: isComplete ? 'success.main' : 'text.secondary', display: 'block', mt: 0.5 }}>
+                  Contract: {totalQuantity.toLocaleString()} KT
+                  {p.optional_quantity > 0 && ` (incl. ${p.optional_quantity.toLocaleString()} KT optional)`}
+                  {' | '}Allocated: {allocated.toLocaleString()} KT | Remaining: {remaining.toLocaleString()} KT
+                </Typography>
+              </Box>
+            )
+          })}
         </Box>
         
         {/* Monthly entries for SPOT contract */}
@@ -1965,24 +2150,22 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         </MenuItem>
         <Divider />
         <MenuItem 
-          onClick={() => {
+          onClick={async () => {
             if (actionMenuEntry) {
-              handleRemoveEntry(actionMenuEntry.month, actionMenuEntry.year, actionMenuEntry.entryIndex)
+              await handleRemoveEntry(actionMenuEntry.month, actionMenuEntry.year, actionMenuEntry.entryIndex)
             }
             handleActionMenuClose()
           }}
-          disabled={actionMenuEntry?.hasCargos}
           sx={{ 
-            color: actionMenuEntry?.hasCargos ? 'text.disabled' : 'error.main',
-            opacity: actionMenuEntry?.hasCargos ? 0.5 : 1
+            color: 'error.main'
           }}
         >
           <ListItemIcon>
-            <Delete fontSize="small" sx={{ color: actionMenuEntry?.hasCargos ? '#9CA3AF' : 'error.main' }} />
+            <Delete fontSize="small" sx={{ color: 'error.main' }} />
           </ListItemIcon>
           <ListItemText 
             primary="Delete Entry" 
-            secondary={actionMenuEntry?.hasCargos ? '(Has active cargos)' : undefined}
+            secondary={actionMenuEntry?.hasCargos ? '(Will also delete associated cargos)' : undefined}
           />
         </MenuItem>
       </Menu>

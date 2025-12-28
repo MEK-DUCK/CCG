@@ -110,7 +110,6 @@ export default function ContractDashboard() {
     const counts: Partial<Record<CargoStatus, number>> = {
       'Planned': 0,
       'Pending Nomination': 0,
-      'In-Road (Pending Discharge)': 0,
       'Completed Loading': 0,
       'Loading': 0,
     }
@@ -401,21 +400,11 @@ export default function ContractDashboard() {
             </Grid>
             <Grid item xs={6} sm={3}>
               <Box textAlign="center">
-                <Typography variant="h4" color="info.main">
-                  {statusCounts['In-Road (Pending Discharge)'] || 0}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  In Road
-                </Typography>
-              </Box>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <Box textAlign="center">
                 <Typography variant="h4" color="success.main">
                   {statusCounts['Completed Loading'] || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Completed
+                  Completed Loading
                 </Typography>
               </Box>
             </Grid>
@@ -541,8 +530,6 @@ export default function ContractDashboard() {
                           color={
                             cargo.status === 'Completed Loading'
                               ? 'success'
-                              : cargo.status === 'In-Road (Pending Discharge)'
-                              ? 'info'
                               : cargo.status === 'Pending Nomination'
                               ? 'warning'
                               : cargo.status === 'Loading'

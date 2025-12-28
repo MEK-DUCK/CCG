@@ -474,12 +474,7 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
             models.MonthlyPlan.year == year,
             models.MonthlyPlan.month_quantity > 0
         ).filter(
-            not_(
-                or_(
-                    models.Cargo.status == CargoStatus.COMPLETED_LOADING,
-                    models.Cargo.status == CargoStatus.IN_ROAD,
-                )
-            )
+            models.Cargo.status != CargoStatus.COMPLETED_LOADING
         )
         cargos = query.all()
         
@@ -556,7 +551,7 @@ def read_active_loadings(db: Session = Depends(get_db)):
                 PortOperationStatus.COMPLETED.value
             ])
         ).filter(
-            models.Cargo.status.notin_([CargoStatus.COMPLETED_LOADING, CargoStatus.IN_ROAD])
+            models.Cargo.status != CargoStatus.COMPLETED_LOADING
         ).distinct(models.Cargo.id)
 
         cargos = query.all()
@@ -582,7 +577,7 @@ def read_in_road_cif(db: Session = Depends(get_db)):
         query = db.query(models.Cargo).filter(and_(
             models.Cargo.contract_type == ContractType.CIF,
             models.Cargo.discharge_completion_time.is_(None),
-            models.Cargo.status.in_([CargoStatus.COMPLETED_LOADING, CargoStatus.IN_ROAD]),
+            models.Cargo.status == CargoStatus.COMPLETED_LOADING,
         ))
         cargos = query.all()
         logger.debug(f"In-Road CIF query found {len(cargos)} cargos")
@@ -1159,7 +1154,7 @@ async def delete_cargo(
             {models.CargoAuditLog.cargo_id: None, models.CargoAuditLog.cargo_db_id: db_cargo.id},
             synchronize_session=False
         )
-        
+    
         if permanent:
             # Hard delete - cannot be undone
             db.delete(db_cargo)

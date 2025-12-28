@@ -1056,19 +1056,19 @@ export default function LiftingPlanPage() {
       </Snackbar>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4 }}>
-        <Typography 
-          variant="h4" 
-          gutterBottom
-          sx={{
-            fontWeight: 700,
-            color: '#000000',
+      <Typography 
+        variant="h4" 
+        gutterBottom
+        sx={{
+          fontWeight: 700,
+          color: '#000000',
             mb: 0,
-            fontSize: { xs: '1.75rem', md: '2rem' },
-            letterSpacing: '-0.02em',
-          }}
-        >
-          Lifting Plan - Quarterly Summary
-        </Typography>
+          fontSize: { xs: '1.75rem', md: '2rem' },
+          letterSpacing: '-0.02em',
+        }}
+      >
+        Lifting Plan - Quarterly Summary
+      </Typography>
       </Box>
       
       <Box 

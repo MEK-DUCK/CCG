@@ -35,7 +35,6 @@ const CARGO_STATUSES: CargoStatus[] = [
   'Planned',
   'Loading',
   'Pending Nomination',
-  'In-Road (Pending Discharge)',
   'Completed Loading',
 ]
 

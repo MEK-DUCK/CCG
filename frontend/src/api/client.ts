@@ -222,6 +222,9 @@ export const monthlyPlanAPI = {
     const params = quarterlyPlanId ? { quarterly_plan_id: quarterlyPlanId } : {}
     return client.get('/api/monthly-plans/', { params })
   },
+  getByContractId: (contractId: number) => {
+    return client.get('/api/monthly-plans/', { params: { contract_id: contractId } })
+  },
   // Bulk endpoint - gets all monthly plans for given months/year with embedded contract/customer data
   // Replaces ~100+ API calls with a single call
   getBulk: (months: number[], year: number, includeZeroQuantity: boolean = false) => {
@@ -235,6 +238,8 @@ export const monthlyPlanAPI = {
   },
   getById: (id: number) => client.get(`/api/monthly-plans/${id}`),
   getStatus: (id: number) => client.get(`/api/monthly-plans/${id}/status`),
+  // Bulk status endpoint - gets status for multiple plans in one request (optimization)
+  getStatusBulk: (planIds: number[]) => client.post('/api/monthly-plans/status/bulk', planIds),
   create: (data: any) => client.post('/api/monthly-plans/', data),
   update: (id: number, data: any) => client.put(`/api/monthly-plans/${id}`, data),
   delete: (id: number) => client.delete(`/api/monthly-plans/${id}`),

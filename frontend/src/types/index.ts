@@ -7,7 +7,6 @@ export type CargoStatus =
   | 'Planned'
   | 'Loading'
   | 'Completed Loading'
-  | 'In-Road (Pending Discharge)'
   | 'Discharge Complete'
   | 'Pending Nomination'
   | 'Pending TL Approval'
@@ -104,8 +103,10 @@ export interface MonthlyPlanStatus {
   has_completed_cargos: boolean
   total_cargos: number
   completed_cargos: number
-  cargo_ids: string[]
-  completed_cargo_ids: string[]
+  cargo_ids: number[]  // Numeric IDs for API calls
+  completed_cargo_ids: number[]  // Numeric IDs for API calls
+  cargo_unique_ids?: string[]  // String cargo_id for display (optional for backwards compat)
+  completed_cargo_unique_ids?: string[]  // String cargo_id for display (optional for backwards compat)
 }
 
 export interface Cargo {

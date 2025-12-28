@@ -286,7 +286,14 @@ export default function AdminPage() {
   const fetchProducts = useCallback(async () => {
     try {
       const response = await client.get('/api/products?include_inactive=true')
-      setProducts(response.data)
+      // Auto-seed if empty
+      if (response.data.length === 0) {
+        await client.post('/api/products/seed-defaults')
+        const seededResponse = await client.get('/api/products?include_inactive=true')
+        setProducts(seededResponse.data)
+      } else {
+        setProducts(response.data)
+      }
     } catch (err: any) {
       console.error('Error fetching products:', err)
     }
@@ -295,7 +302,14 @@ export default function AdminPage() {
   const fetchLoadPorts = useCallback(async () => {
     try {
       const response = await client.get('/api/load-ports?include_inactive=true')
-      setLoadPorts(response.data)
+      // Auto-seed if empty
+      if (response.data.length === 0) {
+        await client.post('/api/load-ports/seed-defaults')
+        const seededResponse = await client.get('/api/load-ports?include_inactive=true')
+        setLoadPorts(seededResponse.data)
+      } else {
+        setLoadPorts(response.data)
+      }
     } catch (err: any) {
       console.error('Error fetching load ports:', err)
     }
@@ -304,7 +318,14 @@ export default function AdminPage() {
   const fetchInspectors = useCallback(async () => {
     try {
       const response = await client.get('/api/inspectors?include_inactive=true')
-      setInspectors(response.data)
+      // Auto-seed if empty
+      if (response.data.length === 0) {
+        await client.post('/api/inspectors/seed-defaults')
+        const seededResponse = await client.get('/api/inspectors?include_inactive=true')
+        setInspectors(seededResponse.data)
+      } else {
+        setInspectors(response.data)
+      }
     } catch (err: any) {
       console.error('Error fetching inspectors:', err)
     }
@@ -1407,23 +1428,7 @@ export default function AdminPage() {
             {products.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No products configured</Typography>
-                  <Button 
-                    variant="outlined" 
-                    size="small" 
-                    sx={{ mt: 1 }}
-                    onClick={async () => {
-                      try {
-                        await client.post('/api/products/seed-defaults')
-                        setSuccess('Default products seeded successfully')
-                        await fetchProducts()
-                      } catch (err: any) {
-                        setError(`Failed to seed products: ${err.response?.data?.detail || err.message}`)
-                      }
-                    }}
-                  >
-                    Seed Default Products
-                  </Button>
+                  <Typography color="text.secondary">Loading products...</Typography>
                 </TableCell>
               </TableRow>
             )}
@@ -1608,23 +1613,7 @@ export default function AdminPage() {
             {loadPorts.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No load ports configured</Typography>
-                  <Button 
-                    variant="outlined" 
-                    size="small" 
-                    sx={{ mt: 1 }}
-                    onClick={async () => {
-                      try {
-                        await client.post('/api/load-ports/seed-defaults')
-                        setSuccess('Default load ports seeded successfully')
-                        await fetchLoadPorts()
-                      } catch (err: any) {
-                        setError(`Failed to seed load ports: ${err.response?.data?.detail || err.message}`)
-                      }
-                    }}
-                  >
-                    Seed Default Load Ports
-                  </Button>
+                  <Typography color="text.secondary">Loading load ports...</Typography>
                 </TableCell>
               </TableRow>
             )}
@@ -1816,23 +1805,7 @@ export default function AdminPage() {
             {inspectors.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No inspectors configured</Typography>
-                  <Button 
-                    variant="outlined" 
-                    size="small" 
-                    sx={{ mt: 1 }}
-                    onClick={async () => {
-                      try {
-                        await client.post('/api/inspectors/seed-defaults')
-                        setSuccess('Default inspectors seeded successfully')
-                        await fetchInspectors()
-                      } catch (err: any) {
-                        setError(`Failed to seed inspectors: ${err.response?.data?.detail || err.message}`)
-                      }
-                    }}
-                  >
-                    Seed Default Inspectors
-                  </Button>
+                  <Typography color="text.secondary">Loading inspectors...</Typography>
                 </TableCell>
               </TableRow>
             )}

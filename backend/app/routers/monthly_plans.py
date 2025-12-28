@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Dict
 from calendar import month_name
 import logging
+import json
 
 from app.database import get_db
 from app import models, schemas
@@ -38,8 +39,10 @@ def get_cargo_info(monthly_plan_id: int, db: Session) -> Dict:
     return {
         'total_cargos': len(cargos),
         'completed_cargos': len(completed_cargos),
-        'cargo_ids': [c.cargo_id for c in cargos],
-        'completed_cargo_ids': [c.cargo_id for c in completed_cargos],
+        'cargo_ids': [c.id for c in cargos],  # Use numeric id for API calls
+        'completed_cargo_ids': [c.id for c in completed_cargos],  # Use numeric id for API calls
+        'cargo_unique_ids': [c.cargo_id for c in cargos],  # String cargo_id for display
+        'completed_cargo_unique_ids': [c.cargo_id for c in completed_cargos],  # String cargo_id for display
         'has_completed_cargos': len(completed_cargos) > 0,
         'is_locked': len(completed_cargos) > 0
     }
@@ -62,7 +65,30 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         if not contract:
             raise HTTPException(status_code=404, detail=f"Contract {plan.contract_id} not found")
         
-        # For SPOT contracts, we don't validate against quarterly plan quantities
+        # For SPOT contracts, validate against contract total quantity from products JSON
+        # Products is a JSON array: [{"name": "JET A-1", "total_quantity": 1000, "optional_quantity": 200}]
+        products = json.loads(contract.products) if contract.products else []
+        
+        # Sum up total_quantity and optional_quantity from all products
+        contract_total = sum(p.get('total_quantity', 0) or 0 for p in products)
+        optional_quantity = sum(p.get('optional_quantity', 0) or 0 for p in products)
+        max_allowed = contract_total + optional_quantity
+        
+        # Get existing monthly plans for this SPOT contract
+        existing_monthly_plans = db.query(models.MonthlyPlan).filter(
+            models.MonthlyPlan.contract_id == plan.contract_id,
+            models.MonthlyPlan.quarterly_plan_id.is_(None)  # Only SPOT monthly plans
+        ).all()
+        
+        used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans)
+        remaining_quantity = max_allowed - used_quantity
+        
+        if plan.month_quantity > remaining_quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Monthly quantity ({plan.month_quantity:,.0f} KT) exceeds remaining contract quantity ({remaining_quantity:,.0f} KT). Contract total: {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
+            )
+        
         db_plan = models.MonthlyPlan(
             month=plan.month,
             year=plan.year,
@@ -156,6 +182,7 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
 @router.get("/", response_model=List[schemas.MonthlyPlan])
 def read_monthly_plans(
     quarterly_plan_id: int = None,
+    contract_id: int = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
@@ -164,6 +191,12 @@ def read_monthly_plans(
         query = db.query(models.MonthlyPlan)
         if quarterly_plan_id:
             query = query.filter(models.MonthlyPlan.quarterly_plan_id == quarterly_plan_id)
+        if contract_id:
+            # For SPOT contracts - get plans with this contract_id and no quarterly_plan_id
+            query = query.filter(
+                models.MonthlyPlan.contract_id == contract_id,
+                models.MonthlyPlan.quarterly_plan_id.is_(None)
+            )
         plans = query.offset(skip).limit(limit).all()
         return plans
     except SQLAlchemyError as e:
@@ -284,35 +317,64 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
         if 'month' in update_data and update_data['month'] != db_plan.month:
             raise to_http_exception(plan_has_completed_cargos(
                 cargo_info['completed_cargos'], 
-                cargo_info['completed_cargo_ids']
+                cargo_info['completed_cargo_unique_ids']
             ))
         if 'year' in update_data and update_data['year'] != db_plan.year:
             raise to_http_exception(plan_has_completed_cargos(
                 cargo_info['completed_cargos'], 
-                cargo_info['completed_cargo_ids']
+                cargo_info['completed_cargo_unique_ids']
             ))
     
-    # Get quarterly plan for validation
-    quarterly_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == db_plan.quarterly_plan_id).first()
-    if not quarterly_plan:
-        raise to_http_exception(quarterly_plan_not_found(db_plan.quarterly_plan_id))
-    
-    # Calculate quarterly total
-    quarterly_total = (quarterly_plan.q1_quantity or 0) + (quarterly_plan.q2_quantity or 0) + (quarterly_plan.q3_quantity or 0) + (quarterly_plan.q4_quantity or 0)
-    
-    # Get existing monthly plans for this quarterly plan (excluding current plan)
-    existing_monthly_plans = db.query(models.MonthlyPlan).filter(
-        models.MonthlyPlan.quarterly_plan_id == db_plan.quarterly_plan_id,
-        models.MonthlyPlan.id != plan_id
-    ).all()
-    
-    used_quantity = sum(mp.month_quantity for mp in existing_monthly_plans)
-    remaining_quantity = quarterly_total - used_quantity
-    
+    # Validate quantity against plan limits
     new_month_quantity = plan.month_quantity if plan.month_quantity is not None else db_plan.month_quantity
     
-    if new_month_quantity > remaining_quantity:
-        raise to_http_exception(quantity_exceeds_plan(new_month_quantity, remaining_quantity, quarterly_total))
+    # Check if this is a SPOT contract (no quarterly_plan_id, has contract_id)
+    is_spot_contract = db_plan.quarterly_plan_id is None and db_plan.contract_id is not None
+    
+    if is_spot_contract:
+        # SPOT contract - validate against contract total from products JSON
+        contract = db.query(models.Contract).filter(models.Contract.id == db_plan.contract_id).first()
+        if contract:
+            products = json.loads(contract.products) if contract.products else []
+            contract_total = sum(p.get('total_quantity', 0) or 0 for p in products)
+            optional_quantity = sum(p.get('optional_quantity', 0) or 0 for p in products)
+            max_allowed = contract_total + optional_quantity
+            
+            # Get existing monthly plans for this SPOT contract (excluding current plan)
+            existing_monthly_plans = db.query(models.MonthlyPlan).filter(
+                models.MonthlyPlan.contract_id == db_plan.contract_id,
+                models.MonthlyPlan.quarterly_plan_id.is_(None),
+                models.MonthlyPlan.id != plan_id  # Exclude current plan!
+            ).all()
+            
+            used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans)
+            remaining_quantity = max_allowed - used_quantity
+            
+            if new_month_quantity > remaining_quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Monthly quantity ({new_month_quantity:,.0f} KT) exceeds remaining contract quantity ({remaining_quantity:,.0f} KT). Contract total: {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
+                )
+    else:
+        # Term contract - validate against quarterly plan
+        quarterly_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == db_plan.quarterly_plan_id).first()
+        if not quarterly_plan:
+            raise to_http_exception(quarterly_plan_not_found(db_plan.quarterly_plan_id))
+        
+        # Calculate quarterly total
+        quarterly_total = (quarterly_plan.q1_quantity or 0) + (quarterly_plan.q2_quantity or 0) + (quarterly_plan.q3_quantity or 0) + (quarterly_plan.q4_quantity or 0)
+        
+        # Get existing monthly plans for this quarterly plan (excluding current plan)
+        existing_monthly_plans = db.query(models.MonthlyPlan).filter(
+            models.MonthlyPlan.quarterly_plan_id == db_plan.quarterly_plan_id,
+            models.MonthlyPlan.id != plan_id
+        ).all()
+        
+        used_quantity = sum(mp.month_quantity for mp in existing_monthly_plans)
+        remaining_quantity = quarterly_total - used_quantity
+        
+        if new_month_quantity > remaining_quantity:
+            raise to_http_exception(quantity_exceeds_plan(new_month_quantity, remaining_quantity, quarterly_total))
     
     # Store old values for audit logging
     old_values = {}
@@ -490,11 +552,11 @@ def delete_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
     if cargo_info['has_completed_cargos']:
         raise to_http_exception(plan_has_completed_cargos(
             cargo_info['completed_cargos'], 
-            cargo_info['completed_cargo_ids']
+            cargo_info['completed_cargo_unique_ids']
         ))
     
     if cargo_info['total_cargos'] > 0:
-        raise to_http_exception(plan_has_cargos(cargo_info['total_cargos'], cargo_info['cargo_ids']))
+        raise to_http_exception(plan_has_cargos(cargo_info['total_cargos'], cargo_info['cargo_unique_ids']))
     
     try:
         log_monthly_plan_action(db=db, action='DELETE', monthly_plan=db_plan)
@@ -517,6 +579,41 @@ def delete_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"Database error deleting monthly plan {plan_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error deleting monthly plan")
+
+
+@router.post("/status/bulk")
+def get_monthly_plans_status_bulk(plan_ids: List[int], db: Session = Depends(get_db)):
+    """Get status for multiple monthly plans in a single request (optimization)"""
+    if not plan_ids:
+        return []
+    
+    # Fetch all plans in one query
+    db_plans = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id.in_(plan_ids)).all()
+    plans_by_id = {plan.id: plan for plan in db_plans}
+    
+    results = []
+    for plan_id in plan_ids:
+        db_plan = plans_by_id.get(plan_id)
+        if db_plan is None:
+            # Skip missing plans instead of erroring
+            continue
+        
+        cargo_info = get_cargo_info(plan_id, db)
+        
+        results.append({
+            'monthly_plan_id': plan_id,
+            'month': db_plan.month,
+            'year': db_plan.year,
+            'is_locked': cargo_info['is_locked'],
+            'has_cargos': cargo_info['total_cargos'] > 0,
+            'has_completed_cargos': cargo_info['has_completed_cargos'],
+            'total_cargos': cargo_info['total_cargos'],
+            'completed_cargos': cargo_info['completed_cargos'],
+            'cargo_ids': cargo_info['cargo_ids'],
+            'completed_cargo_ids': cargo_info['completed_cargo_ids']
+        })
+    
+    return results
 
 
 @router.get("/{plan_id}/status")
