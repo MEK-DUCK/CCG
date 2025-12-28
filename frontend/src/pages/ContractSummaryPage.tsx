@@ -187,12 +187,9 @@ export default function ContractSummaryPage() {
     return acc + (Number(p.total_quantity) || 0)
   }, 0)
   
-  // For fixed mode: return optional_quantity, for min/max mode: return 0 (max already includes full range)
+  // Return optional_quantity for both fixed and min/max modes
+  // Optional quantity is additional quantity beyond max (range) or total (fixed)
   const optionalTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
-    const hasMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
-    if (hasMinMax) {
-      return acc // No optional for min/max mode
-    }
     return acc + (Number(p.optional_quantity) || 0)
   }, 0)
   
@@ -270,7 +267,7 @@ export default function ContractSummaryPage() {
             'Q2': qt.q2,
             'Q3': qt.q3,
             'Q4': qt.q4,
-            'Optional Qty': idx === 0 ? (isMinMaxMode(c) ? '-' : optionalTotalFor(c)) : '',
+            'Optional Qty': idx === 0 ? (optionalTotalFor(c) > 0 ? `+${optionalTotalFor(c)} KT` : '-') : '',
             'Discharge Ranges': idx === 0 ? (c.discharge_ranges || '-') : '',
             'Fax Received': idx === 0 ? formatDateOnly(c.fax_received_date) : '',
             'Concluded Memo': idx === 0 ? formatDateOnly(c.concluded_memo_received_date) : '',
@@ -327,7 +324,7 @@ export default function ContractSummaryPage() {
             idx === 0 ? c.contract_type : '',
             idx === 0 ? (c.payment_method || '-') : '',
             `${yearPrefix}Q1:${qt.q1} Q2:${qt.q2} Q3:${qt.q3} Q4:${qt.q4}`,
-            idx === 0 ? (isMinMaxMode(c) ? '-' : optionalTotalFor(c).toString()) : '',
+            idx === 0 ? (optionalTotalFor(c) > 0 ? `+${optionalTotalFor(c)} KT` : '-') : '',
             idx === 0 ? (c.discharge_ranges || '-') : '',
             idx === 0 ? `Fax: ${formatDateOnly(c.fax_received_date)}\nMemo: ${formatDateOnly(c.concluded_memo_received_date)}` : '',
             idx === 0 ? (!jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-') : '',
@@ -557,10 +554,19 @@ export default function ContractSummaryPage() {
                       </Box>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {isMinMaxMode(c) ? (
-                        <Typography variant="body2" color="text.secondary">—</Typography>
+                      {optionalTotalFor(c) > 0 ? (
+                        <Chip 
+                          label={`+${optionalTotalFor(c).toLocaleString()} KT`} 
+                          size="small" 
+                          sx={{ 
+                            bgcolor: '#F0FDF4', 
+                            color: '#16A34A',
+                            fontWeight: 500,
+                            border: '1px solid #BBF7D0'
+                          }} 
+                        />
                       ) : (
-                        <Chip label={`${optionalTotalFor(c)}`} size="small" variant="outlined" />
+                        <Typography variant="body2" color="text.secondary">—</Typography>
                       )}
                     </TableCell>
                     <TableCell sx={{ minWidth: 220 }}>

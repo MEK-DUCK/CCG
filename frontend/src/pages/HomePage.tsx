@@ -351,7 +351,8 @@ export default function HomePage() {
     })
   }
 
-  const upsertPortOp = async (cargoId: number, portCode: string, patch: Partial<CargoPortOperation>) => {
+  // Core function to save port operation without triggering data refresh
+  const upsertPortOpCore = async (cargoId: number, portCode: string, patch: Partial<CargoPortOperation>) => {
     const response = await cargoAPI.upsertPortOperation(cargoId, portCode, patch)
     const saved = response.data as CargoPortOperation
     setPortMovement((prev) =>
@@ -372,6 +373,11 @@ export default function HomePage() {
         : [...existing, saved]
       return { ...prev, port_operations: next }
     })
+    return saved
+  }
+
+  const upsertPortOp = async (cargoId: number, portCode: string, patch: Partial<CargoPortOperation>) => {
+    await upsertPortOpCore(cargoId, portCode, patch)
     // If completion changes, refresh lists so cargo moves tabs correctly.
     if (patch.status) {
       await loadPortMovement()
@@ -402,14 +408,28 @@ export default function HomePage() {
     const key = `${cargoId}:${portCode}`
     const existing = portOpTimersRef.current[key]
     if (existing) window.clearTimeout(existing)
-    portOpTimersRef.current[key] = window.setTimeout(() => {
-      // Save for the main cargo
-      upsertPortOp(cargoId, portCode, patch).catch((e) => console.error('Error saving port operation:', e))
-      
-      // Also save for combie cargos
-      combieCargosToUpdate.forEach(c => {
-        upsertPortOp(c.id, portCode, patch).catch((e) => console.error('Error saving port operation for combie cargo:', e))
-      })
+    portOpTimersRef.current[key] = window.setTimeout(async () => {
+      try {
+        // For combi cargos, update ALL cargos in the group BEFORE refreshing data
+        if (combieCargosToUpdate.length > 0) {
+          // Save all combi cargos in parallel (including the main one)
+          const allCargoIds = [cargoId, ...combieCargosToUpdate.map(c => c.id)]
+          await Promise.all(
+            allCargoIds.map(id => upsertPortOpCore(id, portCode, patch))
+          )
+          // Only refresh data AFTER all combi cargos are updated
+          if (patch.status) {
+            await loadPortMovement()
+            await loadActiveLoadings()
+            await loadData()
+          }
+        } else {
+          // Single cargo - use the normal flow
+          await upsertPortOp(cargoId, portCode, patch)
+        }
+      } catch (e) {
+        console.error('Error saving port operation:', e)
+      }
     }, 500)
   }
 

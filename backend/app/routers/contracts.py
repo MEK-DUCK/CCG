@@ -117,7 +117,14 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         db.commit()
         
         # Auto-generate quarterly plans for TERM and SEMI_TERM contracts
-        if contract_category != ContractCategory.SPOT:
+        # Skip for SPOT contracts and Range contracts (min/max mode)
+        is_range_contract = any(
+            (p.min_quantity is not None and p.min_quantity > 0) or 
+            (p.max_quantity is not None and p.max_quantity > 0)
+            for p in contract.products
+        )
+        
+        if contract_category != ContractCategory.SPOT and not is_range_contract:
             num_years = calculate_contract_years(contract.start_period, contract.end_period)
             logger.info(f"Auto-generating {num_years} year(s) of quarterly plans for contract {db_contract.id}")
             
@@ -136,6 +143,8 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             
             db.commit()
             logger.info(f"Created quarterly plans for contract {db_contract.id}")
+        elif is_range_contract:
+            logger.info(f"Skipping quarterly plans for range contract {db_contract.id} (min/max mode)")
         
         # Convert products JSON string to list for response
         contract_dict = {
@@ -413,23 +422,67 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         else:
             update_data["authority_topups"] = None
     
-    # Handle authority_amendments conversion to JSON
+    # Handle authority_amendments conversion to JSON AND apply to product quantities
     if "authority_amendments" in update_data:
         if update_data["authority_amendments"]:
-            # Validate that amendment products exist in contract products
+            # Get current products (from update or existing)
             contract_products = json.loads(db_contract.products) if db_contract.products else []
             if "products" in update_data:
-                contract_products = json.loads(update_data["products"])
+                contract_products = update_data["products"] if isinstance(update_data["products"], list) else json.loads(update_data["products"])
+            
             product_names = {p.get('name') for p in contract_products}
             
+            # Validate and apply amendments to product quantities
             for amendment in update_data["authority_amendments"]:
-                if amendment.get("product_name") not in product_names:
+                product_name = amendment.get("product_name")
+                if product_name not in product_names:
                     raise HTTPException(
                         status_code=400, 
-                        detail=f"Amendment product '{amendment.get('product_name')}' not found in contract products: {product_names}"
+                        detail=f"Amendment product '{product_name}' not found in contract products: {product_names}"
                     )
+                
+                # Find the product and apply the amendment
+                for product in contract_products:
+                    if product.get('name') == product_name:
+                        amendment_type = amendment.get('amendment_type')
+                        quantity_change = amendment.get('quantity_change', 0) or 0
+                        
+                        # Apply the amendment based on type
+                        if amendment_type == 'increase_max':
+                            current_max = product.get('max_quantity', 0) or 0
+                            product['max_quantity'] = current_max + quantity_change
+                        elif amendment_type == 'decrease_max':
+                            current_max = product.get('max_quantity', 0) or 0
+                            product['max_quantity'] = max(0, current_max - quantity_change)
+                        elif amendment_type == 'increase_min':
+                            current_min = product.get('min_quantity', 0) or 0
+                            product['min_quantity'] = current_min + quantity_change
+                        elif amendment_type == 'decrease_min':
+                            current_min = product.get('min_quantity', 0) or 0
+                            product['min_quantity'] = max(0, current_min - quantity_change)
+                        elif amendment_type == 'set_min':
+                            new_min = amendment.get('new_min_quantity')
+                            if new_min is not None:
+                                product['min_quantity'] = new_min
+                        elif amendment_type == 'set_max':
+                            new_max = amendment.get('new_max_quantity')
+                            if new_max is not None:
+                                product['max_quantity'] = new_max
+                        
+                        # Ensure min <= max after amendment
+                        min_qty = product.get('min_quantity', 0) or 0
+                        max_qty = product.get('max_quantity', 0) or 0
+                        if min_qty > max_qty:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Amendment would make min_quantity ({min_qty}) greater than max_quantity ({max_qty}) for product '{product_name}'"
+                            )
+                        break
             
-            # Convert to JSON, handling date serialization
+            # Update the products JSON with the amended values
+            update_data["products"] = json.dumps(contract_products)
+            
+            # Convert amendments to JSON, handling date serialization
             update_data["authority_amendments"] = json.dumps(update_data["authority_amendments"], default=str)
         else:
             update_data["authority_amendments"] = None

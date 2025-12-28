@@ -48,7 +48,8 @@ interface MonthlyPlanFormProps {
   quarterlyPlans: any[]  // All quarterly plans for this contract
   onPlanCreated: () => void
   onCancel?: () => void
-  isSpotContract?: boolean  // If true, skip quarterly plan requirement
+  isSpotContract?: boolean  // If true, this is a SPOT contract (skip quarterly plan)
+  isRangeContract?: boolean  // If true, this is a Range contract with min/max quantities (skip quarterly plan)
 }
 
 const QUARTER_MONTHS: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', { months: number[], labels: string[] }> = {
@@ -121,7 +122,7 @@ interface MonthlyPlanEntry {
   version?: number
 }
 
-export default function MonthlyPlanForm({ contractId, contract: propContract, quarterlyPlans, onPlanCreated, isSpotContract = false }: MonthlyPlanFormProps) {
+export default function MonthlyPlanForm({ contractId, contract: propContract, quarterlyPlans, onPlanCreated, isSpotContract = false, isRangeContract = false }: MonthlyPlanFormProps) {
   const [monthEntries, setMonthEntries] = useState<Record<string, MonthlyPlanEntry[]>>({})
   const [existingMonthlyPlans, setExistingMonthlyPlans] = useState<any[]>([])
   const [isSaving, setIsSaving] = useState(false)
@@ -249,6 +250,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   // Get product list from contract
   const products = contract?.products ? (Array.isArray(contract.products) ? contract.products : JSON.parse(contract.products)) : []
   const isMultiProduct = products.length > 1
+  
+  // Use prop or derive from products if not provided
+  const skipQuarterlyPlan = isSpotContract || isRangeContract
 
   // Map product names to their quarterly plans for the selected year
   const productQuarterlyPlanMap = new Map<string, any>()
@@ -365,8 +369,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
 
   useEffect(() => {
     const loadExistingMonthlyPlans = async () => {
-      // For SPOT contracts, load by contract_id; for term contracts, load by quarterly plans
-      if (isSpotContract) {
+      // For SPOT/Range contracts, load by contract_id; for term contracts, load by quarterly plans
+      if (skipQuarterlyPlan) {
         if (!contractId) return
         
         try {
@@ -412,15 +416,82 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           }
           setPlanStatuses(statusMap)
           
-          // Convert to monthEntries format (non-combi only for SPOT)
+          // Group plans by combi_group_id first (same as term contracts)
+          const combiGroups = new Map<string, any[]>()
+          const nonCombiPlans: any[] = []
+          
+          allPlans.forEach((plan: any) => {
+            if (plan.combi_group_id) {
+              const existing = combiGroups.get(plan.combi_group_id) || []
+              existing.push(plan)
+              combiGroups.set(plan.combi_group_id, existing)
+            } else {
+              nonCombiPlans.push(plan)
+            }
+          })
+          
+          // Group by month-year
           const entries: Record<string, MonthlyPlanEntry[]> = {}
-          for (const plan of allPlans) {
-            const key = `${plan.month}-${plan.year}`
+          
+          // Process combi groups - create unified entries
+          combiGroups.forEach((combiPlans, combiGroupId) => {
+            if (combiPlans.length === 0) return
+            
+            const firstPlan = combiPlans[0]
+            const key = `${firstPlan.month}-${firstPlan.year}`
             if (!entries[key]) {
               entries[key] = []
             }
             
-            console.log('Creating SPOT entry with id:', plan.id, 'from plan:', plan)
+            // Build combi_quantities from all plans in the group
+            const combiQuantities: Record<string, string> = {}
+            const combiPlanIds: number[] = []
+            const combiProductPlanMap: Record<string, number> = {}
+            combiPlans.forEach((plan: any) => {
+              combiQuantities[plan.product_name] = plan.month_quantity.toString()
+              combiPlanIds.push(plan.id)
+              combiProductPlanMap[plan.product_name] = plan.id
+            })
+            
+            // Calculate total quantity
+            const totalQuantity = combiPlans.reduce((sum: number, p: any) => sum + p.month_quantity, 0)
+            
+            // Calculate total top-up for combi entries
+            const totalTopup = combiPlans.reduce((sum: number, p: any) => sum + (p.authority_topup_quantity || 0), 0)
+            
+            console.log('Creating Range/SPOT combi entry with id:', firstPlan.id, 'combi_group_id:', combiGroupId)
+            entries[key].push({
+              id: firstPlan.id,  // Use first plan's ID as reference
+              quarterly_plan_id: null,
+              product_name: '',  // Combi entries don't have a single product
+              quantity: totalQuantity.toString(),
+              laycan_5_days: firstPlan.laycan_5_days || '',
+              laycan_2_days: firstPlan.laycan_2_days || '',
+              laycan_2_days_remark: firstPlan.laycan_2_days_remark || '',
+              loading_month: firstPlan.loading_month || '',
+              loading_window: firstPlan.loading_window || '',
+              delivery_month: firstPlan.delivery_month || '',
+              delivery_window: firstPlan.delivery_window || '',
+              delivery_window_remark: firstPlan.delivery_window_remark || '',
+              is_combi: true,
+              combi_group_id: combiGroupId,
+              combi_quantities: combiQuantities,
+              // Store all plan IDs for updates/deletes
+              _combi_plan_ids: combiPlanIds,
+              _combi_product_plan_map: combiProductPlanMap,
+              authority_topup_quantity: totalTopup,
+              authority_topup_reference: firstPlan.authority_topup_reference || '',
+              version: firstPlan.version || 1,
+            } as MonthlyPlanEntry & { _combi_plan_ids?: number[]; _combi_product_plan_map?: Record<string, number> })
+          })
+          
+          // Process non-combi plans individually
+          nonCombiPlans.forEach((plan: any) => {
+            const key = `${plan.month}-${plan.year}`
+            if (!entries[key]) {
+              entries[key] = []
+            }
+            console.log('Creating Range/SPOT non-combi entry with id:', plan.id, 'from plan:', plan)
             entries[key].push({
               id: plan.id,
               quarterly_plan_id: null,
@@ -435,15 +506,17 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               delivery_window: plan.delivery_window || '',
               delivery_window_remark: plan.delivery_window_remark || '',
               is_combi: false,
+              combi_group_id: undefined,
               combi_quantities: {},
               authority_topup_quantity: plan.authority_topup_quantity || 0,
               authority_topup_reference: plan.authority_topup_reference || '',
-              version: plan.version
+              version: plan.version || 1,
             })
-          }
+          })
+          
           setMonthEntries(entries)
         } catch (error) {
-          console.error('Error loading SPOT monthly plans:', error)
+          console.error('Error loading Range/SPOT monthly plans:', error)
         }
         return
       }
@@ -606,7 +679,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     }
     
     loadExistingMonthlyPlans()
-  }, [quarterlyPlans, products, isSpotContract, contractId])
+  }, [quarterlyPlans, products, skipQuarterlyPlan, contractId])
 
   const handleProductChange = (month: number, year: number, entryIndex: number, productName: string) => {
     const key = `${month}-${year}`
@@ -692,7 +765,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     // For multi-product contracts, default to first product unless combi
     const defaultProduct = products[0]?.name || ''
     // For SPOT contracts, there's no quarterly plan - use 0
-    const defaultQp = isSpotContract ? null : productQuarterlyPlanMap.get(defaultProduct)
+    const defaultQp = skipQuarterlyPlan ? null : productQuarterlyPlanMap.get(defaultProduct)
     
     // Initialize combi quantities with empty values for all products
     const initialCombiQuantities: Record<string, string> = {}
@@ -979,14 +1052,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       return
     }
     
-    // For non-SPOT contracts, require quarterly plans
-    if (!isSpotContract && quarterlyPlans.length === 0) {
+    // For non-SPOT/Range contracts, require quarterly plans
+    if (!skipQuarterlyPlan && quarterlyPlans.length === 0) {
       alert('Please create quarterly plans first.')
       return
     }
 
-    // Validate quantities for each product and quarter (skip for SPOT contracts)
-    if (!isSpotContract) {
+    // Validate quantities for each product and quarter (skip for SPOT/Range contracts)
+    if (!skipQuarterlyPlan) {
       for (const product of products) {
         for (let i = 0; i < quarterOrder.length; i++) {
           const quarter = quarterOrder[i]
@@ -1031,7 +1104,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             }
           } else if (!entry.is_combi && parseFloat(entry.quantity || '0') > 0) {
             // New single product entry - for SPOT contracts, quarterly_plan_id may be 0
-            if (isSpotContract || entry.quarterly_plan_id) {
+            if (skipQuarterlyPlan || entry.quarterly_plan_id) {
               plansToCreate.push({ month, year, entry })
             }
           }
@@ -1140,25 +1213,47 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             const productQty = parseFloat(entry.combi_quantities[productName] || '0')
             if (productQty <= 0) continue  // Skip products with no quantity
             
-            const qp = productQuarterlyPlanMap.get(productName)
-            if (!qp) continue
-            
-            createPromises.push(monthlyPlanAPI.create({
-              quarterly_plan_id: qp.id,
-              month: month,
-              year: year,
-              month_quantity: productQty,
-              number_of_liftings: 1,
-              laycan_5_days: contractType === 'FOB' ? (entry.laycan_5_days || undefined) : undefined,
-              laycan_2_days: contractType === 'FOB' ? (entry.laycan_2_days || undefined) : undefined,
-              laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark || undefined) : undefined,
-              loading_month: contractType === 'CIF' ? (entry.loading_month || undefined) : undefined,
-              loading_window: contractType === 'CIF' ? (entry.loading_window || undefined) : undefined,
-              delivery_month: contractType === 'CIF' ? (entry.delivery_month || undefined) : undefined,
-              delivery_window: contractType === 'CIF' ? (entry.delivery_window || undefined) : undefined,
-              delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark || undefined) : undefined,
-              combi_group_id: combiGroupId,
-            }))
+            // For SPOT/Range contracts, use contract_id instead of quarterly_plan_id
+            if (skipQuarterlyPlan) {
+              createPromises.push(monthlyPlanAPI.create({
+                contract_id: contractId,
+                product_name: productName,
+                month: month,
+                year: year,
+                month_quantity: productQty,
+                number_of_liftings: 1,
+                laycan_5_days: contractType === 'FOB' ? (entry.laycan_5_days || undefined) : undefined,
+                laycan_2_days: contractType === 'FOB' ? (entry.laycan_2_days || undefined) : undefined,
+                laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark || undefined) : undefined,
+                loading_month: contractType === 'CIF' ? (entry.loading_month || undefined) : undefined,
+                loading_window: contractType === 'CIF' ? (entry.loading_window || undefined) : undefined,
+                delivery_month: contractType === 'CIF' ? (entry.delivery_month || undefined) : undefined,
+                delivery_window: contractType === 'CIF' ? (entry.delivery_window || undefined) : undefined,
+                delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark || undefined) : undefined,
+                combi_group_id: combiGroupId,
+              }))
+            } else {
+              // Regular contracts with quarterly plans
+              const qp = productQuarterlyPlanMap.get(productName)
+              if (!qp) continue
+              
+              createPromises.push(monthlyPlanAPI.create({
+                quarterly_plan_id: qp.id,
+                month: month,
+                year: year,
+                month_quantity: productQty,
+                number_of_liftings: 1,
+                laycan_5_days: contractType === 'FOB' ? (entry.laycan_5_days || undefined) : undefined,
+                laycan_2_days: contractType === 'FOB' ? (entry.laycan_2_days || undefined) : undefined,
+                laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark || undefined) : undefined,
+                loading_month: contractType === 'CIF' ? (entry.loading_month || undefined) : undefined,
+                loading_window: contractType === 'CIF' ? (entry.loading_window || undefined) : undefined,
+                delivery_month: contractType === 'CIF' ? (entry.delivery_month || undefined) : undefined,
+                delivery_window: contractType === 'CIF' ? (entry.delivery_window || undefined) : undefined,
+                delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark || undefined) : undefined,
+                combi_group_id: combiGroupId,
+              }))
+            }
           }
         } else {
           // Single product entry
@@ -1178,8 +1273,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             delivery_window_remark: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window_remark || undefined) : undefined,
           }
           
-          // For SPOT contracts, use contract_id instead of quarterly_plan_id
-          if (isSpotContract) {
+          // For SPOT/Range contracts, use contract_id instead of quarterly_plan_id
+          if (skipQuarterlyPlan) {
             createPayload.contract_id = contractId
             createPayload.product_name = entry.product_name
           } else {
@@ -1203,8 +1298,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     }
   }
 
-  // SPOT contracts don't need quarterly plans
-  if (!isSpotContract && (!quarterlyPlans || quarterlyPlans.length === 0)) {
+  // SPOT/Range contracts don't need quarterly plans
+  if (!skipQuarterlyPlan && (!quarterlyPlans || quarterlyPlans.length === 0)) {
     return (
       <Paper sx={{ p: 2 }}>
         <Typography color="error" sx={{ mb: 2 }}>
@@ -1222,8 +1317,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     )
   }
   
-  // For SPOT contracts without quarterly plans, skip quarterly-based rendering
-  if (!isSpotContract && quarterOrder.length === 0) {
+  // For non-SPOT/Range contracts without quarterly plans, skip quarterly-based rendering
+  if (!skipQuarterlyPlan && quarterOrder.length === 0) {
     return (
       <Paper sx={{ p: 2 }}>
         <Typography>Loading contract details...</Typography>
@@ -1231,14 +1326,18 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     )
   }
 
-  // For SPOT contracts, render a simplified view with just the contract months
-  if (isSpotContract) {
+  // For SPOT/Range contracts, render a simplified view with just the contract months
+  if (skipQuarterlyPlan) {
     return (
       <Paper sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="h6">
-              Spot Contract - Monthly Plan
+              {isRangeContract 
+                ? 'Range Contract' 
+                : isSpotContract 
+                  ? 'Spot Contract' 
+                  : 'Contract'} - Monthly Plan
             </Typography>
             {isMultiProduct && (
               <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -1273,8 +1372,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         
         {/* Contract Period Info with Quantity Validation */}
         <Box sx={{ mb: 3, p: 2, bgcolor: '#F8FAFC', borderRadius: 2, border: '1px solid #E2E8F0' }}>
-          <Typography variant="body2" sx={{ color: '#64748B' }}>
+          <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
             Contract Period: <strong>{new Date(contract.start_period).toLocaleDateString()} - {new Date(contract.end_period).toLocaleDateString()}</strong>
+          </Typography>
+          
+          {/* Monthly Plan Progress - Enhanced for Range Contracts */}
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#1E293B', mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+            📊 Monthly Plan Progress
           </Typography>
           
           {/* Quantity validation for each product */}
@@ -1283,8 +1387,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             // Use != null to check for both null and undefined, and ensure value > 0
             const isMinMaxMode = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
             const minQuantity = p.min_quantity || 0
-            const maxQuantity = isMinMaxMode ? (p.max_quantity || 0) : (p.total_quantity || 0) + (p.optional_quantity || 0)
-            const totalQuantity = isMinMaxMode ? maxQuantity : (p.total_quantity || 0) + (p.optional_quantity || 0)
+            const optionalQuantity = p.optional_quantity || 0  // Optional quantity - works for both modes
+            
+            // For range contracts: max is the max_quantity, optional is on top of max
+            // For fixed contracts: max is total + optional
+            const maxQuantity = isMinMaxMode 
+              ? (p.max_quantity || 0) + optionalQuantity  // Range: max + optional
+              : (p.total_quantity || 0) + optionalQuantity  // Fixed: total + optional
+            
+            const firmQuantity = isMinMaxMode 
+              ? (p.max_quantity || 0)  // For range mode - max is the "firm" ceiling before optional
+              : (p.total_quantity || 0)  // For fixed mode - firm quantity without optional
+            
+            const totalQuantity = maxQuantity  // Total possible = firm + optional
             
             // Calculate total allocated across all months for this product
             const allocated = Object.values(monthEntries).reduce((sum, entries) => {
@@ -1298,72 +1413,327 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               }, 0)
             }, 0)
             
-            // For min/max mode: valid when allocated is between min and max
-            // For fixed mode: valid when allocated equals total
+            // For min/max mode: valid when allocated is between min and max (or max + optional)
+            // For fixed mode: valid when allocated equals total (firm + optional)
             const remaining = maxQuantity - allocated
             const isComplete = isMinMaxMode 
               ? (allocated >= minQuantity && allocated <= maxQuantity)
               : remaining === 0
             const isBelowMin = isMinMaxMode && allocated < minQuantity
             const isAboveMax = allocated > maxQuantity
-            const percentage = maxQuantity > 0 ? Math.round((allocated / maxQuantity) * 100) : 0
-            const minPercentage = maxQuantity > 0 ? Math.round((minQuantity / maxQuantity) * 100) : 0
+            
+            // Calculate percentages for the progress bar
+            const percentage = maxQuantity > 0 ? (allocated / maxQuantity) * 100 : 0
+            const minPercentage = maxQuantity > 0 ? (minQuantity / maxQuantity) * 100 : 0
+            
+            // Track if we're in optional territory (works for both modes now)
+            const isUsingOptional = optionalQuantity > 0 && allocated > firmQuantity
+            const optionalUsed = isUsingOptional ? Math.min(allocated - firmQuantity, optionalQuantity) : 0
+            const firmPercentage = optionalQuantity > 0 && totalQuantity > 0 
+              ? (firmQuantity / totalQuantity) * 100 
+              : 100
+            
+            // For range mode: calculate max percentage (where optional starts)
+            const maxPercentage = isMinMaxMode && optionalQuantity > 0 && maxQuantity > 0
+              ? ((p.max_quantity || 0) / maxQuantity) * 100
+              : 100
+            
+            // Determine status color and icon
+            const getStatusColor = () => {
+              if (isAboveMax) return '#EF4444'  // Red - over max + optional
+              if (isUsingOptional) return '#8B5CF6'  // Purple - using optional
+              if (isComplete) return '#22C55E'  // Green - complete/within range
+              if (isBelowMin) return '#F59E0B'  // Amber - below min
+              return '#3B82F6'  // Blue - in progress
+            }
+            
+            const getStatusIcon = () => {
+              if (isAboveMax) return '⚠️'
+              if (isUsingOptional) return '🔷'
+              if (isComplete) return '✅'
+              if (isBelowMin) return '⏳'
+              return '📈'
+            }
+            
+            const getStatusText = () => {
+              if (isAboveMax) return `Over Maximum! (${(allocated - maxQuantity).toLocaleString()} KT over)`
+              if (isUsingOptional) {
+                return `🔷 Tapping Optional: ${optionalUsed.toLocaleString()} of ${optionalQuantity.toLocaleString()} KT`
+              }
+              if (isMinMaxMode) {
+                if (isComplete) return 'Within Range ✓'
+                if (isBelowMin) return `${(minQuantity - allocated).toLocaleString()} KT below minimum`
+                return 'In Progress'
+              } else {
+                if (isComplete) return 'Complete ✓'
+                return `${remaining.toLocaleString()} KT remaining`
+              }
+            }
             
             return (
-              <Box key={p.name} sx={{ mt: 1.5, p: 1.5, bgcolor: isComplete ? 'rgba(34, 197, 94, 0.08)' : isAboveMax ? 'rgba(239, 68, 68, 0.08)' : '#FFFFFF', borderRadius: 1, border: '1px solid #E2E8F0' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight="bold" sx={{ color: isComplete ? 'success.main' : isAboveMax ? 'error.main' : 'text.primary' }}>
-                    {p.name} {isComplete && '✓'} {isAboveMax && '⚠'}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: isComplete ? 'success.main' : isAboveMax ? 'error.main' : 'text.secondary' }}>
-                    {percentage}%
-                  </Typography>
+              <Box 
+                key={p.name} 
+                sx={{ 
+                  mt: 2, 
+                  p: 2, 
+                  bgcolor: isComplete ? 'rgba(34, 197, 94, 0.06)' : isAboveMax ? 'rgba(239, 68, 68, 0.06)' : isUsingOptional ? 'rgba(139, 92, 246, 0.06)' : '#FFFFFF', 
+                  borderRadius: 2, 
+                  border: `1px solid ${isComplete ? '#86EFAC' : isAboveMax ? '#FECACA' : isUsingOptional ? '#C4B5FD' : '#E2E8F0'}`,
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {/* Header with product name and status */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1" fontWeight="bold" sx={{ color: '#1E293B' }}>
+                      {p.name}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: getStatusColor() }}>
+                      {getStatusIcon()}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="h6" fontWeight="bold" sx={{ color: getStatusColor(), lineHeight: 1 }}>
+                      {allocated.toLocaleString()} KT
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                      of {maxQuantity.toLocaleString()} KT
+                    </Typography>
+                  </Box>
                 </Box>
-                <Box sx={{ mt: 0.5, position: 'relative' }}>
+                
+                {/* Enhanced Progress Bar */}
+                <Box sx={{ position: 'relative', mb: 1.5 }}>
+                  {/* Background track */}
                   <Box sx={{ 
-                    height: 6, 
+                    height: 12, 
                     bgcolor: '#E2E8F0', 
-                    borderRadius: 1, 
-                    overflow: 'hidden',
+                    borderRadius: 2, 
+                    overflow: 'visible',
                     position: 'relative'
                   }}>
-                    {/* Min threshold marker for min/max mode */}
-                    {isMinMaxMode && minQuantity > 0 && (
+                    {/* For fixed mode with optional: show firm quantity zone */}
+                    {!isMinMaxMode && optionalQuantity > 0 && (
                       <Box sx={{
                         position: 'absolute',
-                        left: `${minPercentage}%`,
+                        left: 0,
                         top: 0,
                         bottom: 0,
-                        width: 2,
-                        bgcolor: isBelowMin ? '#F59E0B' : '#94A3B8',
-                        zIndex: 2
+                        width: `${firmPercentage}%`,
+                        bgcolor: 'rgba(59, 130, 246, 0.15)',
+                        borderRadius: '8px 0 0 8px',
+                        borderRight: '2px dashed #3B82F6'
                       }} />
                     )}
+                    
+                    {/* For range mode with optional: show optional zone (after max) */}
+                    {isMinMaxMode && optionalQuantity > 0 && (
+                      <Box sx={{
+                        position: 'absolute',
+                        left: `${maxPercentage}%`,
+                        top: 0,
+                        bottom: 0,
+                        right: 0,
+                        bgcolor: 'rgba(139, 92, 246, 0.15)',
+                        borderRadius: '0 8px 8px 0',
+                        borderLeft: '2px dashed #8B5CF6'
+                      }} />
+                    )}
+                    
+                    {/* Min threshold marker for min/max mode */}
+                    {isMinMaxMode && minQuantity > 0 && (
+                      <>
+                        <Box sx={{
+                          position: 'absolute',
+                          left: `${minPercentage}%`,
+                          top: -4,
+                          bottom: -4,
+                          width: 3,
+                          bgcolor: isBelowMin ? '#F59E0B' : '#22C55E',
+                          borderRadius: 1,
+                          zIndex: 3,
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                        }} />
+                        <Typography 
+                          variant="caption" 
+                          sx={{ 
+                            position: 'absolute', 
+                            left: `${minPercentage}%`, 
+                            top: -20, 
+                            transform: 'translateX(-50%)',
+                            color: isBelowMin ? '#F59E0B' : '#22C55E',
+                            fontWeight: 600,
+                            fontSize: '0.65rem',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          MIN
+                        </Typography>
+                      </>
+                    )}
+                    
+                    {/* Max threshold marker for min/max mode with optional */}
+                    {isMinMaxMode && optionalQuantity > 0 && (
+                      <>
+                        <Box sx={{
+                          position: 'absolute',
+                          left: `${maxPercentage}%`,
+                          top: -4,
+                          bottom: -4,
+                          width: 3,
+                          bgcolor: isUsingOptional ? '#8B5CF6' : '#3B82F6',
+                          borderRadius: 1,
+                          zIndex: 3,
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                        }} />
+                        <Typography 
+                          variant="caption" 
+                          sx={{ 
+                            position: 'absolute', 
+                            left: `${maxPercentage}%`, 
+                            top: -20, 
+                            transform: 'translateX(-50%)',
+                            color: isUsingOptional ? '#8B5CF6' : '#3B82F6',
+                            fontWeight: 600,
+                            fontSize: '0.65rem',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          MAX
+                        </Typography>
+                      </>
+                    )}
+                    
+                    {/* Progress fill */}
                     <Box sx={{ 
                       height: '100%', 
                       width: `${Math.min(percentage, 100)}%`, 
-                      bgcolor: isComplete ? '#22C55E' : isAboveMax ? '#EF4444' : isBelowMin ? '#F59E0B' : '#3B82F6',
-                      transition: 'width 0.3s ease'
-                    }} />
+                      bgcolor: getStatusColor(),
+                      borderRadius: percentage >= 100 ? 2 : '8px 0 0 8px',
+                      transition: 'width 0.3s ease',
+                      position: 'relative',
+                      zIndex: 1
+                    }}>
+                      {/* Optional quantity indicator within progress bar */}
+                      {isUsingOptional && (
+                        <Box sx={{
+                          position: 'absolute',
+                          left: `${(firmQuantity / allocated) * 100}%`,
+                          top: 0,
+                          bottom: 0,
+                          right: 0,
+                          bgcolor: '#A78BFA',
+                          borderRadius: '0 8px 8px 0'
+                        }} />
+                      )}
+                    </Box>
+                  </Box>
+                  
+                  {/* Scale markers */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5, px: 0.5 }}>
+                    <Typography variant="caption" sx={{ color: '#94A3B8', fontSize: '0.65rem' }}>0</Typography>
+                    {isMinMaxMode && minQuantity > 0 && minPercentage > 15 && minPercentage < 85 && (
+                      <Typography variant="caption" sx={{ color: '#94A3B8', fontSize: '0.65rem', position: 'absolute', left: `${minPercentage}%`, transform: 'translateX(-50%)' }}>
+                        {minQuantity.toLocaleString()}
+                      </Typography>
+                    )}
+                    <Typography variant="caption" sx={{ color: '#94A3B8', fontSize: '0.65rem' }}>{maxQuantity.toLocaleString()}</Typography>
                   </Box>
                 </Box>
-                <Typography variant="caption" sx={{ color: isComplete ? 'success.main' : isAboveMax ? 'error.main' : 'text.secondary', display: 'block', mt: 0.5 }}>
-                  {isMinMaxMode ? (
-                    <>
-                      Range: {minQuantity.toLocaleString()} - {maxQuantity.toLocaleString()} KT | 
-                      Allocated: {allocated.toLocaleString()} KT
-                      {isBelowMin && ` (${(minQuantity - allocated).toLocaleString()} KT below min)`}
-                      {isAboveMax && ` (${(allocated - maxQuantity).toLocaleString()} KT over max)`}
-                      {isComplete && ' ✓ Within range'}
-                    </>
-                  ) : (
-                    <>
-                      Contract: {totalQuantity.toLocaleString()} KT
-                      {p.optional_quantity > 0 && ` (incl. ${p.optional_quantity.toLocaleString()} KT optional)`}
-                      {' | '}Allocated: {allocated.toLocaleString()} KT | Remaining: {remaining.toLocaleString()} KT
-                    </>
-                  )}
-                </Typography>
+                
+                {/* Status text and details */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                  <Typography variant="body2" sx={{ color: getStatusColor(), fontWeight: 500 }}>
+                    {getStatusText()}
+                  </Typography>
+                  
+                  {/* Additional info chips */}
+                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                    {isMinMaxMode ? (
+                      <>
+                        <Chip 
+                          label={`Range: ${minQuantity.toLocaleString()} - ${(p.max_quantity || 0).toLocaleString()} KT`}
+                          size="small"
+                          sx={{ 
+                            bgcolor: 'rgba(139, 92, 246, 0.1)', 
+                            color: '#7C3AED',
+                            fontWeight: 500,
+                            fontSize: '0.7rem',
+                            height: 22
+                          }}
+                        />
+                        {optionalQuantity > 0 && (
+                          <Chip 
+                            label={`Optional: +${optionalQuantity.toLocaleString()} KT`}
+                            size="small"
+                            sx={{ 
+                              bgcolor: isUsingOptional ? 'rgba(139, 92, 246, 0.25)' : 'rgba(139, 92, 246, 0.1)', 
+                              color: '#7C3AED',
+                              fontWeight: 500,
+                              fontSize: '0.7rem',
+                              height: 22,
+                              border: isUsingOptional ? '1px solid #A78BFA' : 'none'
+                            }}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <Chip 
+                          label={`Firm: ${firmQuantity.toLocaleString()} KT`}
+                          size="small"
+                          sx={{ 
+                            bgcolor: 'rgba(59, 130, 246, 0.1)', 
+                            color: '#2563EB',
+                            fontWeight: 500,
+                            fontSize: '0.7rem',
+                            height: 22
+                          }}
+                        />
+                        {optionalQuantity > 0 && (
+                          <Chip 
+                            label={`Optional: ${optionalQuantity.toLocaleString()} KT`}
+                            size="small"
+                            sx={{ 
+                              bgcolor: isUsingOptional ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.1)', 
+                              color: '#7C3AED',
+                              fontWeight: 500,
+                              fontSize: '0.7rem',
+                              height: 22,
+                              border: isUsingOptional ? '1px solid #A78BFA' : 'none'
+                            }}
+                          />
+                        )}
+                      </>
+                    )}
+                    <Chip 
+                      label={`${Math.round(percentage)}%`}
+                      size="small"
+                      sx={{ 
+                        bgcolor: getStatusColor(), 
+                        color: '#FFFFFF',
+                        fontWeight: 600,
+                        fontSize: '0.7rem',
+                        height: 22
+                      }}
+                    />
+                  </Box>
+                </Box>
+                
+                {/* Optional quantity warning/info */}
+                {isUsingOptional && (
+                  <Box sx={{ 
+                    mt: 1.5, 
+                    p: 1, 
+                    bgcolor: 'rgba(139, 92, 246, 0.1)', 
+                    borderRadius: 1,
+                    border: '1px solid #C4B5FD'
+                  }}>
+                    <Typography variant="caption" sx={{ color: '#7C3AED', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      🔷 Tapping into optional quantity: {optionalUsed.toLocaleString()} of {optionalQuantity.toLocaleString()} KT used
+                    </Typography>
+                  </Box>
+                )}
               </Box>
             )
           })}
@@ -1410,7 +1780,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   )}
                   
                   {entries.map((entry, entryIndex) => {
-                    const quantity = parseFloat(entry.quantity || '0')
+                    const quantity = entry.is_combi 
+                      ? Object.values(entry.combi_quantities).reduce((sum, q) => sum + (parseFloat(q) || 0), 0)
+                      : parseFloat(entry.quantity || '0')
                     const showLaycans = contractType === 'FOB' && quantity > 0
                     const showCifWindows = contractType === 'CIF' && quantity > 0
                     
@@ -1420,8 +1792,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                         sx={{ 
                           mb: 1,
                           p: 1,
-                          bgcolor: '#FAFBFC',
-                          border: '1px solid #E5E7EB',
+                          bgcolor: entry.is_combi ? '#FFFBEB' : '#FAFBFC',
+                          border: `1px solid ${entry.is_combi ? '#F59E0B' : '#E5E7EB'}`,
                           borderRadius: 1,
                         }}
                       >
@@ -1435,8 +1807,36 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           </IconButton>
                         </Box>
                         
-                        {/* Product selection for multi-product */}
-                        {isMultiProduct && (
+                        {/* Combi Cargo option - only for multi-product contracts and new entries */}
+                        {isMultiProduct && !entry.id && (
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={entry.is_combi}
+                                onChange={(e) => handleCombiChange(month, year, entryIndex, e.target.checked)}
+                                size="small"
+                              />
+                            }
+                            label={
+                              <Typography variant="body2" sx={{ fontWeight: entry.is_combi ? 600 : 400, color: entry.is_combi ? '#B45309' : 'inherit' }}>
+                                Combi Cargo (multiple products in one vessel)
+                              </Typography>
+                            }
+                            sx={{ mb: 1 }}
+                          />
+                        )}
+                        
+                        {/* Show combi badge for existing combi entries */}
+                        {entry.is_combi && entry.id && (
+                          <Chip 
+                            label="Combi Cargo"
+                            size="small" 
+                            sx={{ mb: 1, bgcolor: '#F59E0B', color: 'white' }} 
+                          />
+                        )}
+                        
+                        {/* Product selection for multi-product non-combi entries */}
+                        {isMultiProduct && !entry.is_combi && !entry.id && (
                           <FormControl fullWidth size="small" sx={{ mb: 1 }}>
                             <InputLabel>Product</InputLabel>
                             <Select
@@ -1451,17 +1851,48 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           </FormControl>
                         )}
                         
-                        {/* Quantity */}
-                        <TextField
-                          size="small"
-                          label="Quantity (KT)"
-                          type="number"
-                          value={entry.quantity}
-                          onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
-                          onBlur={handleFieldBlur}
-                          fullWidth
-                          sx={{ mb: 1 }}
-                        />
+                        {/* Show product name for existing non-combi entries in multi-product contracts */}
+                        {isMultiProduct && !entry.is_combi && entry.id && (
+                          <Chip 
+                            label={entry.product_name}
+                            size="small" 
+                            sx={{ mb: 1, bgcolor: '#DBEAFE', color: '#1D4ED8' }} 
+                          />
+                        )}
+                        
+                        {/* Combi cargo: individual quantity inputs for each product */}
+                        {entry.is_combi ? (
+                          <Box sx={{ mb: 1.5 }}>
+                            {products.map((p: any) => (
+                              <TextField
+                                key={p.name}
+                                label={`${p.name} (KT)`}
+                                type="number"
+                                size="small"
+                                value={entry.combi_quantities[p.name] || ''}
+                                onChange={(e) => handleCombiQuantityChange(month, year, entryIndex, p.name, e.target.value)}
+                                fullWidth
+                                sx={{ mb: 1 }}
+                                inputProps={{ min: 0, step: 0.01 }}
+                              />
+                            ))}
+                            <Typography variant="caption" sx={{ color: '#64748B' }}>
+                              Total: {quantity.toLocaleString()} KT
+                            </Typography>
+                          </Box>
+                        ) : (
+                          /* Single product quantity */
+                          <TextField
+                            size="small"
+                            label="Quantity (KT)"
+                            type="number"
+                            value={entry.quantity}
+                            onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
+                            onBlur={handleFieldBlur}
+                            fullWidth
+                            sx={{ mb: 1 }}
+                          />
+                        )}
                         
                         {/* FOB Laycans */}
                         {showLaycans && (

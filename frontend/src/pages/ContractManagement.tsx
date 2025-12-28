@@ -255,9 +255,12 @@ export default function ContractManagement() {
   const numContractYears = calculateContractYears(formData.start_period, formData.end_period)
   
   // Determine if a product uses min/max mode (range-based) vs fixed mode
-  // Use != null to check for both null and undefined
+  // Check if min_quantity or max_quantity is defined (not undefined/null)
+  // This allows min=0 to still be considered min/max mode
   const isMinMaxMode = (product: ContractProduct): boolean => {
-    return (product.min_quantity != null && product.min_quantity > 0) ||
+    // If min_quantity is explicitly set (even to 0), or max_quantity is set and > 0, it's min/max mode
+    // We check min_quantity !== undefined to detect when user has switched to min/max mode
+    return product.min_quantity !== undefined || 
            (product.max_quantity != null && product.max_quantity > 0)
   }
 
@@ -282,42 +285,48 @@ export default function ContractManagement() {
   
   // Toggle between fixed and min/max mode for a product
   const handleToggleQuantityMode = (productIndex: number) => {
-    const updatedProducts = [...formData.products]
-    const product = updatedProducts[productIndex]
-    
-    if (isMinMaxMode(product)) {
-      // Switch to fixed mode - convert max to total_quantity
-      product.total_quantity = product.max_quantity || 0
-      product.optional_quantity = 0
-      product.min_quantity = undefined
-      product.max_quantity = undefined
-      // Update year_quantities if present
-      if (product.year_quantities) {
-        product.year_quantities = product.year_quantities.map(yq => ({
-          ...yq,
-          quantity: yq.max_quantity || yq.quantity || 0,
-          optional_quantity: 0,
+    // Create a deep copy to avoid mutation issues
+    const updatedProducts = formData.products.map((p, i) => {
+      if (i !== productIndex) return p
+      
+      const product = { ...p }
+      
+      if (isMinMaxMode(product)) {
+        // Switch to fixed mode - convert max to total_quantity
+        const newProduct: ContractProduct = {
+          name: product.name,
+          total_quantity: product.max_quantity || 0,
+          optional_quantity: product.optional_quantity || 0,
           min_quantity: undefined,
-          max_quantity: undefined
-        }))
-      }
-    } else {
-      // Switch to min/max mode - convert total_quantity to max
-      product.min_quantity = 0
-      product.max_quantity = (product.total_quantity || 0) + (product.optional_quantity || 0)
-      product.total_quantity = undefined
-      product.optional_quantity = undefined
-      // Update year_quantities if present
-      if (product.year_quantities) {
-        product.year_quantities = product.year_quantities.map(yq => ({
-          ...yq,
+          max_quantity: undefined,
+          year_quantities: product.year_quantities?.map(yq => ({
+            year: yq.year,
+            quantity: yq.max_quantity || yq.quantity || 0,
+            optional_quantity: yq.optional_quantity || 0,
+            min_quantity: undefined,
+            max_quantity: undefined
+          }))
+        }
+        return newProduct
+      } else {
+        // Switch to min/max mode - convert total_quantity to max
+        const newProduct: ContractProduct = {
+          name: product.name,
           min_quantity: 0,
-          max_quantity: (yq.quantity || 0) + (yq.optional_quantity || 0),
-          quantity: undefined,
-          optional_quantity: undefined
-        }))
+          max_quantity: (product.total_quantity || 0),
+          optional_quantity: product.optional_quantity || 0,
+          total_quantity: undefined,
+          year_quantities: product.year_quantities?.map(yq => ({
+            year: yq.year,
+            min_quantity: 0,
+            max_quantity: yq.quantity || 0,
+            optional_quantity: yq.optional_quantity || 0,
+            quantity: undefined
+          }))
+        }
+        return newProduct
       }
-    }
+    })
     
     setFormData({ ...formData, products: updatedProducts })
   }
@@ -506,7 +515,8 @@ export default function ContractManagement() {
             name: p.name,
             // Include both modes - backend will use whichever is set
             total_quantity: useMinMax ? undefined : p.total_quantity,
-            optional_quantity: useMinMax ? undefined : (p.optional_quantity || 0),
+            // optional_quantity works for BOTH modes - it's extra quantity beyond max (range) or total (fixed)
+            optional_quantity: p.optional_quantity || 0,
             min_quantity: useMinMax ? (p.min_quantity || 0) : undefined,
             max_quantity: useMinMax ? p.max_quantity : undefined,
             year_quantities: p.year_quantities && p.year_quantities.length > 0 ? p.year_quantities : undefined
@@ -948,16 +958,23 @@ export default function ContractManagement() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                         {contract.products && Array.isArray(contract.products) && contract.products.length > 0
                           ? contract.products.map((p: any, idx: number) => {
                               // Check if min/max mode - must have actual values (not null/undefined)
                               const isMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
-                              const qtyDisplay = isMinMax 
-                                ? `${(p.min_quantity || 0).toLocaleString()} - ${(p.max_quantity || 0).toLocaleString()} KT`
-                                : `${((p.total_quantity || 0) + (p.optional_quantity || 0)).toLocaleString()} KT`
+                              const optionalQty = p.optional_quantity || 0
+                              
+                              // Build quantity display
+                              let qtyDisplay: string
+                              if (isMinMax) {
+                                qtyDisplay = `${(p.min_quantity || 0).toLocaleString()} - ${(p.max_quantity || 0).toLocaleString()} KT`
+                              } else {
+                                qtyDisplay = `${(p.total_quantity || 0).toLocaleString()} KT`
+                              }
+                              
                               return (
-                                <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                                   <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8125rem' }}>
                                     {typeof p === 'object' ? p.name : p}: {typeof p === 'object' ? qtyDisplay : ''}
                                   </Typography>
@@ -970,6 +987,20 @@ export default function ContractManagement() {
                                         fontSize: '0.625rem',
                                         bgcolor: '#FAF5FF', 
                                         color: '#7C3AED',
+                                        '& .MuiChip-label': { px: 0.5 }
+                                      }} 
+                                    />
+                                  )}
+                                  {optionalQty > 0 && (
+                                    <Chip 
+                                      label={`+${optionalQty.toLocaleString()} opt`}
+                                      size="small" 
+                                      sx={{ 
+                                        height: 16, 
+                                        fontSize: '0.625rem',
+                                        bgcolor: '#F0FDF4', 
+                                        color: '#16A34A',
+                                        fontWeight: 500,
                                         '& .MuiChip-label': { px: 0.5 }
                                       }} 
                                     />
@@ -1059,26 +1090,39 @@ export default function ContractManagement() {
                   ← Back to all contracts
                 </Button>
               </Box>
-              {/* SPOT contracts skip quarterly plan and go directly to monthly */}
-              {selectedContract?.contract_category === 'SPOT' ? (
-                <>
-                  <Box sx={{ p: 2, bgcolor: '#FEF3C7', borderBottom: '1px solid #FCD34D' }}>
-                    <Typography variant="body2" sx={{ color: '#92400E', fontWeight: 500 }}>
-                      📋 Spot Contract — Monthly plan only (no quarterly planning required)
-                    </Typography>
-                  </Box>
-                  <Box sx={{ p: 2 }}>
-                    <MonthlyPlanForm
-                      key={`monthly-spot-${selectedContract.id}`}
-                      contractId={selectedContract.id}
-                      contract={selectedContract}
-                      quarterlyPlans={[]}
-                      onPlanCreated={handlePlanCreated}
-                      isSpotContract={true}
-                    />
-                  </Box>
-                </>
-              ) : (
+              {/* SPOT contracts and Range contracts (min/max mode) skip quarterly plan and go directly to monthly */}
+              {(() => {
+                const isSpot = selectedContract?.contract_category === 'SPOT'
+                const isRange = selectedContract?.products?.some((p: ContractProduct) => 
+                  (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
+                )
+                
+                if (isSpot || isRange) {
+                  return (
+                    <>
+                      <Box sx={{ p: 2, bgcolor: isSpot ? '#FEF3C7' : '#EDE9FE', borderBottom: `1px solid ${isSpot ? '#FCD34D' : '#C4B5FD'}` }}>
+                        <Typography variant="body2" sx={{ color: isSpot ? '#92400E' : '#5B21B6', fontWeight: 500 }}>
+                          {isSpot 
+                            ? '📋 Spot Contract — Monthly plan only (no quarterly planning required)'
+                            : '📊 Range Contract — Monthly plan only (min/max quantities, no quarterly planning required)'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ p: 2 }}>
+                        <MonthlyPlanForm
+                          key={`monthly-${isSpot ? 'spot' : 'range'}-${selectedContract.id}`}
+                          contractId={selectedContract.id}
+                          contract={selectedContract}
+                          quarterlyPlans={[]}
+                          onPlanCreated={handlePlanCreated}
+                          isSpotContract={isSpot}
+                          isRangeContract={isRange}
+                        />
+                      </Box>
+                    </>
+                  )
+                }
+                return null
+              })() || (
                 <>
                   <Tabs 
                     value={tabValue} 
@@ -1404,7 +1448,7 @@ export default function ContractManagement() {
                         </Grid>
                         {isMinMaxMode(product) ? (
                           <>
-                            <Grid item xs={12} md={3}>
+                            <Grid item xs={12} md={2}>
                               <TextField
                                 label="Minimum Quantity (KT)"
                                 type="number"
@@ -1414,7 +1458,7 @@ export default function ContractManagement() {
                                 inputProps={{ min: 0, step: 0.01 }}
                               />
                             </Grid>
-                            <Grid item xs={12} md={3}>
+                            <Grid item xs={12} md={2}>
                               <TextField
                                 label="Maximum Quantity (KT)"
                                 type="number"
@@ -1423,6 +1467,17 @@ export default function ContractManagement() {
                                 required
                                 fullWidth
                                 inputProps={{ min: 0, step: 0.01 }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                              <TextField
+                                label="Optional Quantity (KT)"
+                                type="number"
+                                value={product.optional_quantity || 0}
+                                onChange={(e) => handleProductChange(index, 'optional_quantity', parseFloat(e.target.value) || 0)}
+                                fullWidth
+                                inputProps={{ min: 0, step: 0.01 }}
+                                helperText="Beyond max"
                               />
                             </Grid>
                           </>
@@ -1528,6 +1583,16 @@ export default function ContractManagement() {
                                       onChange={(e) => handleYearQuantityChange(index, year, 'max_quantity', parseFloat(e.target.value) || 0)}
                                       fullWidth
                                       inputProps={{ min: 0, step: 0.01 }}
+                                      sx={{ mb: 1 }}
+                                    />
+                                    <TextField
+                                      label="Optional (KT)"
+                                      type="number"
+                                      size="small"
+                                      value={yearQty?.optional_quantity || 0}
+                                      onChange={(e) => handleYearQuantityChange(index, year, 'optional_quantity', parseFloat(e.target.value) || 0)}
+                                      fullWidth
+                                      inputProps={{ min: 0, step: 0.01 }}
                                     />
                                   </>
                                 ) : (
@@ -1575,6 +1640,11 @@ export default function ContractManagement() {
                             <Typography variant="body2" sx={{ color: '#64748B' }}>
                               <strong>Max:</strong> {(product.max_quantity || 0).toLocaleString()} KT
                             </Typography>
+                            {(product.optional_quantity || 0) > 0 && (
+                              <Typography variant="body2" sx={{ color: '#7C3AED' }}>
+                                <strong>Optional:</strong> {(product.optional_quantity || 0).toLocaleString()} KT
+                              </Typography>
+                            )}
                           </>
                         ) : (
                           <>
