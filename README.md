@@ -8,8 +8,17 @@ A full-stack web application for managing oil contract planning, lifting schedul
 - **Customer Management**: Create and manage customers with contact details
 - **Product Management**: Manage products under each customer
 - **Contract Management**: Create FOB and CIF contracts with quarterly and monthly planning
+- **Range Contracts**: Support for min/max quantity ranges with optional quantities
 - **Cargo Tracking**: Track vessel operations with automatic status updates
+- **Combi Cargo**: Load multiple products in a single vessel with unified tracking
 - **Dashboard**: Multi-tab interface for Port Movement, Active Loadings, Completed Cargos, In-Road CIF, and Completed In-Road CIF
+
+### Contract Types & Quantity Modes
+- **Fixed Quantity Mode**: Set a firm total quantity with optional additional quantity
+- **Range (Min/Max) Mode**: Set minimum and maximum quantity bounds for flexible contracts
+- **Authority Amendments**: Mid-contract adjustments to min/max quantities with reference tracking
+- **Optional Quantities**: Additional quantities beyond firm commitments (shown in purple on progress bars)
+- **Progress Tracking**: Visual progress bars showing allocation against min/max thresholds
 
 ### Real-Time Collaboration Features
 - **🔄 Real-Time Sync**: Changes made by one user are instantly reflected for all other users viewing the same page (no refresh needed)
@@ -181,25 +190,57 @@ Customer
   → Product
       → Contract
           → Contract Type (FOB or CIF)
+          → Contract Category (TERM, SEMI_TERM, or SPOT)
           → Contract Period
-          → Contract Total Quantity
-              → Quarterly Plan
+          → Quantity Mode:
+              → Fixed: Total Quantity + Optional Quantity
+              → Range: Min Quantity + Max Quantity + Optional Quantity
+          → Authority Amendments (for range contracts)
+              → Quarterly Plan (skipped for SPOT and Range contracts)
                   → Monthly Plan
                       → Cargo Details (Vessel details)
+                      → Combi Cargo (multiple products in one vessel)
 ```
+
+### Contract Categories
+- **TERM**: Long-term contracts with quarterly planning
+- **SEMI_TERM**: Medium-term contracts with quarterly planning  
+- **SPOT**: Short-term contracts that skip quarterly planning (direct monthly plans)
+- **Range Contracts**: Any contract with min/max quantities skips quarterly planning
 
 ## Workflow
 
+### Standard Contract Workflow (TERM/SEMI_TERM with Fixed Quantity)
 1. **Login** - Authenticate with your credentials
 2. **Create Customer** - Add a new customer with contact details
 3. **Add Product** - Create products under each customer
 4. **Create Contract** - Set up FOB or CIF contracts for products
-5. **Enter Total Quantity** - Define the contract quantity
+5. **Enter Total Quantity** - Define the contract quantity (+ optional quantity if needed)
 6. **Create Quarterly Plan** - Allocate quantities across Q1-Q4
 7. **Create Monthly Plan** - Plan monthly liftings with laycan windows
 8. **Add Cargo Details** - Add vessel information and tracking details
-9. **System Updates Status** - Automatic status updates based on completion times
+9. **Track Progress** - Monitor allocation via progress bars
 10. **View in Tabs** - Cargos appear in appropriate tabs based on status
+
+### Range Contract Workflow (Min/Max Quantity)
+1. **Create Contract** - Toggle to "Min/Max" quantity mode
+2. **Set Range** - Enter minimum and maximum quantities (+ optional quantity if needed)
+3. **Skip Quarterly Plan** - Range contracts go directly to monthly planning
+4. **Create Monthly Plan** - Plan liftings with visual min/max progress bar
+5. **Authority Amendments** - Adjust min/max mid-contract if needed
+6. **Track Progress** - Progress bar shows current position relative to min/max thresholds
+
+### SPOT Contract Workflow
+1. **Create Contract** - Select "SPOT" category
+2. **Skip Quarterly Plan** - SPOT contracts go directly to monthly planning
+3. **Create Monthly Plan** - Plan liftings as needed
+4. **Add Cargo Details** - Track vessel operations
+
+### Combi Cargo (Multiple Products in One Vessel)
+1. **In Monthly Plan** - Check "Combi Cargo" option when adding an entry
+2. **Enter Quantities** - Specify quantity for each product in the vessel
+3. **Unified Tracking** - All products share vessel name, laycan, port operations
+4. **Single Status Update** - Changing status updates all products in the combi group
 
 ## Real-Time Features
 
@@ -255,10 +296,16 @@ On the HomePage tabs (Port Movement, Active Loadings, Completed Cargos, In-Road 
 
 ### Contracts
 - `GET /api/contracts` - List all contracts (optional: filter by product_id)
-- `POST /api/contracts` - Create contract
+- `POST /api/contracts` - Create contract (supports fixed or min/max quantity mode)
 - `GET /api/contracts/{id}` - Get contract by ID
-- `PUT /api/contracts/{id}` - Update contract (with optimistic locking)
+- `PUT /api/contracts/{id}` - Update contract (with optimistic locking, supports authority amendments)
 - `DELETE /api/contracts/{id}` - Delete contract
+
+### Contract Products Schema
+Each contract product supports:
+- `total_quantity` / `optional_quantity` - For fixed quantity mode
+- `min_quantity` / `max_quantity` / `optional_quantity` - For range (min/max) mode
+- `authority_amendments[]` - Mid-contract adjustments to min/max quantities
 
 ### Quarterly Plans
 - `GET /api/quarterly-plans` - List all quarterly plans (optional: filter by contract_id)
@@ -284,6 +331,7 @@ On the HomePage tabs (Port Movement, Active Loadings, Completed Cargos, In-Road 
 - `POST /api/cargos` - Create cargo (broadcasts to connected users)
 - `GET /api/cargos/{id}` - Get cargo by ID
 - `PUT /api/cargos/{id}` - Update cargo (broadcasts to connected users)
+- `PUT /api/cargos/combi-group/{combi_group_id}/sync` - Sync all cargos in a combi group (status, vessel, ports)
 - `DELETE /api/cargos/{id}` - Soft delete cargo (moves to recycle bin)
 
 ### Version History
@@ -352,6 +400,21 @@ ACCESS_TOKEN_EXPIRE_MINUTES=10080
 - For production, use a proper secret key and consider shorter token expiration times
 - Version history is available for cargos (via History button in edit dialog) and monthly plans (via 3-dots menu)
 - Deleted cargos are soft-deleted with 30-day retention; access Recycle Bin from Admin page to restore or permanently delete
+
+### Range Contracts
+- Range contracts use min/max quantities instead of fixed total quantity
+- Optional quantity can be added on top of max quantity for additional flexibility
+- Authority amendments allow mid-contract adjustments to min/max values
+- Range contracts skip quarterly planning - go directly to monthly plans
+- Progress bar shows current allocation relative to min (green line) and max (end of bar)
+- Purple fill indicates optional quantity usage (beyond max)
+
+### Combi Cargos
+- Combi cargos allow multiple products to be loaded in a single vessel
+- All products in a combi group share: vessel name, laycan window, load ports, inspector, status
+- Individual quantities are tracked per product within the combi group
+- Port operation status changes apply to all cargos in the combi group simultaneously
+- Combi cargos are displayed as a single unified row in Active Loadings and Port Movement tabs
 
 ## Troubleshooting
 
