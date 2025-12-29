@@ -90,6 +90,16 @@ const getDeliveryMonthOptions = (loadingMonth: number, loadingYear: number): Arr
   return options
 }
 
+// Round quantity to avoid floating-point precision issues
+// Rounds to 3 decimal places which is sufficient for KT measurements
+const roundQuantity = (qty: number | string | undefined | null): string => {
+  if (qty === undefined || qty === null || qty === '') return ''
+  const num = typeof qty === 'string' ? parseFloat(qty) : qty
+  if (isNaN(num)) return ''
+  // Round to 3 decimal places to avoid floating-point issues
+  return Math.round(num * 1000) / 1000 + ''
+}
+
 // Get the loading month option for a specific month/year (single option dropdown)
 const getLoadingMonthOption = (loadingMonth: number, loadingYear: number): { value: string, label: string } => {
   const monthName = MONTH_NAMES[loadingMonth - 1]
@@ -503,7 +513,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             const combiPlanIds: number[] = []
             const combiProductPlanMap: Record<string, number> = {}
             combiPlans.forEach((plan: any) => {
-              combiQuantities[plan.product_name] = plan.month_quantity.toString()
+              combiQuantities[plan.product_name] = roundQuantity(plan.month_quantity)
               combiPlanIds.push(plan.id)
               combiProductPlanMap[plan.product_name] = plan.id
             })
@@ -519,7 +529,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               id: firstPlan.id,  // Use first plan's ID as reference
               quarterly_plan_id: null,
               product_name: '',  // Combi entries don't have a single product
-              quantity: totalQuantity.toString(),
+              quantity: roundQuantity(totalQuantity),
               laycan_5_days: firstPlan.laycan_5_days || '',
               laycan_2_days: firstPlan.laycan_2_days || '',
               laycan_2_days_remark: firstPlan.laycan_2_days_remark || '',
@@ -552,7 +562,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               id: plan.id,
               quarterly_plan_id: null,
               product_name: plan.product_name,
-              quantity: plan.month_quantity?.toString() || '',
+              quantity: roundQuantity(plan.month_quantity),
               laycan_5_days: plan.laycan_5_days || '',
               laycan_2_days: plan.laycan_2_days || '',
               laycan_2_days_remark: plan.laycan_2_days_remark || '',
@@ -663,7 +673,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           const combiPlanIds: number[] = []
           const combiProductPlanMap: Record<string, number> = {}
           combiPlans.forEach((plan: any) => {
-            combiQuantities[plan.product_name] = plan.month_quantity.toString()
+            combiQuantities[plan.product_name] = roundQuantity(plan.month_quantity)
             combiPlanIds.push(plan.id)
             combiProductPlanMap[plan.product_name] = plan.id
           })
@@ -679,7 +689,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             id: firstPlan.id,  // Use first plan's ID as reference
             quarterly_plan_id: firstPlan.quarterly_plan_id,
             product_name: '',  // Combi entries don't have a single product
-            quantity: totalQuantity.toString(),
+            quantity: roundQuantity(totalQuantity),
             laycan_5_days: firstPlan.laycan_5_days || '',
             laycan_2_days: firstPlan.laycan_2_days || '',
             laycan_2_days_remark: firstPlan.laycan_2_days_remark || '',
@@ -712,7 +722,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             id: plan.id,
             quarterly_plan_id: plan.quarterly_plan_id,
             product_name: plan.product_name,
-            quantity: plan.month_quantity.toString(),
+            quantity: roundQuantity(plan.month_quantity),
             laycan_5_days: plan.laycan_5_days || '',
             laycan_2_days: plan.laycan_2_days || '',
             laycan_2_days_remark: plan.laycan_2_days_remark || '',
