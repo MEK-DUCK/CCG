@@ -309,8 +309,12 @@ def get_cif_monthly_plans_for_tng(
             models.Contract.contract_type == 'CIF'
         )
         
-        # Only include plans with quantity > 0
+        # Only include plans with quantity > 0 AND loading_window set
         query = query.filter(models.MonthlyPlan.month_quantity > 0)
+        query = query.filter(
+            models.MonthlyPlan.loading_window.isnot(None),
+            models.MonthlyPlan.loading_window != ''
+        )
         
         # Optional month filter
         if months:
