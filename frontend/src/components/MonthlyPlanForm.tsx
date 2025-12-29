@@ -2685,7 +2685,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       select
                                       disabled={isLocked}
                                       sx={{
-                                        width: 160,
+                                        flex: 1.2,
+                                        minWidth: 140,
                                         '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
                                       }}
                                     >
@@ -2699,9 +2700,10 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       value={entry.loading_window}
                                       onChange={(e) => handleLaycanChange(month, year, entryIndex, 'loading_window', e.target.value)}
                                       placeholder="e.g., 1-5/1"
-                                      fullWidth
                                       disabled={isLocked}
                                       sx={{
+                                        flex: 0.8,
+                                        minWidth: 100,
                                         '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
                                         '& .MuiInputBase-input': { padding: '6px 8px' },
                                       }}
@@ -2735,7 +2737,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       required
                                       disabled={isLocked}
                                       sx={{
-                                        width: 160,
+                                        flex: 1.2,
+                                        minWidth: 140,
                                         '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
                                       }}
                                     >
@@ -2747,15 +2750,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       ))}
                                     </TextField>
                                     <TextField
-                                      label="Delivery Window"
+                                      label="Del Window"
                                       size="small"
                                       value={entry.delivery_window}
                                       onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
-                                      placeholder="Auto-calculated"
-                                      fullWidth
+                                      placeholder="Auto"
                                       disabled={isLocked}
                                       helperText={contract?.cif_destination ? `Basis ${contract.cif_destination}` : ''}
                                       sx={{
+                                        flex: 0.8,
+                                        minWidth: 100,
                                         '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
                                         '& .MuiInputBase-input': { padding: '6px 8px' },
                                       }}
