@@ -187,6 +187,40 @@ def ensure_schema():
                         conn.execute(text('ALTER TABLE cargos ADD COLUMN IF NOT EXISTS five_nd_date VARCHAR'))
                     else:
                         conn.execute(text('ALTER TABLE cargos ADD COLUMN five_nd_date VARCHAR'))
+            
+            # Add nd_days and nd_completed for ND tracking
+            if "nd_days" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE cargos ADD COLUMN IF NOT EXISTS nd_days VARCHAR'))
+                    else:
+                        conn.execute(text('ALTER TABLE cargos ADD COLUMN nd_days VARCHAR'))
+            if "nd_completed" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE cargos ADD COLUMN IF NOT EXISTS nd_completed BOOLEAN DEFAULT FALSE'))
+                    else:
+                        conn.execute(text('ALTER TABLE cargos ADD COLUMN nd_completed BOOLEAN DEFAULT 0'))
+        
+        # Contracts migrations - add cif_destination for delivery window calculation
+        if insp.has_table("contracts"):
+            cols = [c.get("name") for c in insp.get_columns("contracts")]
+            if "cif_destination" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE contracts ADD COLUMN IF NOT EXISTS cif_destination VARCHAR'))
+                    else:
+                        conn.execute(text('ALTER TABLE contracts ADD COLUMN cif_destination VARCHAR'))
+                logger.info("Added cif_destination column to contracts table")
+            
+            # Add tng_lead_days for CIF Tonnage Memo tracking
+            if "tng_lead_days" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE contracts ADD COLUMN IF NOT EXISTS tng_lead_days INTEGER'))
+                    else:
+                        conn.execute(text('ALTER TABLE contracts ADD COLUMN tng_lead_days INTEGER'))
+                logger.info("Added tng_lead_days column to contracts table")
         
         # Monthly plans migrations - add authority top-up fields
         if insp.has_table("monthly_plans"):
@@ -198,6 +232,32 @@ def ensure_schema():
                 ("authority_topup_date", "DATE"),
             ]
             for col_name, col_type in topup_cols:
+                if col_name not in cols:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS {col_name} {col_type}'))
+                        else:
+                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col_name} {col_type}'))
+                    logger.info(f"Added {col_name} column to monthly_plans table")
+            
+            # Add cif_route for delivery window calculation
+            if "cif_route" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS cif_route VARCHAR'))
+                    else:
+                        conn.execute(text('ALTER TABLE monthly_plans ADD COLUMN cif_route VARCHAR'))
+                logger.info("Added cif_route column to monthly_plans table")
+            
+            # Add TNG tracking fields
+            tng_cols = [
+                ("tng_issued", "BOOLEAN DEFAULT FALSE" if dialect == "postgresql" else "BOOLEAN DEFAULT 0"),
+                ("tng_issued_date", "DATE"),
+                ("tng_revised", "BOOLEAN DEFAULT FALSE" if dialect == "postgresql" else "BOOLEAN DEFAULT 0"),
+                ("tng_revised_date", "DATE"),
+                ("tng_remarks", "TEXT"),
+            ]
+            for col_name, col_type in tng_cols:
                 if col_name not in cols:
                     with engine.begin() as conn:
                         if dialect == "postgresql":

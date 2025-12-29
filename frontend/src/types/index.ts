@@ -75,6 +75,7 @@ export interface Contract {
   concluded_memo_received_date?: string
   remarks?: string
   tng_lead_days?: number  // CIF Tonnage Memo lead days (15 or 30 typically)
+  cif_destination?: string  // CIF base destination for delivery window calculation
   customer_id: number
   created_at: string
   updated_at?: string
@@ -106,6 +107,7 @@ export interface MonthlyPlan {
   laycan_2_days_remark?: string
   loading_month?: string  // For CIF contracts only (planning)
   loading_window?: string  // For CIF contracts only
+  cif_route?: string  // SUEZ or CAPE - for delivery window calculation
   delivery_month?: string  // For CIF contracts only (planning)
   delivery_window?: string  // For CIF contracts only
   delivery_window_remark?: string

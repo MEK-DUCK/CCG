@@ -1,0 +1,149 @@
+"""
+Voyage duration configuration and delivery window calculation utilities.
+
+Trip durations are from first day of loading window to destination,
+including 2-day laycan allowance.
+"""
+
+from datetime import date, timedelta
+from calendar import monthrange
+from typing import Optional, Tuple
+
+# Voyage duration lookup table (days including 2-day laycan)
+# Format: { destination: { route: days } }
+VOYAGE_DURATIONS = {
+    "Rotterdam": {"SUEZ": 24, "CAPE": 40},
+    "Le Havre": {"SUEZ": 24, "CAPE": 40},
+    "Shell Haven": {"SUEZ": 24, "CAPE": 40},
+    "Naples": {"SUEZ": 17, "CAPE": 40},
+    "Milford Haven": {"SUEZ": 23, "CAPE": 39},
+}
+
+# List of valid destinations for dropdowns
+CIF_DESTINATIONS = list(VOYAGE_DURATIONS.keys())
+
+# List of valid routes
+CIF_ROUTES = ["SUEZ", "CAPE"]
+
+
+def get_voyage_duration(destination: str, route: str) -> Optional[int]:
+    """
+    Get voyage duration in days for a destination and route.
+    
+    Args:
+        destination: Destination port name (e.g., "Rotterdam", "Milford Haven")
+        route: Route name ("SUEZ" or "CAPE")
+    
+    Returns:
+        Number of days for the voyage, or None if not found
+    """
+    dest_routes = VOYAGE_DURATIONS.get(destination)
+    if not dest_routes:
+        return None
+    return dest_routes.get(route)
+
+
+def parse_loading_window_start(loading_window: str, month: int, year: int) -> Optional[date]:
+    """
+    Parse the first day from a loading window string.
+    
+    Supports formats:
+    - "01-05/01" (DD-DD/MM)
+    - "1-5/1" (D-D/M)
+    - "15-20" (DD-DD, uses provided month/year)
+    
+    Args:
+        loading_window: Loading window string
+        month: Reference month (1-12)
+        year: Reference year
+    
+    Returns:
+        First day of loading window as date, or None if parsing fails
+    """
+    if not loading_window:
+        return None
+    
+    loading_window = loading_window.strip()
+    
+    try:
+        # Format: "DD-DD/MM" or "D-D/M"
+        if "/" in loading_window:
+            parts = loading_window.split("/")
+            day_part = parts[0]  # "01-05" or "1-5"
+            month_part = parts[1]  # "01" or "1"
+            
+            # Get first day
+            first_day = int(day_part.split("-")[0])
+            parsed_month = int(month_part)
+            
+            # Determine year - if parsed month < reference month, it might be next year
+            parsed_year = year
+            if parsed_month < month:
+                parsed_year = year + 1
+            
+            return date(parsed_year, parsed_month, first_day)
+        
+        # Format: "DD-DD" (use reference month/year)
+        elif "-" in loading_window:
+            first_day = int(loading_window.split("-")[0])
+            return date(year, month, first_day)
+        
+        # Single day
+        else:
+            first_day = int(loading_window)
+            return date(year, month, first_day)
+            
+    except (ValueError, IndexError):
+        return None
+
+
+def calculate_delivery_window(
+    loading_window: str,
+    destination: str,
+    route: str,
+    month: int,
+    year: int
+) -> Optional[str]:
+    """
+    Calculate the delivery window based on loading window, destination, and route.
+    
+    Formula logic:
+    - Delivery Start = First day of Loading + Trip Duration
+    - Delivery End = Delivery Start + 14 days
+    - If same month: "(StartDay-EndDay/Month)"
+    - If cross-month: Use last 15 days of delivery start month
+    
+    Args:
+        loading_window: Loading window string (e.g., "01-05/01")
+        destination: Destination port name
+        route: Route name ("SUEZ" or "CAPE")
+        month: Reference month for loading window parsing
+        year: Reference year for loading window parsing
+    
+    Returns:
+        Delivery window string (e.g., "(9-23/2)"), or None if calculation fails
+    """
+    # Get voyage duration
+    duration = get_voyage_duration(destination, route)
+    if duration is None:
+        return None
+    
+    # Parse loading window start date
+    loading_start = parse_loading_window_start(loading_window, month, year)
+    if loading_start is None:
+        return None
+    
+    # Calculate delivery dates
+    delivery_start = loading_start + timedelta(days=duration)
+    delivery_end = loading_start + timedelta(days=duration + 14)
+    
+    # Check if same month
+    if delivery_start.month == delivery_end.month:
+        # Same month: (StartDay-EndDay/Month)
+        return f"({delivery_start.day}-{delivery_end.day}/{delivery_start.month})"
+    else:
+        # Cross-month: Use last 15 days of delivery start month
+        _, last_day_of_month = monthrange(delivery_start.year, delivery_start.month)
+        adjusted_start = last_day_of_month - 14  # 15 days from end
+        return f"({adjusted_start}-{last_day_of_month}/{delivery_start.month})"
+

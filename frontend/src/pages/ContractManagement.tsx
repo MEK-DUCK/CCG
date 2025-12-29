@@ -36,6 +36,7 @@ import {
 import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-material'
 import client, { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity, AuthorityAmendment } from '../types'
+import { CIF_DESTINATIONS } from '../utils/voyageDuration'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
 import { useConflictHandler } from '../components/Presence'
@@ -133,6 +134,7 @@ export default function ContractManagement() {
     concluded_memo_received: '' as '' | 'yes' | 'no',
     concluded_memo_received_date: '',
     tng_lead_days: '' as '' | number,  // CIF Tonnage Memo lead days (15 or 30)
+    cif_destination: '' as string,  // CIF base destination for delivery window calculation
   })
 
   const jetA1Selected = formData.products.some((p) => p.name === 'JET A-1')
@@ -228,6 +230,7 @@ export default function ContractManagement() {
         concluded_memo_received: contract.concluded_memo_received === true ? 'yes' : contract.concluded_memo_received === false ? 'no' : '',
         concluded_memo_received_date: contract.concluded_memo_received_date || '',
         tng_lead_days: contract.tng_lead_days || '',
+        cif_destination: contract.cif_destination || '',
       })
     } else {
       setEditingContract(null)
@@ -249,6 +252,7 @@ export default function ContractManagement() {
         concluded_memo_received: '',
         concluded_memo_received_date: '',
         tng_lead_days: '',
+        cif_destination: '',
       })
     }
     setOpen(true)
@@ -461,6 +465,7 @@ export default function ContractManagement() {
       concluded_memo_received: '',
       concluded_memo_received_date: '',
       tng_lead_days: '',
+      cif_destination: '',
     })
   }
 
@@ -534,6 +539,7 @@ export default function ContractManagement() {
         concluded_memo_received_date: formData.concluded_memo_received === 'yes' && formData.concluded_memo_received_date ? formData.concluded_memo_received_date : undefined,
         authority_amendments: formData.authority_amendments.length > 0 ? formData.authority_amendments : undefined,
         tng_lead_days: formData.contract_type === 'CIF' && formData.tng_lead_days ? Number(formData.tng_lead_days) : undefined,
+        cif_destination: formData.contract_type === 'CIF' && formData.cif_destination ? formData.cif_destination : undefined,
       }
       
       // Include version for optimistic locking when updating
@@ -1275,6 +1281,23 @@ export default function ContractManagement() {
                 </Grid>
               )}
             </Grid>
+            {formData.contract_type === 'CIF' && (
+              <TextField
+                label="Base Destination"
+                value={formData.cif_destination}
+                onChange={(e) => setFormData({ ...formData, cif_destination: e.target.value })}
+                select
+                fullWidth
+                helperText="Destination port for delivery window calculation"
+              >
+                <MenuItem value="">
+                  <em>Select destination</em>
+                </MenuItem>
+                {CIF_DESTINATIONS.map((dest) => (
+                  <MenuItem key={dest} value={dest}>{dest}</MenuItem>
+                ))}
+              </TextField>
+            )}
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
                 <TextField

@@ -219,6 +219,10 @@ class Contract(Base):
     # Only applicable for CIF contracts (15 or 30 days typically)
     tng_lead_days = Column(Integer, nullable=True)
     
+    # CIF Delivery Window calculation - base destination for voyage duration lookup
+    # Options: Rotterdam, Le Havre, Shell Haven, Naples, Milford Haven
+    cif_destination = Column(String, nullable=True)
+    
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     
     # Legacy fields - kept for backward compatibility, will be removed in future
@@ -294,6 +298,7 @@ class MonthlyPlan(Base):
     # CIF contract fields
     loading_month = Column(String, nullable=True)
     loading_window = Column(String, nullable=True)
+    cif_route = Column(String, nullable=True)  # SUEZ or CAPE - for delivery window calculation
     delivery_month = Column(String, nullable=True)
     delivery_window = Column(String, nullable=True)
     delivery_window_remark = Column(Text, nullable=True)

@@ -32,6 +32,7 @@ import { MonthlyPlanStatus } from '../types'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 import { VersionHistoryDialog } from './VersionHistory'
+import { CIF_ROUTES, calculateDeliveryWindow } from '../utils/voyageDuration'
 
 // Simple UUID generator
 const generateUUID = (): string => {
@@ -106,6 +107,7 @@ interface MonthlyPlanEntry {
   laycan_2_days_remark: string
   loading_month: string
   loading_window: string
+  cif_route: string  // SUEZ or CAPE - for delivery window calculation
   delivery_month: string
   delivery_window: string
   delivery_window_remark: string
@@ -470,6 +472,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               laycan_2_days_remark: firstPlan.laycan_2_days_remark || '',
               loading_month: firstPlan.loading_month || '',
               loading_window: firstPlan.loading_window || '',
+              cif_route: firstPlan.cif_route || '',
               delivery_month: firstPlan.delivery_month || '',
               delivery_window: firstPlan.delivery_window || '',
               delivery_window_remark: firstPlan.delivery_window_remark || '',
@@ -502,6 +505,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               laycan_2_days_remark: plan.laycan_2_days_remark || '',
               loading_month: plan.loading_month || '',
               loading_window: plan.loading_window || '',
+              cif_route: plan.cif_route || '',
               delivery_month: plan.delivery_month || '',
               delivery_window: plan.delivery_window || '',
               delivery_window_remark: plan.delivery_window_remark || '',
@@ -628,6 +632,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             laycan_2_days_remark: firstPlan.laycan_2_days_remark || '',
             loading_month: firstPlan.loading_month || '',
             loading_window: firstPlan.loading_window || '',
+            cif_route: firstPlan.cif_route || '',
             delivery_month: firstPlan.delivery_month || '',
             delivery_window: firstPlan.delivery_window || '',
             delivery_window_remark: firstPlan.delivery_window_remark || '',
@@ -660,6 +665,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             laycan_2_days_remark: plan.laycan_2_days_remark || '',
             loading_month: plan.loading_month || '',
             loading_window: plan.loading_window || '',
+            cif_route: plan.cif_route || '',
             delivery_month: plan.delivery_month || '',
             delivery_window: plan.delivery_window || '',
             delivery_window_remark: plan.delivery_window_remark || '',
@@ -704,7 +710,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     month: number,
     year: number,
     entryIndex: number,
-    field: 'laycan_5_days' | 'laycan_2_days' | 'laycan_2_days_remark' | 'loading_month' | 'loading_window' | 'delivery_month' | 'delivery_window' | 'delivery_window_remark',
+    field: 'laycan_5_days' | 'laycan_2_days' | 'laycan_2_days_remark' | 'loading_month' | 'loading_window' | 'cif_route' | 'delivery_month' | 'delivery_window' | 'delivery_window_remark',
     value: string
   ) => {
     // Notify others that we're editing this field
@@ -714,10 +720,28 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     const key = `${month}-${year}`
     const entries = monthEntries[key] || []
     const updatedEntries = [...entries]
+    const currentEntry = updatedEntries[entryIndex]
+    
+    // Update the field
     updatedEntries[entryIndex] = {
-      ...updatedEntries[entryIndex],
+      ...currentEntry,
       [field]: value,
     }
+    
+    // Auto-calculate delivery window when loading_window or cif_route changes for CIF contracts
+    if (contractType === 'CIF' && (field === 'loading_window' || field === 'cif_route')) {
+      const loadingWindow = field === 'loading_window' ? value : currentEntry.loading_window
+      const route = field === 'cif_route' ? value : currentEntry.cif_route
+      const destination = contract?.cif_destination
+      
+      if (loadingWindow && route && destination) {
+        const calculatedDeliveryWindow = calculateDeliveryWindow(loadingWindow, destination, route, month, year)
+        if (calculatedDeliveryWindow) {
+          updatedEntries[entryIndex].delivery_window = calculatedDeliveryWindow
+        }
+      }
+    }
+    
     setMonthEntries({
       ...monthEntries,
       [key]: updatedEntries,
@@ -725,9 +749,18 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
 
     const planId = updatedEntries[entryIndex]?.id
     const version = updatedEntries[entryIndex]?.version
+    
+    // Build update payload - include delivery_window if it was auto-calculated
+    const updatePayload: Record<string, string> = { [field]: value }
+    if (contractType === 'CIF' && (field === 'loading_window' || field === 'cif_route')) {
+      if (updatedEntries[entryIndex].delivery_window !== currentEntry.delivery_window) {
+        updatePayload.delivery_window = updatedEntries[entryIndex].delivery_window
+      }
+    }
+    
     // Autosave all laycan and delivery fields for existing plans
     if (planId) {
-      scheduleAutosave(planId, { [field]: value }, field, version, key, entryIndex)
+      scheduleAutosave(planId, updatePayload, field, version, key, entryIndex)
     }
   }
 
@@ -786,6 +819,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         laycan_2_days_remark: '',
         loading_month: '',
         loading_window: '',
+        cif_route: '',
         delivery_month: '',
         delivery_window: '',
         delivery_window_remark: '',
@@ -1147,6 +1181,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark ?? null) : null,
             loading_month: contractType === 'CIF' ? (entry.loading_month ?? null) : null,
             loading_window: contractType === 'CIF' ? (entry.loading_window ?? null) : null,
+            cif_route: contractType === 'CIF' ? (entry.cif_route ?? null) : null,
             delivery_month: contractType === 'CIF' ? (entry.delivery_month ?? null) : null,
             delivery_window: contractType === 'CIF' ? (entry.delivery_window ?? null) : null,
             delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark ?? null) : null,
@@ -1184,6 +1219,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark ?? null) : null,
               loading_month: contractType === 'CIF' ? (entry.loading_month ?? null) : null,
               loading_window: contractType === 'CIF' ? (entry.loading_window ?? null) : null,
+              cif_route: contractType === 'CIF' ? (entry.cif_route ?? null) : null,
               delivery_month: contractType === 'CIF' ? (entry.delivery_month ?? null) : null,
               delivery_window: contractType === 'CIF' ? (entry.delivery_window ?? null) : null,
               delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark ?? null) : null,
@@ -1227,6 +1263,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark || undefined) : undefined,
                 loading_month: contractType === 'CIF' ? (entry.loading_month || undefined) : undefined,
                 loading_window: contractType === 'CIF' ? (entry.loading_window || undefined) : undefined,
+                cif_route: contractType === 'CIF' ? (entry.cif_route || undefined) : undefined,
                 delivery_month: contractType === 'CIF' ? (entry.delivery_month || undefined) : undefined,
                 delivery_window: contractType === 'CIF' ? (entry.delivery_window || undefined) : undefined,
                 delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark || undefined) : undefined,
@@ -1248,6 +1285,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark || undefined) : undefined,
                 loading_month: contractType === 'CIF' ? (entry.loading_month || undefined) : undefined,
                 loading_window: contractType === 'CIF' ? (entry.loading_window || undefined) : undefined,
+                cif_route: contractType === 'CIF' ? (entry.cif_route || undefined) : undefined,
                 delivery_month: contractType === 'CIF' ? (entry.delivery_month || undefined) : undefined,
                 delivery_window: contractType === 'CIF' ? (entry.delivery_window || undefined) : undefined,
                 delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark || undefined) : undefined,
@@ -1268,6 +1306,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             laycan_2_days_remark: contractType === 'FOB' && totalQuantity > 0 ? (entry.laycan_2_days_remark || undefined) : undefined,
             loading_month: contractType === 'CIF' && totalQuantity > 0 ? (entry.loading_month || undefined) : undefined,
             loading_window: contractType === 'CIF' && totalQuantity > 0 ? (entry.loading_window || undefined) : undefined,
+            cif_route: contractType === 'CIF' && totalQuantity > 0 ? (entry.cif_route || undefined) : undefined,
             delivery_month: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_month || undefined) : undefined,
             delivery_window: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window || undefined) : undefined,
             delivery_window_remark: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window_remark || undefined) : undefined,
@@ -1929,11 +1968,28 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                             />
                             <TextField
                               size="small"
+                              label="Route"
+                              value={entry.cif_route}
+                              onChange={(e) => handleLaycanChange(month, year, entryIndex, 'cif_route', e.target.value)}
+                              select
+                              fullWidth
+                              sx={{ mb: 1 }}
+                            >
+                              <MenuItem value="">
+                                <em>Select route</em>
+                              </MenuItem>
+                              {CIF_ROUTES.map((route) => (
+                                <MenuItem key={route} value={route}>Via {route}</MenuItem>
+                              ))}
+                            </TextField>
+                            <TextField
+                              size="small"
                               label="Delivery Window"
                               value={entry.delivery_window}
                               onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
                               fullWidth
                               sx={{ mb: 1 }}
+                              helperText={contract?.cif_destination ? `Auto-calculated from ${contract.cif_destination}` : 'Set destination in contract'}
                             />
                           </>
                         )}
@@ -2466,7 +2522,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       size="small"
                                       value={entry.loading_window}
                                       onChange={(e) => handleLaycanChange(month, year, entryIndex, 'loading_window', e.target.value)}
-                                      placeholder="User Entry"
+                                      placeholder="e.g., 1-5/1"
                                       fullWidth
                                       disabled={isLocked}
                                       sx={{
@@ -2475,6 +2531,24 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       }}
                                     />
                                   </Box>
+                                  <TextField
+                                    label="Route"
+                                    size="small"
+                                    value={entry.cif_route}
+                                    onChange={(e) => handleLaycanChange(month, year, entryIndex, 'cif_route', e.target.value)}
+                                    select
+                                    disabled={isLocked}
+                                    sx={{
+                                      '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
+                                    }}
+                                  >
+                                    <MenuItem value="">
+                                      <em>Select route</em>
+                                    </MenuItem>
+                                    {CIF_ROUTES.map((route) => (
+                                      <MenuItem key={route} value={route}>Via {route}</MenuItem>
+                                    ))}
+                                  </TextField>
                                   <Box sx={{ display: 'flex', gap: 1 }}>
                                     <TextField
                                       label="Delivery Month"
@@ -2494,9 +2568,10 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       size="small"
                                       value={entry.delivery_window}
                                       onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
-                                      placeholder="User Entry"
+                                      placeholder="Auto-calculated"
                                       fullWidth
                                       disabled={isLocked}
+                                      helperText={contract?.cif_destination ? `Based on ${contract.cif_destination}` : ''}
                                       sx={{
                                         '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
                                         '& .MuiInputBase-input': { padding: '6px 8px' },

@@ -210,6 +210,8 @@ class ContractBase(BaseModel):
     remarks: Optional[str] = Field(None, max_length=10000)
     # CIF Tonnage Memo lead days (15 or 30 typically)
     tng_lead_days: Optional[int] = Field(None, ge=1, le=90)
+    # CIF base destination for delivery window calculation
+    cif_destination: Optional[str] = None
 
     @model_validator(mode="after")
     def _validate_contract_period(self):
@@ -259,6 +261,7 @@ class ContractUpdate(BaseModel):
     concluded_memo_received_date: Optional[date] = None
     remarks: Optional[str] = Field(None, max_length=10000)
     tng_lead_days: Optional[int] = Field(None, ge=1, le=90)  # CIF Tonnage Memo lead days
+    cif_destination: Optional[str] = None  # CIF base destination
     customer_id: Optional[int] = None
     version: Optional[int] = None  # Optimistic locking - send to detect conflicts
 
@@ -332,6 +335,7 @@ class MonthlyPlanBase(BaseModel):
     laycan_2_days_remark: Optional[str] = Field(None, max_length=10000)
     loading_month: Optional[str] = None  # For CIF contracts only (planning)
     loading_window: Optional[str] = None  # For CIF contracts only
+    cif_route: Optional[str] = None  # SUEZ or CAPE - for delivery window calculation
     delivery_month: Optional[str] = None  # For CIF contracts only (planning)
     delivery_window: Optional[str] = None  # For CIF contracts only
     delivery_window_remark: Optional[str] = Field(None, max_length=10000)
@@ -371,6 +375,7 @@ class MonthlyPlanUpdate(BaseModel):
     laycan_2_days_remark: Optional[str] = Field(None, max_length=10000)
     loading_month: Optional[str] = None
     loading_window: Optional[str] = None
+    cif_route: Optional[str] = None  # SUEZ or CAPE
     delivery_month: Optional[str] = None
     delivery_window: Optional[str] = None
     delivery_window_remark: Optional[str] = Field(None, max_length=10000)
@@ -432,6 +437,7 @@ class ContractEmbedded(BaseModel):
     fiscal_start_month: Optional[int] = 1
     products: List[ContractProduct]
     tng_lead_days: Optional[int] = None  # CIF Tonnage Memo lead days
+    cif_destination: Optional[str] = None  # CIF base destination for delivery window
     customer_id: int
     customer: Optional[CustomerEmbedded] = None
     
@@ -463,6 +469,7 @@ class ContractEmbedded(BaseModel):
                         "end_period": data.end_period,
                         "products": json.loads(products),
                         "tng_lead_days": getattr(data, "tng_lead_days", None),
+                        "cif_destination": getattr(data, "cif_destination", None),
                         "customer_id": data.customer_id,
                         "customer": data.customer if hasattr(data, "customer") else None,
                     }
