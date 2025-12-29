@@ -431,6 +431,7 @@ class ContractEmbedded(BaseModel):
     end_period: date
     fiscal_start_month: Optional[int] = 1
     products: List[ContractProduct]
+    tng_lead_days: Optional[int] = None  # CIF Tonnage Memo lead days
     customer_id: int
     customer: Optional[CustomerEmbedded] = None
     
@@ -461,6 +462,7 @@ class ContractEmbedded(BaseModel):
                         "start_period": data.start_period,
                         "end_period": data.end_period,
                         "products": json.loads(products),
+                        "tng_lead_days": getattr(data, "tng_lead_days", None),
                         "customer_id": data.customer_id,
                         "customer": data.customer if hasattr(data, "customer") else None,
                     }
