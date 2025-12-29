@@ -474,7 +474,8 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
             models.MonthlyPlan.year == year,
             models.MonthlyPlan.month_quantity > 0
         ).filter(
-            models.Cargo.status != CargoStatus.COMPLETED_LOADING
+            # Exclude completed cargos (both Completed Loading and Discharge Complete)
+            models.Cargo.status.notin_([CargoStatus.COMPLETED_LOADING, CargoStatus.DISCHARGE_COMPLETE])
         )
         cargos = query.all()
         
@@ -542,7 +543,7 @@ def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = Non
 def read_active_loadings(db: Session = Depends(get_db)):
     """
     Return cargos that have at least one per-port operation in Loading or Completed Loading,
-    regardless of month/year.
+    regardless of month/year. Excludes cargos that have completed their lifecycle.
     """
     try:
         query = db.query(models.Cargo).join(models.CargoPortOperation).filter(
@@ -551,7 +552,8 @@ def read_active_loadings(db: Session = Depends(get_db)):
                 PortOperationStatus.COMPLETED.value
             ])
         ).filter(
-            models.Cargo.status != CargoStatus.COMPLETED_LOADING
+            # Exclude completed cargos (both Completed Loading and Discharge Complete)
+            models.Cargo.status.notin_([CargoStatus.COMPLETED_LOADING, CargoStatus.DISCHARGE_COMPLETE])
         ).distinct(models.Cargo.id)
 
         cargos = query.all()
