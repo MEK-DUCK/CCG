@@ -218,6 +218,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   // Filter contract months for the selected contract year
   // A contract year runs from fiscal_start_month for 12 months
   // Example: Feb start -> Year 1 = Feb 2026 to Jan 2027, Year 2 = Feb 2027 to Jan 2028
+  // For CIF contracts in Year 1, also include the pre-month (month before contract start)
   const getYearContractMonths = (): Array<{ month: number, year: number }> => {
     if (!contract?.start_period || contractMonths.length === 0) return contractMonths
     
@@ -238,6 +239,17 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         year += 1
       }
       yearMonths.push({ month, year })
+    }
+    
+    // For CIF contracts in Year 1, also include the pre-month (for loadings that deliver in first month)
+    if (contractType === 'CIF' && selectedYear === 1) {
+      let preMonth = fiscalStartMonth - 1
+      let preYear = baseYear
+      if (preMonth < 1) {
+        preMonth = 12
+        preYear -= 1
+      }
+      yearMonths.unshift({ month: preMonth, year: preYear })
     }
     
     // Filter contractMonths to only include months that are in this contract year
