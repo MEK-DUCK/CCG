@@ -20,6 +20,18 @@ A full-stack web application for managing oil contract planning, lifting schedul
 - **Optional Quantities**: Additional quantities beyond firm commitments (shown in purple on progress bars)
 - **Progress Tracking**: Visual progress bars showing allocation against min/max thresholds
 
+### CIF Contract Features
+- **Delivery-Based Tracking**: CIF contracts track quantities by delivery month/quarter (not loading month)
+- **Pre-Month Loading**: For CIF contracts, the month before contract start is available for loadings that deliver in the first contract month
+- **Auto-Calculated Delivery Windows**: Based on loading window, destination, and route (Via SUEZ/CAPE)
+- **Voyage Duration Lookup**: Built-in voyage times for Rotterdam, Le Havre, Shell Haven, Naples, Milford Haven
+- **TNG (Tonnage Memo) Tracking**: Track issuance and revision of tonnage memos with due date alerts
+
+### Monthly Plan Views
+- **Grid View**: Detailed editing layout organized by quarter with full field access
+- **Table View**: Compact list showing all cargos with key info (Loading Month, Quantity, Windows)
+- **Toggle Switch**: Easily switch between views using the Grid/List icons in the header
+
 ### Real-Time Collaboration Features
 - **🔄 Real-Time Sync**: Changes made by one user are instantly reflected for all other users viewing the same page (no refresh needed)
 - **👥 Presence Awareness**: See who else is viewing/editing the same Quarterly or Monthly plan
@@ -269,6 +281,12 @@ On the HomePage tabs (Port Movement, Active Loadings, Completed Cargos, In-Road 
 
 ### CIF Cargo Status Flow
 - **Planned** → **Loading** → **Completed Loading** → **In-Road CIF** tab → **Completed Discharge** → **Completed Cargos** tab
+
+### CIF Delivery Month Tracking
+- CIF contracts track quantities by **delivery month** (when cargo arrives), not loading month
+- Quarterly allocation is based on delivery quarter (Q1 = deliveries in Jan/Feb/Mar)
+- Monthly plan grid is organized by loading month, but quantities count toward delivery quarter
+- Pre-month loading available for cargos that load before contract start but deliver in first month
 
 ## API Endpoints
 
