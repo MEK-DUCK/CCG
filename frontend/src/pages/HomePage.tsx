@@ -2713,7 +2713,9 @@ export default function HomePage() {
               const needsHighlight = !tngIssued && (isOverdue || isDueSoon)
               
               // Format days until due similar to port movement alerts
+              // If issued, don't show overdue/days label
               const getDaysUntilLabel = () => {
+                if (tngIssued) return null  // Don't show days when issued
                 if (daysUntilDue === null) return null
                 if (daysUntilDue < 0) return `${Math.abs(daysUntilDue)}d overdue`
                 if (daysUntilDue === 0) return 'Today'
@@ -2758,8 +2760,14 @@ export default function HomePage() {
                           label={format(dueDate, 'MMM d, yyyy')}
                           size="small"
                           sx={{
-                            bgcolor: isOverdue ? '#EF4444' : isDueSoon ? '#F59E0B' : '#10B981',
-                            color: 'white',
+                            bgcolor: tngIssued 
+                              ? '#E0F2FE'  // Light blue when issued
+                              : isOverdue 
+                                ? '#EF4444'  // Red when overdue
+                                : isDueSoon 
+                                  ? '#F59E0B'  // Yellow when due soon
+                                  : '#10B981',  // Green when OK
+                            color: tngIssued ? '#0369A1' : 'white',
                             fontWeight: 500
                           }}
                         />
