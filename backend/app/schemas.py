@@ -514,7 +514,7 @@ class CargoBase(BaseModel):
     discharge_port_location: Optional[str] = None
     discharge_completion_time: Optional[datetime] = None
     # CIF In-Road tracking fields
-    five_nd_date: Optional[str] = None  # 5-ND: Due date for narrowing down delivery window
+    five_nd_date: Optional[str] = None  # ND Due Date: Due date for narrowing down delivery window
     nd_completed: Optional[bool] = False  # ND Completed checkbox - removes highlight when checked
     nd_days: Optional[str] = None  # ND Days selection (3 Days, 5 Days, 7 Days, 10 Days)
     nd_delivery_window: Optional[str] = None  # Narrowed Down Delivery Window (actual dates)
@@ -558,7 +558,7 @@ class CargoUpdate(BaseModel):
     discharge_port_location: Optional[str] = None
     discharge_completion_time: Optional[datetime] = None
     # CIF In-Road tracking fields
-    five_nd_date: Optional[str] = None  # 5-ND: Due date for narrowing down delivery window
+    five_nd_date: Optional[str] = None  # ND Due Date: Due date for narrowing down delivery window
     nd_completed: Optional[bool] = None  # ND Completed checkbox - removes highlight when checked
     nd_days: Optional[str] = None  # ND Days selection (3 Days, 5 Days, 7 Days, 10 Days)
     nd_delivery_window: Optional[str] = None  # Narrowed Down Delivery Window (actual dates)

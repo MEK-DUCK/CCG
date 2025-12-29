@@ -180,7 +180,7 @@ def ensure_schema():
                 except Exception:
                     pass
             
-            # Add five_nd_date for CIF In-Road tracking
+            # Add five_nd_date (ND Due Date) for CIF In-Road tracking
             if "five_nd_date" not in cols:
                 with engine.begin() as conn:
                     if dialect == "postgresql":

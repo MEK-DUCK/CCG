@@ -520,7 +520,7 @@ export default function HomePage() {
     eta_discharge_port: '',
     discharge_port_location: '',
     discharge_completion_time: '',
-    five_nd_date: '',  // 5-ND: Due date for narrowing down delivery window (CIF In-Road)
+    five_nd_date: '',  // ND Due Date: Due date for narrowing down delivery window (CIF In-Road)
     nd_delivery_window: '',  // Narrowed Down Delivery Window
     notes: '',
     status: 'Planned' as CargoStatus,
@@ -1322,7 +1322,7 @@ export default function HomePage() {
           if (cargoFormData.eta_discharge_port) updatePayload.eta_discharge_port = cargoFormData.eta_discharge_port
           if (cargoFormData.discharge_port_location) updatePayload.discharge_port_location = cargoFormData.discharge_port_location
           if (cargoFormData.discharge_completion_time) updatePayload.discharge_completion_time = toISOString(cargoFormData.discharge_completion_time)
-          // 5-ND date and ND Delivery Window for In-Road CIF tracking
+          // ND Due Date and ND Delivery Window for In-Road CIF tracking
           updatePayload.five_nd_date = cargoFormData.five_nd_date || undefined
           updatePayload.nd_delivery_window = cargoFormData.nd_delivery_window || undefined
         }
@@ -2064,7 +2064,7 @@ export default function HomePage() {
     )
   }
 
-  // Render In-Road CIF table with 5-ND column
+  // Render In-Road CIF table with ND Due Date column
   const renderInRoadCIFTable = (cargos: Cargo[]) => {
     if (loading) {
       return (
@@ -2125,14 +2125,14 @@ export default function HomePage() {
       )
     }
 
-    // Handler for inline 5-ND date update
+    // Handler for inline ND Due Date update
     const handleFiveNDDateChange = async (cargo: Cargo, newDate: string) => {
       try {
         const result = await cargoAPI.update(cargo.id, { five_nd_date: newDate || undefined, version: cargo.version || 1 })
         // Update local state with new version
         setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, five_nd_date: newDate, version: result.data.version } : c))
       } catch (error) {
-        console.error('Error updating 5-ND date:', error)
+        console.error('Error updating ND Due Date:', error)
       }
     }
 
@@ -4743,7 +4743,7 @@ export default function HomePage() {
               // In Completed CIF tab: Everything is locked
               const isStatusLocked = isCompletedCIFTab || (isCompletedCargo && !isInRoadCIFTab)
               const isLCAndRemarkLocked = isCompletedCIFTab || (isCompletedCargo && !isInRoadCIFTab)
-              // CIF-specific fields (ETA Discharge, Discharge Port, 5-ND, ND Del Window) editable in In-Road CIF tab
+              // CIF-specific fields (ETA Discharge, Discharge Port, ND Due Date, ND Del Window) editable in In-Road CIF tab
               const isCIFFieldsLocked = isCompletedCIFTab || (isCompletedCargo && !isInRoadCIFTab)
               const disabledStyle = {
                 '& .MuiInputBase-input.Mui-disabled': {
@@ -5070,12 +5070,12 @@ export default function HomePage() {
                       sx={isCIFFieldsLocked ? disabledStyle : {}}
                     />
                   </Grid>
-                  {/* Show 5-ND and ND Delivery Window fields for CIF cargos with Completed Loading or Discharge Complete status */}
+                  {/* Show ND Due Date and ND Delivery Window fields for CIF cargos with Completed Loading or Discharge Complete status */}
                   {editingCargo && (editingCargo.status === 'Discharge Complete' || editingCargo.status === 'Completed Loading') && (
                     <>
                   <Grid item xs={12} md={6}>
                     <TextField
-                        label="5-ND (Narrowing Down Due Date)"
+                        label="ND Due Date"
                         type="date"
                         value={cargoFormData.five_nd_date}
                         onChange={(e) => setCargoFormData({ ...cargoFormData, five_nd_date: e.target.value })}
@@ -5093,7 +5093,7 @@ export default function HomePage() {
                           onChange={(e) => setCargoFormData({ ...cargoFormData, nd_delivery_window: e.target.value })}
                           fullWidth
                           placeholder="Enter narrowed down delivery window"
-                          helperText="Narrowed down delivery window after 5-ND"
+                          helperText="Narrowed down delivery window after ND Due Date"
                           disabled={isCIFFieldsLocked}
                           sx={isCIFFieldsLocked ? disabledStyle : {}}
                         />

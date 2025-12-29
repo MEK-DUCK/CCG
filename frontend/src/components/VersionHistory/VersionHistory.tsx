@@ -82,7 +82,7 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     lc_status: 'L/C Status',
     lc_number: 'L/C Number',
     product_name: 'Product',
-    five_nd_date: '5-ND Date',
+    five_nd_date: 'ND Due Date',
     nd_delivery_window: 'ND Delivery Window',
     discharge_port: 'Discharge Port',
     discharge_port_location: 'Discharge Location',
