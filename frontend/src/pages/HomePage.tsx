@@ -2576,21 +2576,28 @@ export default function HomePage() {
   }
 
   // Calculate TNG due date based on loading window and contract's tng_lead_days
-  const calculateTngDueDate = (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }): { dueDate: Date | null; isOverdue: boolean; isDueSoon: boolean } => {
+  const calculateTngDueDate = (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }): { 
+    dueDate: Date | null; 
+    daysUntilDue: number | null;
+    isOverdue: boolean; 
+    isDueSoon: boolean 
+  } => {
     const contract = plan.contract || plan.quarterly_plan?.contract
     if (!contract?.tng_lead_days || !plan.loading_window) {
-      return { dueDate: null, isOverdue: false, isDueSoon: false }
+      return { dueDate: null, daysUntilDue: null, isOverdue: false, isDueSoon: false }
     }
     
-    // Parse loading window start date (e.g., "Jan 15-20" or "15-20 Jan")
+    // Parse loading window start date using the laycan parser
+    // Pass the plan's year and month as reference for formats like "01-02/01"
     const loadingWindowStr = plan.loading_window
-    const parsedDate = parseLaycanDate(loadingWindowStr)
-    if (!parsedDate) {
-      return { dueDate: null, isOverdue: false, isDueSoon: false }
+    const parsed = parseLaycanDate(loadingWindowStr, plan.month, plan.year)
+    
+    if (!parsed.isValid || !parsed.startDate) {
+      return { dueDate: null, daysUntilDue: null, isOverdue: false, isDueSoon: false }
     }
     
     // Calculate TNG due date (loading window start - lead days)
-    const dueDate = new Date(parsedDate)
+    const dueDate = new Date(parsed.startDate)
     dueDate.setDate(dueDate.getDate() - contract.tng_lead_days)
     
     const today = new Date()
@@ -2601,6 +2608,7 @@ export default function HomePage() {
     
     return {
       dueDate,
+      daysUntilDue,
       isOverdue: daysUntilDue < 0,
       isDueSoon: daysUntilDue >= 0 && daysUntilDue <= 3
     }
@@ -2683,11 +2691,19 @@ export default function HomePage() {
             {filteredPlans.map((plan) => {
               const contract = plan.contract || plan.quarterly_plan?.contract
               const customer = contract?.customer || plan.quarterly_plan?.contract?.customer
-              const { dueDate, isOverdue, isDueSoon } = calculateTngDueDate(plan)
+              const { dueDate, daysUntilDue, isOverdue, isDueSoon } = calculateTngDueDate(plan)
               const tngIssued = plan.tng_issued || false
               
               // Highlight row if TNG is due soon or overdue and not yet issued
               const needsHighlight = !tngIssued && (isOverdue || isDueSoon)
+              
+              // Format days until due similar to port movement alerts
+              const getDaysUntilLabel = () => {
+                if (daysUntilDue === null) return null
+                if (daysUntilDue < 0) return `${Math.abs(daysUntilDue)}d overdue`
+                if (daysUntilDue === 0) return 'Today'
+                return `${daysUntilDue}d`
+              }
               
               return (
                 <TableRow 
@@ -2715,18 +2731,36 @@ export default function HomePage() {
                   </TableCell>
                   <TableCell>{plan.month_quantity?.toFixed(2) || '-'}</TableCell>
                   <TableCell>{plan.loading_window || '-'}</TableCell>
-                  <TableCell>{contract?.tng_lead_days ? `${contract.tng_lead_days} Days` : '-'}</TableCell>
+                  <TableCell>
+                    {contract?.tng_lead_days ? (
+                      <Chip label={`${contract.tng_lead_days} Days`} size="small" sx={{ bgcolor: '#E0E7FF', color: '#3730A3' }} />
+                    ) : '-'}
+                  </TableCell>
                   <TableCell>
                     {dueDate ? (
-                      <Chip
-                        label={format(dueDate, 'MMM d, yyyy')}
-                        size="small"
-                        sx={{
-                          bgcolor: isOverdue ? '#EF4444' : isDueSoon ? '#F59E0B' : '#10B981',
-                          color: 'white',
-                          fontWeight: 500
-                        }}
-                      />
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}>
+                        <Chip
+                          label={format(dueDate, 'MMM d, yyyy')}
+                          size="small"
+                          sx={{
+                            bgcolor: isOverdue ? '#EF4444' : isDueSoon ? '#F59E0B' : '#10B981',
+                            color: 'white',
+                            fontWeight: 500
+                          }}
+                        />
+                        {getDaysUntilLabel() && (
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: isOverdue ? '#DC2626' : isDueSoon ? '#D97706' : '#059669',
+                              fontWeight: 600,
+                              fontSize: '0.7rem'
+                            }}
+                          >
+                            {getDaysUntilLabel()}
+                          </Typography>
+                        )}
+                      </Box>
                     ) : '-'}
                   </TableCell>
                   <TableCell align="center">
