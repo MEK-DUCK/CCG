@@ -496,6 +496,8 @@ export default function HomePage() {
   const [completedCargosSearch, setCompletedCargosSearch] = useState<string>('')
   const [inRoadCIFSearch, setInRoadCIFSearch] = useState<string>('')
   const [inRoadCIFFilterCustomers, setInRoadCIFFilterCustomers] = useState<number[]>([])
+  // Local state for inline edit fields to prevent API calls on every keystroke
+  const [inlineEdits, setInlineEdits] = useState<Record<number, { nd_delivery_window?: string; discharge_port_location?: string }>>({})
   // Tonnage Memo (TNG) tracking state
   const [tngMonthlyPlans, setTngMonthlyPlans] = useState<(MonthlyPlan & { quarterly_plan?: any; contract?: Contract })[]>([])
   const [tngFilterYear, setTngFilterYear] = useState<number>(new Date().getFullYear())
@@ -2184,12 +2186,30 @@ export default function HomePage() {
       }
     }
 
-    // Handler for inline Discharge Port Location update
-    const handleDischargePortLocationChange = async (cargo: Cargo, newValue: string) => {
+    // Handler for inline Discharge Port Location - local state change (no API call)
+    const handleDischargePortLocationLocalChange = (cargoId: number, newValue: string) => {
+      setInlineEdits(prev => ({
+        ...prev,
+        [cargoId]: { ...prev[cargoId], discharge_port_location: newValue }
+      }))
+    }
+
+    // Handler for inline Discharge Port Location - save on blur
+    const handleDischargePortLocationBlur = async (cargo: Cargo) => {
+      const localValue = inlineEdits[cargo.id]?.discharge_port_location
+      if (localValue === undefined || localValue === (cargo.discharge_port_location || '')) return
+      
       try {
-        const result = await cargoAPI.update(cargo.id, { discharge_port_location: newValue || undefined, version: cargo.version || 1 })
-        // Update local state with new version
-        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, discharge_port_location: newValue, version: result.data.version } : c))
+        const result = await cargoAPI.update(cargo.id, { discharge_port_location: localValue || undefined, version: cargo.version || 1 })
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, discharge_port_location: localValue, version: result.data.version } : c))
+        setInlineEdits(prev => {
+          const updated = { ...prev }
+          if (updated[cargo.id]) {
+            delete updated[cargo.id].discharge_port_location
+            if (Object.keys(updated[cargo.id]).length === 0) delete updated[cargo.id]
+          }
+          return updated
+        })
       } catch (error) {
         console.error('Error updating Discharge Port Location:', error)
       }
@@ -2206,12 +2226,33 @@ export default function HomePage() {
       }
     }
 
-    // Handler for inline ND Delivery Window update
-    const handleNDDeliveryWindowChange = async (cargo: Cargo, newValue: string) => {
+    // Handler for inline ND Delivery Window - local state change (no API call)
+    const handleNDDeliveryWindowLocalChange = (cargoId: number, newValue: string) => {
+      setInlineEdits(prev => ({
+        ...prev,
+        [cargoId]: { ...prev[cargoId], nd_delivery_window: newValue }
+      }))
+    }
+
+    // Handler for inline ND Delivery Window - save on blur
+    const handleNDDeliveryWindowBlur = async (cargo: Cargo) => {
+      const localValue = inlineEdits[cargo.id]?.nd_delivery_window
+      // Only save if there's a local edit and it differs from the current value
+      if (localValue === undefined || localValue === (cargo.nd_delivery_window || '')) return
+      
       try {
-        const result = await cargoAPI.update(cargo.id, { nd_delivery_window: newValue || undefined, version: cargo.version || 1 })
-        // Update local state with new version
-        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, nd_delivery_window: newValue, version: result.data.version } : c))
+        const result = await cargoAPI.update(cargo.id, { nd_delivery_window: localValue || undefined, version: cargo.version || 1 })
+        // Update cargo state with new version
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, nd_delivery_window: localValue, version: result.data.version } : c))
+        // Clear local edit
+        setInlineEdits(prev => {
+          const updated = { ...prev }
+          if (updated[cargo.id]) {
+            delete updated[cargo.id].nd_delivery_window
+            if (Object.keys(updated[cargo.id]).length === 0) delete updated[cargo.id]
+          }
+          return updated
+        })
       } catch (error) {
         console.error('Error updating ND Delivery Window:', error)
       }
@@ -2441,8 +2482,9 @@ export default function HomePage() {
                       </FormControl>
                       <TextField
                         size="small"
-                        value={cargo.nd_delivery_window || ''}
-                        onChange={(e) => handleNDDeliveryWindowChange(cargo, e.target.value)}
+                        value={inlineEdits[cargo.id]?.nd_delivery_window ?? cargo.nd_delivery_window ?? ''}
+                        onChange={(e) => handleNDDeliveryWindowLocalChange(cargo.id, e.target.value)}
+                        onBlur={() => handleNDDeliveryWindowBlur(cargo)}
                         placeholder="Enter ND window"
                         sx={{ 
                           width: 100,
@@ -2484,8 +2526,9 @@ export default function HomePage() {
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <TextField
                       size="small"
-                      value={cargo.discharge_port_location || ''}
-                      onChange={(e) => handleDischargePortLocationChange(cargo, e.target.value)}
+                      value={inlineEdits[cargo.id]?.discharge_port_location ?? cargo.discharge_port_location ?? ''}
+                      onChange={(e) => handleDischargePortLocationLocalChange(cargo.id, e.target.value)}
+                      onBlur={() => handleDischargePortLocationBlur(cargo)}
                       placeholder="Enter port"
                       sx={{ 
                         width: 120,
