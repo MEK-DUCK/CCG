@@ -501,6 +501,7 @@ class MonthlyPlanEnriched(MonthlyPlanBase):
     quarterly_plan_id: Optional[int] = None  # Optional for SPOT contracts
     contract_id: Optional[int] = None  # Direct link for SPOT contracts
     product_name: Optional[str] = None  # Product name for SPOT contracts
+    version: int = 1  # Optimistic locking version
     created_at: datetime
     updated_at: Optional[datetime] = None
     quarterly_plan: Optional[QuarterlyPlanEmbedded] = None

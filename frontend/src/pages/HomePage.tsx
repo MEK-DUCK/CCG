@@ -2529,7 +2529,7 @@ export default function HomePage() {
     try {
       const updateData: any = {
         tng_issued: checked,
-        version: (plan as any).version || 1
+        version: plan.version || 1
       }
       // If checking, set the date to today
       if (checked) {
@@ -2538,9 +2538,14 @@ export default function HomePage() {
         updateData.tng_issued_date = null
       }
       await monthlyPlanAPI.update(plan.id, updateData)
-      loadTngData()
-    } catch (error) {
+      await loadTngData()  // Reload to get updated version
+    } catch (error: any) {
       console.error('Error updating TNG issued status:', error)
+      if (error?.response?.status === 409) {
+        // Version conflict - reload data and notify user
+        await loadTngData()
+        alert('Data was modified. Please try again.')
+      }
     }
   }
 
@@ -2548,7 +2553,7 @@ export default function HomePage() {
     try {
       const updateData: any = {
         tng_revised: checked,
-        version: (plan as any).version || 1
+        version: plan.version || 1
       }
       // If checking, set the date to today
       if (checked) {
@@ -2557,9 +2562,14 @@ export default function HomePage() {
         updateData.tng_revised_date = null
       }
       await monthlyPlanAPI.update(plan.id, updateData)
-      loadTngData()
-    } catch (error) {
+      await loadTngData()  // Reload to get updated version
+    } catch (error: any) {
       console.error('Error updating TNG revised status:', error)
+      if (error?.response?.status === 409) {
+        // Version conflict - reload data and notify user
+        await loadTngData()
+        alert('Data was modified. Please try again.')
+      }
     }
   }
 
@@ -2567,11 +2577,16 @@ export default function HomePage() {
     try {
       await monthlyPlanAPI.update(plan.id, {
         tng_remarks: remarks,
-        version: (plan as any).version || 1
+        version: plan.version || 1
       })
-      loadTngData()
-    } catch (error) {
+      await loadTngData()  // Reload to get updated version
+    } catch (error: any) {
       console.error('Error updating TNG remarks:', error)
+      if (error?.response?.status === 409) {
+        // Version conflict - reload data and notify user
+        await loadTngData()
+        alert('Data was modified. Please try again.')
+      }
     }
   }
 

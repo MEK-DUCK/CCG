@@ -120,6 +120,7 @@ export interface MonthlyPlan {
   tng_revised?: boolean  // Whether TNG has been revised
   tng_revised_date?: string  // Date TNG was revised
   tng_remarks?: string  // Notes about the TNG
+  version?: number  // Optimistic locking version
   created_at: string
   updated_at?: string
 }
