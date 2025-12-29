@@ -496,6 +496,12 @@ export default function HomePage() {
   const [completedCargosSearch, setCompletedCargosSearch] = useState<string>('')
   const [inRoadCIFSearch, setInRoadCIFSearch] = useState<string>('')
   const [inRoadCIFFilterCustomers, setInRoadCIFFilterCustomers] = useState<number[]>([])
+  // Tonnage Memo (TNG) tracking state
+  const [tngMonthlyPlans, setTngMonthlyPlans] = useState<(MonthlyPlan & { quarterly_plan?: any; contract?: Contract })[]>([])
+  const [tngFilterYear, setTngFilterYear] = useState<number>(new Date().getFullYear())
+  const [tngFilterMonth, setTngFilterMonth] = useState<number | null>(null)
+  const [tngFilterCustomer, setTngFilterCustomer] = useState<number | null>(null)
+  const [tngSearch, setTngSearch] = useState<string>('')
   const [cargoDialogOpen, setCargoDialogOpen] = useState(false)
   const [editingCargo, setEditingCargo] = useState<Cargo | null>(null)
   const [cargoEditingUser, setCargoEditingUser] = useState<{ user: PresenceUser; field: string } | null>(null)
@@ -862,6 +868,14 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonths, selectedYear, value])
 
+  // Load TNG data when TNG tab is selected or filters change
+  useEffect(() => {
+    if (value === 4) {  // TNG tab is index 4
+      loadTngData()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, tngFilterYear, tngFilterMonth])
+
   const loadPortMovement = async () => {
     try {
       setLoading(true)
@@ -947,6 +961,18 @@ export default function HomePage() {
       console.error('Error loading data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Load CIF monthly plans for Tonnage Memo tracking
+  const loadTngData = async () => {
+    try {
+      const months = tngFilterMonth ? [tngFilterMonth] : undefined
+      const res = await monthlyPlanAPI.getCifForTng(months, tngFilterYear)
+      setTngMonthlyPlans(res.data || [])
+    } catch (error) {
+      console.error('Error loading TNG data:', error)
+      setTngMonthlyPlans([])
     }
   }
 
@@ -2490,6 +2516,254 @@ export default function HomePage() {
                 </TableCell>
                 <TableCell>{cargo.notes || '-'}</TableCell>
               </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    )
+  }
+
+  // Handle TNG checkbox changes
+  const handleTngIssuedChange = async (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }, checked: boolean) => {
+    try {
+      const updateData: any = {
+        tng_issued: checked,
+        version: (plan as any).version || 1
+      }
+      // If checking, set the date to today
+      if (checked) {
+        updateData.tng_issued_date = format(new Date(), 'yyyy-MM-dd')
+      } else {
+        updateData.tng_issued_date = null
+      }
+      await monthlyPlanAPI.update(plan.id, updateData)
+      loadTngData()
+    } catch (error) {
+      console.error('Error updating TNG issued status:', error)
+    }
+  }
+
+  const handleTngRevisedChange = async (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }, checked: boolean) => {
+    try {
+      const updateData: any = {
+        tng_revised: checked,
+        version: (plan as any).version || 1
+      }
+      // If checking, set the date to today
+      if (checked) {
+        updateData.tng_revised_date = format(new Date(), 'yyyy-MM-dd')
+      } else {
+        updateData.tng_revised_date = null
+      }
+      await monthlyPlanAPI.update(plan.id, updateData)
+      loadTngData()
+    } catch (error) {
+      console.error('Error updating TNG revised status:', error)
+    }
+  }
+
+  const handleTngRemarksChange = async (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }, remarks: string) => {
+    try {
+      await monthlyPlanAPI.update(plan.id, {
+        tng_remarks: remarks,
+        version: (plan as any).version || 1
+      })
+      loadTngData()
+    } catch (error) {
+      console.error('Error updating TNG remarks:', error)
+    }
+  }
+
+  // Calculate TNG due date based on loading window and contract's tng_lead_days
+  const calculateTngDueDate = (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }): { dueDate: Date | null; isOverdue: boolean; isDueSoon: boolean } => {
+    const contract = plan.contract || plan.quarterly_plan?.contract
+    if (!contract?.tng_lead_days || !plan.loading_window) {
+      return { dueDate: null, isOverdue: false, isDueSoon: false }
+    }
+    
+    // Parse loading window start date (e.g., "Jan 15-20" or "15-20 Jan")
+    const loadingWindowStr = plan.loading_window
+    const parsedDate = parseLaycanDate(loadingWindowStr)
+    if (!parsedDate) {
+      return { dueDate: null, isOverdue: false, isDueSoon: false }
+    }
+    
+    // Calculate TNG due date (loading window start - lead days)
+    const dueDate = new Date(parsedDate)
+    dueDate.setDate(dueDate.getDate() - contract.tng_lead_days)
+    
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    dueDate.setHours(0, 0, 0, 0)
+    
+    const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    
+    return {
+      dueDate,
+      isOverdue: daysUntilDue < 0,
+      isDueSoon: daysUntilDue >= 0 && daysUntilDue <= 3
+    }
+  }
+
+  // Render Tonnage Memos table
+  const renderTngTable = () => {
+    if (loading) {
+      return (
+        <Box display="flex" justifyContent="center" p={4}>
+          <CircularProgress />
+        </Box>
+      )
+    }
+
+    // Filter plans
+    let filteredPlans = tngMonthlyPlans
+    
+    // Filter by customer
+    if (tngFilterCustomer) {
+      filteredPlans = filteredPlans.filter(plan => {
+        const contract = plan.contract || plan.quarterly_plan?.contract
+        return contract?.customer_id === tngFilterCustomer
+      })
+    }
+    
+    // Filter by search
+    if (tngSearch) {
+      const searchLower = tngSearch.toLowerCase()
+      filteredPlans = filteredPlans.filter(plan => {
+        const contract = plan.contract || plan.quarterly_plan?.contract
+        const customer = contract?.customer || plan.quarterly_plan?.contract?.customer
+        return (
+          contract?.contract_number?.toLowerCase().includes(searchLower) ||
+          customer?.name?.toLowerCase().includes(searchLower) ||
+          plan.product_name?.toLowerCase().includes(searchLower) ||
+          plan.loading_window?.toLowerCase().includes(searchLower)
+        )
+      })
+    }
+
+    if (filteredPlans.length === 0) {
+      return (
+        <Typography variant="body1" color="text.secondary" sx={{ p: 2 }}>
+          No CIF monthly plans found for Tonnage Memo tracking
+        </Typography>
+      )
+    }
+
+    return (
+      <TableContainer 
+        component={Paper}
+        sx={{
+          maxWidth: '100%',
+          overflowX: 'auto',
+          '& .MuiTable-root': {
+            minWidth: isMobile ? 900 : 'auto',
+          },
+        }}
+      >
+        <Table stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 120 }}>Customer</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 120 }}>Contract #</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 100 }}>Product</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 80 }}>Month</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 100 }}>Quantity (KT)</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 100 }}>Loading Window</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 80 }}>Lead Days</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 100 }}>TNG Due</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 80, textAlign: 'center' }}>Issued</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 100 }}>Issued Date</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 80, textAlign: 'center' }}>Revised</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 100 }}>Revised Date</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 150 }}>Remarks</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredPlans.map((plan) => {
+              const contract = plan.contract || plan.quarterly_plan?.contract
+              const customer = contract?.customer || plan.quarterly_plan?.contract?.customer
+              const { dueDate, isOverdue, isDueSoon } = calculateTngDueDate(plan)
+              const tngIssued = plan.tng_issued || false
+              
+              // Highlight row if TNG is due soon or overdue and not yet issued
+              const needsHighlight = !tngIssued && (isOverdue || isDueSoon)
+              
+              return (
+                <TableRow 
+                  key={plan.id}
+                  sx={{
+                    bgcolor: needsHighlight 
+                      ? isOverdue 
+                        ? '#FEE2E2'  // Red for overdue
+                        : '#FEF3C7'  // Yellow for due soon
+                      : 'inherit',
+                    '&:hover': {
+                      bgcolor: needsHighlight 
+                        ? isOverdue 
+                          ? '#FECACA' 
+                          : '#FDE68A'
+                        : '#F8FAFC'
+                    }
+                  }}
+                >
+                  <TableCell>{customer?.name || '-'}</TableCell>
+                  <TableCell>{contract?.contract_number || '-'}</TableCell>
+                  <TableCell>{plan.product_name || plan.quarterly_plan?.product_name || '-'}</TableCell>
+                  <TableCell>
+                    {new Date(2000, (plan.month || 1) - 1).toLocaleString('default', { month: 'short' })} {plan.year}
+                  </TableCell>
+                  <TableCell>{plan.month_quantity?.toFixed(2) || '-'}</TableCell>
+                  <TableCell>{plan.loading_window || '-'}</TableCell>
+                  <TableCell>{contract?.tng_lead_days ? `${contract.tng_lead_days} Days` : '-'}</TableCell>
+                  <TableCell>
+                    {dueDate ? (
+                      <Chip
+                        label={format(dueDate, 'MMM d, yyyy')}
+                        size="small"
+                        sx={{
+                          bgcolor: isOverdue ? '#EF4444' : isDueSoon ? '#F59E0B' : '#10B981',
+                          color: 'white',
+                          fontWeight: 500
+                        }}
+                      />
+                    ) : '-'}
+                  </TableCell>
+                  <TableCell align="center">
+                    <Checkbox
+                      checked={tngIssued}
+                      onChange={(e) => handleTngIssuedChange(plan, e.target.checked)}
+                      sx={{
+                        color: tngIssued ? '#10B981' : '#94A3B8',
+                        '&.Mui-checked': { color: '#10B981' }
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    {plan.tng_issued_date ? format(new Date(plan.tng_issued_date), 'MMM d, yyyy') : '-'}
+                  </TableCell>
+                  <TableCell align="center">
+                    <Checkbox
+                      checked={plan.tng_revised || false}
+                      onChange={(e) => handleTngRevisedChange(plan, e.target.checked)}
+                      disabled={!tngIssued}
+                      sx={{
+                        color: plan.tng_revised ? '#8B5CF6' : '#94A3B8',
+                        '&.Mui-checked': { color: '#8B5CF6' }
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    {plan.tng_revised_date ? format(new Date(plan.tng_revised_date), 'MMM d, yyyy') : '-'}
+                  </TableCell>
+                  <TableCell>
+                    <InlineTextField
+                      value={plan.tng_remarks || ''}
+                      onSave={(val) => handleTngRemarksChange(plan, val)}
+                      fullWidth
+                    />
+                  </TableCell>
+                </TableRow>
               )
             })}
           </TableBody>
@@ -4123,6 +4397,7 @@ export default function HomePage() {
             <Tab label={isMobile ? "Completed" : "Completed Cargos"} />
             <Tab label={isMobile ? "In-Road" : "In-Road CIF Cargos"} />
             <Tab label={isMobile ? "Completed In-Road" : "Completed In-Road CIF"} />
+            <Tab label={isMobile ? "TNG" : "Tonnage Memos"} />
           </Tabs>
         </Box>
         <TabPanel value={value} index={0}>
@@ -4682,6 +4957,72 @@ export default function HomePage() {
             Completed CIF Cargos (Discharge Complete)
           </Typography>
           {renderCompletedInRoadCIFTable(completedInRoadCIF)}
+        </TabPanel>
+        <TabPanel value={value} index={4}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B' }}>
+              Tonnage Memos (CIF Contracts)
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ minWidth: 100 }}>
+                <InputLabel>Year</InputLabel>
+                <Select
+                  value={tngFilterYear}
+                  label="Year"
+                  onChange={(e) => setTngFilterYear(Number(e.target.value))}
+                >
+                  {[...Array(5)].map((_, i) => {
+                    const year = new Date().getFullYear() - 2 + i
+                    return <MenuItem key={year} value={year}>{year}</MenuItem>
+                  })}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 100 }}>
+                <InputLabel>Month</InputLabel>
+                <Select
+                  value={tngFilterMonth || ''}
+                  label="Month"
+                  onChange={(e) => setTngFilterMonth(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <MenuItem value="">All Months</MenuItem>
+                  {[...Array(12)].map((_, i) => (
+                    <MenuItem key={i + 1} value={i + 1}>
+                      {new Date(2000, i).toLocaleString('default', { month: 'short' })}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Customer</InputLabel>
+                <Select
+                  value={tngFilterCustomer || ''}
+                  label="Customer"
+                  onChange={(e) => setTngFilterCustomer(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <MenuItem value="">All Customers</MenuItem>
+                  {customers.map((c) => (
+                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                size="small"
+                placeholder="Search..."
+                value={tngSearch}
+                onChange={(e) => setTngSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start"><Search /></InputAdornment>,
+                  endAdornment: tngSearch && (
+                    <InputAdornment position="end">
+                      <IconButton size="small" onClick={() => setTngSearch('')}><Clear /></IconButton>
+                    </InputAdornment>
+                  )
+                }}
+                sx={{ minWidth: 200 }}
+              />
+            </Box>
+          </Box>
+          {renderTngTable()}
         </TabPanel>
       </Paper>
 

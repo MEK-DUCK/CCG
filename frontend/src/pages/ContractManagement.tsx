@@ -132,6 +132,7 @@ export default function ContractManagement() {
     fax_received_date: '',
     concluded_memo_received: '' as '' | 'yes' | 'no',
     concluded_memo_received_date: '',
+    tng_lead_days: '' as '' | number,  // CIF Tonnage Memo lead days (15 or 30)
   })
 
   const jetA1Selected = formData.products.some((p) => p.name === 'JET A-1')
@@ -226,6 +227,7 @@ export default function ContractManagement() {
         fax_received_date: contract.fax_received_date || '',
         concluded_memo_received: contract.concluded_memo_received === true ? 'yes' : contract.concluded_memo_received === false ? 'no' : '',
         concluded_memo_received_date: contract.concluded_memo_received_date || '',
+        tng_lead_days: contract.tng_lead_days || '',
       })
     } else {
       setEditingContract(null)
@@ -246,6 +248,7 @@ export default function ContractManagement() {
         fax_received_date: '',
         concluded_memo_received: '',
         concluded_memo_received_date: '',
+        tng_lead_days: '',
       })
     }
     setOpen(true)
@@ -457,6 +460,7 @@ export default function ContractManagement() {
       fax_received_date: '',
       concluded_memo_received: '',
       concluded_memo_received_date: '',
+      tng_lead_days: '',
     })
   }
 
@@ -529,6 +533,7 @@ export default function ContractManagement() {
         concluded_memo_received: formData.concluded_memo_received === '' ? undefined : formData.concluded_memo_received === 'yes',
         concluded_memo_received_date: formData.concluded_memo_received === 'yes' && formData.concluded_memo_received_date ? formData.concluded_memo_received_date : undefined,
         authority_amendments: formData.authority_amendments.length > 0 ? formData.authority_amendments : undefined,
+        tng_lead_days: formData.contract_type === 'CIF' && formData.tng_lead_days ? Number(formData.tng_lead_days) : undefined,
       }
       
       // Include version for optimistic locking when updating
@@ -1235,19 +1240,41 @@ export default function ContractManagement() {
                 </TextField>
               </Grid>
             </Grid>
-            <TextField
-              label="Payment Method"
-              value={formData.payment_method}
-              onChange={(e) => setFormData({ ...formData, payment_method: e.target.value as '' | 'T/T' | 'LC' })}
-              select
-              fullWidth
-            >
-              <MenuItem value="">
-                <em>None</em>
-              </MenuItem>
-              <MenuItem value="T/T">T/T</MenuItem>
-              <MenuItem value="LC">LC</MenuItem>
-            </TextField>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={formData.contract_type === 'CIF' ? 6 : 12}>
+                <TextField
+                  label="Payment Method"
+                  value={formData.payment_method}
+                  onChange={(e) => setFormData({ ...formData, payment_method: e.target.value as '' | 'T/T' | 'LC' })}
+                  select
+                  fullWidth
+                >
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  <MenuItem value="T/T">T/T</MenuItem>
+                  <MenuItem value="LC">LC</MenuItem>
+                </TextField>
+              </Grid>
+              {formData.contract_type === 'CIF' && (
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label="TNG Lead Days"
+                    value={formData.tng_lead_days}
+                    onChange={(e) => setFormData({ ...formData, tng_lead_days: e.target.value ? Number(e.target.value) : '' })}
+                    select
+                    fullWidth
+                    helperText="Days before loading window to issue Tonnage Memo"
+                  >
+                    <MenuItem value="">
+                      <em>None</em>
+                    </MenuItem>
+                    <MenuItem value={15}>15 Days</MenuItem>
+                    <MenuItem value={30}>30 Days</MenuItem>
+                  </TextField>
+                </Grid>
+              )}
+            </Grid>
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
                 <TextField

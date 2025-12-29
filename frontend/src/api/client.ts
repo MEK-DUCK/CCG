@@ -240,6 +240,13 @@ export const monthlyPlanAPI = {
   getStatus: (id: number) => client.get(`/api/monthly-plans/${id}/status`),
   // Bulk status endpoint - gets status for multiple plans in one request (optimization)
   getStatusBulk: (planIds: number[]) => client.post('/api/monthly-plans/status/bulk', planIds),
+  // Get CIF monthly plans for Tonnage Memo tracking
+  getCifForTng: (months?: number[], year?: number) => {
+    const params: any = {}
+    if (months && months.length > 0) params.months = months.join(',')
+    if (year) params.year = year
+    return client.get('/api/monthly-plans/cif-tng', { params })
+  },
   create: (data: any) => client.post('/api/monthly-plans/', data),
   update: (id: number, data: any) => client.put(`/api/monthly-plans/${id}`, data),
   delete: (id: number) => client.delete(`/api/monthly-plans/${id}`),

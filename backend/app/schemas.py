@@ -208,6 +208,8 @@ class ContractBase(BaseModel):
     concluded_memo_received: Optional[bool] = None
     concluded_memo_received_date: Optional[date] = None
     remarks: Optional[str] = Field(None, max_length=10000)
+    # CIF Tonnage Memo lead days (15 or 30 typically)
+    tng_lead_days: Optional[int] = Field(None, ge=1, le=90)
 
     @model_validator(mode="after")
     def _validate_contract_period(self):
@@ -256,6 +258,7 @@ class ContractUpdate(BaseModel):
     concluded_memo_received: Optional[bool] = None
     concluded_memo_received_date: Optional[date] = None
     remarks: Optional[str] = Field(None, max_length=10000)
+    tng_lead_days: Optional[int] = Field(None, ge=1, le=90)  # CIF Tonnage Memo lead days
     customer_id: Optional[int] = None
     version: Optional[int] = None  # Optimistic locking - send to detect conflicts
 
@@ -339,6 +342,12 @@ class MonthlyPlanBase(BaseModel):
     authority_topup_reference: Optional[str] = Field(None, max_length=100)  # Reference number
     authority_topup_reason: Optional[str] = Field(None, max_length=500)  # Reason for top-up
     authority_topup_date: Optional[date] = None  # Date of authorization
+    # Tonnage Memo (TNG) tracking for CIF contracts
+    tng_issued: Optional[bool] = False  # Whether TNG has been issued
+    tng_issued_date: Optional[date] = None  # Date TNG was issued
+    tng_revised: Optional[bool] = False  # Whether TNG has been revised
+    tng_revised_date: Optional[date] = None  # Date TNG was revised
+    tng_remarks: Optional[str] = Field(None, max_length=1000)  # Notes about the TNG
 
 class MonthlyPlanCreate(MonthlyPlanBase):
     quarterly_plan_id: Optional[int] = None  # Optional for SPOT contracts
@@ -372,6 +381,12 @@ class MonthlyPlanUpdate(BaseModel):
     authority_topup_reference: Optional[str] = Field(None, max_length=100)
     authority_topup_reason: Optional[str] = Field(None, max_length=500)
     authority_topup_date: Optional[date] = None
+    # Tonnage Memo (TNG) tracking for CIF contracts
+    tng_issued: Optional[bool] = None
+    tng_issued_date: Optional[date] = None
+    tng_revised: Optional[bool] = None
+    tng_revised_date: Optional[date] = None
+    tng_remarks: Optional[str] = Field(None, max_length=1000)
     version: Optional[int] = None  # Optimistic locking - send to detect conflicts
 
 class MonthlyPlan(MonthlyPlanBase):

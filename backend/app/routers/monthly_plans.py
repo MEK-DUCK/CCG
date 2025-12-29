@@ -278,6 +278,68 @@ def get_monthly_plans_bulk(
         raise HTTPException(status_code=500, detail="Error loading monthly plans")
 
 
+@router.get("/cif-tng", response_model=List[schemas.MonthlyPlanEnriched])
+def get_cif_monthly_plans_for_tng(
+    months: str = Query(None, description="Comma-separated months, e.g., '1,2,3' (optional)"),
+    year: int = Query(None, description="Year to filter by (optional)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all monthly plans for CIF contracts that need TNG tracking.
+    Returns monthly plans with their contract, customer info, and TNG status.
+    Used for the Tonnage Memos tab on the homepage.
+    """
+    try:
+        # Build query with eager loading of all related data
+        query = db.query(models.MonthlyPlan).options(
+            joinedload(models.MonthlyPlan.quarterly_plan)
+            .joinedload(models.QuarterlyPlan.contract)
+            .joinedload(models.Contract.customer),
+            joinedload(models.MonthlyPlan.contract)
+            .joinedload(models.Contract.customer)
+        )
+        
+        # Filter for CIF contracts only
+        # Join to get contract type - need to handle both paths (via quarterly_plan or direct)
+        query = query.join(
+            models.Contract,
+            (models.MonthlyPlan.contract_id == models.Contract.id) |
+            (models.MonthlyPlan.quarterly_plan.has(models.QuarterlyPlan.contract_id == models.Contract.id))
+        ).filter(
+            models.Contract.contract_type == 'CIF'
+        )
+        
+        # Only include plans with quantity > 0
+        query = query.filter(models.MonthlyPlan.month_quantity > 0)
+        
+        # Optional month filter
+        if months:
+            month_list = [int(m.strip()) for m in months.split(",") if m.strip()]
+            if month_list:
+                query = query.filter(models.MonthlyPlan.month.in_(month_list))
+        
+        # Optional year filter
+        if year:
+            query = query.filter(models.MonthlyPlan.year == year)
+        
+        # Order by year, month
+        query = query.order_by(
+            models.MonthlyPlan.year.desc(),
+            models.MonthlyPlan.month.asc()
+        )
+        
+        plans = query.all()
+        return plans
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid parameter format: {str(e)}")
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in get_cif_monthly_plans_for_tng: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error loading CIF monthly plans for TNG")
+
+
 @router.get("/{plan_id}", response_model=schemas.MonthlyPlan)
 def read_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
     plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()

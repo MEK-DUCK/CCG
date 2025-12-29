@@ -215,6 +215,10 @@ class Contract(Base):
     concluded_memo_received_date = Column(Date, nullable=True)
     remarks = Column(Text, nullable=True)
     
+    # CIF Tonnage Memo (TNG) lead days - how many days before loading window to issue TNG
+    # Only applicable for CIF contracts (15 or 30 days typically)
+    tng_lead_days = Column(Integer, nullable=True)
+    
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     
     # Legacy fields - kept for backward compatibility, will be removed in future
@@ -303,6 +307,13 @@ class MonthlyPlan(Base):
     authority_topup_reference = Column(String, nullable=True)  # Reference number (e.g., AUTH-2025-001)
     authority_topup_reason = Column(Text, nullable=True)  # Reason for the top-up
     authority_topup_date = Column(Date, nullable=True)  # Date of authorization
+    
+    # Tonnage Memo (TNG) tracking for CIF contracts
+    tng_issued = Column(Boolean, default=False)  # Whether TNG has been issued
+    tng_issued_date = Column(Date, nullable=True)  # Date TNG was issued
+    tng_revised = Column(Boolean, default=False)  # Whether TNG has been revised
+    tng_revised_date = Column(Date, nullable=True)  # Date TNG was revised
+    tng_remarks = Column(Text, nullable=True)  # Notes about the TNG
     
     # Nullable for SPOT contracts that skip quarterly planning
     quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=True)

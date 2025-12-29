@@ -74,6 +74,7 @@ export interface Contract {
   concluded_memo_received?: boolean
   concluded_memo_received_date?: string
   remarks?: string
+  tng_lead_days?: number  // CIF Tonnage Memo lead days (15 or 30 typically)
   customer_id: number
   created_at: string
   updated_at?: string
@@ -113,6 +114,12 @@ export interface MonthlyPlan {
   quarterly_plan_id?: number  // Optional for SPOT contracts
   contract_id?: number  // Direct link for SPOT contracts
   contract?: Contract  // Direct contract object for SPOT contracts (from bulk endpoint)
+  // Tonnage Memo (TNG) tracking for CIF contracts
+  tng_issued?: boolean  // Whether TNG has been issued
+  tng_issued_date?: string  // Date TNG was issued
+  tng_revised?: boolean  // Whether TNG has been revised
+  tng_revised_date?: string  // Date TNG was revised
+  tng_remarks?: string  // Notes about the TNG
   created_at: string
   updated_at?: string
 }
