@@ -1085,8 +1085,40 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
 
   const getQuarterMonths = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): Array<{ month: number, year: number }> => {
     const quarterMonths = QUARTER_MONTHS[quarter].months
+    
+    // For CIF contracts, calculate the pre-month to handle it specially
+    let preMonth = 0
+    let preYear = 0
+    if (contractType === 'CIF' && selectedYear === 1) {
+      const fiscalStartMonth = contract?.fiscal_start_month || new Date(contract?.start_period || '').getMonth() + 1
+      const contractStartYear = new Date(contract?.start_period || '').getFullYear()
+      preMonth = fiscalStartMonth - 1
+      preYear = contractStartYear
+      if (preMonth < 1) {
+        preMonth = 12
+        preYear -= 1
+      }
+    }
+    
     // Use yearContractMonths to only show months for the selected contract year
-    const result = yearContractMonths.filter(cm => quarterMonths.includes(cm.month))
+    // For CIF contracts, EXCLUDE the pre-month from its natural quarter (it will be added to the first quarter)
+    const result = yearContractMonths.filter(cm => {
+      // Check if this month belongs to this quarter by month number
+      if (!quarterMonths.includes(cm.month)) return false
+      
+      // For CIF contracts, exclude the pre-month from its natural quarter
+      // (it will be added to the quarter containing the first contract month instead)
+      if (contractType === 'CIF' && selectedYear === 1 && cm.month === preMonth && cm.year === preYear) {
+        // Check if this is NOT the quarter where the pre-month should appear
+        const fiscalStartMonth = contract?.fiscal_start_month || new Date(contract?.start_period || '').getMonth() + 1
+        const firstMonthInThisQuarter = quarterMonths.includes(fiscalStartMonth)
+        if (!firstMonthInThisQuarter) {
+          return false // Exclude pre-month from its natural quarter
+        }
+      }
+      
+      return true
+    })
     
     // For CIF contracts, the pre-month (month before contract start) should appear in the quarter
     // that contains the FIRST month of the contract (since pre-month delivers to first month)
@@ -1094,20 +1126,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     // Example: Jul-Jun contract -> Jun pre-month goes with Q3 (Jul is in Q3)
     if (contractType === 'CIF' && selectedYear === 1) {
       const fiscalStartMonth = contract?.fiscal_start_month || new Date(contract?.start_period || '').getMonth() + 1
-      const contractStartYear = new Date(contract?.start_period || '').getFullYear()
       
       // Check if the first month of the contract is in THIS quarter
       const firstMonthInThisQuarter = quarterMonths.includes(fiscalStartMonth)
       
-      if (firstMonthInThisQuarter) {
-        // Calculate pre-month
-        let preMonth = fiscalStartMonth - 1
-        let preYear = contractStartYear
-        if (preMonth < 1) {
-          preMonth = 12
-          preYear -= 1
-        }
-        
+      if (firstMonthInThisQuarter && preMonth > 0) {
         // Check if pre-month exists in yearContractMonths and add it to the beginning if not already included
         const preMonthExists = result.some(cm => cm.month === preMonth && cm.year === preYear)
         if (!preMonthExists) {
