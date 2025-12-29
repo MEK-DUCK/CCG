@@ -4010,6 +4010,7 @@ export default function HomePage() {
                 <TableCell sx={{ minWidth: isMobile ? 100 : 110, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Inspector</TableCell>
                 <TableCell sx={{ minWidth: isMobile ? 80 : 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Status</TableCell>
                 <TableCell sx={{ minWidth: isMobile ? 100 : 130, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Delivery Window</TableCell>
+                <TableCell sx={{ minWidth: isMobile ? 80 : 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>TNG</TableCell>
                 <TableCell sx={{ minWidth: isMobile ? 100 : 150, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Remark</TableCell>
                 <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Actions</TableCell>
               </TableRow>
@@ -4351,6 +4352,80 @@ export default function HomePage() {
                         wordBreak: 'normal'
                       }}>
                         {contract?.contract_type === 'CIF' && monthlyPlan?.delivery_window ? monthlyPlan.delivery_window : '-'}
+                      </TableCell>
+                      <TableCell sx={{ 
+                        minWidth: isMobile ? 80 : 100,
+                        whiteSpace: 'normal',
+                        wordWrap: 'break-word',
+                        overflowWrap: 'break-word',
+                        wordBreak: 'normal'
+                      }}>
+                        {(() => {
+                          // TNG column - only for CIF contracts with loading window
+                          if (contract?.contract_type !== 'CIF') return '-'
+                          if (!monthlyPlan?.loading_window) return '-'
+                          
+                          // Check TNG status from monthly plan
+                          const tngIssued = monthlyPlan.tng_issued || false
+                          const tngRevised = monthlyPlan.tng_revised || false
+                          
+                          if (tngRevised) {
+                            return (
+                              <Chip 
+                                label="Revised" 
+                                size="small" 
+                                sx={{ bgcolor: '#E9D5FF', color: '#7C3AED', fontWeight: 500 }}
+                              />
+                            )
+                          }
+                          
+                          if (tngIssued) {
+                            return (
+                              <Chip 
+                                label="Issued" 
+                                size="small" 
+                                sx={{ bgcolor: '#E0F2FE', color: '#0369A1', fontWeight: 500 }}
+                              />
+                            )
+                          }
+                          
+                          // Calculate TNG due date
+                          const tngLeadDays = contract.tng_lead_days
+                          if (!tngLeadDays) return '-'
+                          
+                          const parsed = parseLaycanDate(monthlyPlan.loading_window, monthlyPlan.month, monthlyPlan.year)
+                          if (!parsed.isValid || !parsed.startDate) return '-'
+                          
+                          const dueDate = new Date(parsed.startDate)
+                          dueDate.setDate(dueDate.getDate() - tngLeadDays)
+                          
+                          const today = new Date()
+                          today.setHours(0, 0, 0, 0)
+                          dueDate.setHours(0, 0, 0, 0)
+                          
+                          const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                          const isOverdue = daysUntilDue < 0
+                          const isDueSoon = daysUntilDue >= 0 && daysUntilDue <= 3
+                          
+                          const label = isOverdue 
+                            ? `${Math.abs(daysUntilDue)}d overdue`
+                            : daysUntilDue === 0 
+                              ? 'Due Today'
+                              : `${daysUntilDue}d`
+                          
+                          return (
+                            <Chip 
+                              label={label}
+                              size="small" 
+                              sx={{ 
+                                bgcolor: isOverdue ? '#FEE2E2' : isDueSoon ? '#FEF3C7' : '#DCFCE7',
+                                color: isOverdue ? '#DC2626' : isDueSoon ? '#D97706' : '#16A34A',
+                                fontWeight: 600,
+                                fontSize: '0.7rem'
+                              }}
+                            />
+                          )
+                        })()}
                       </TableCell>
                       <TableCell sx={{ 
                         minWidth: isMobile ? 150 : 'auto',
