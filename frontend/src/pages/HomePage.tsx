@@ -4407,23 +4407,31 @@ export default function HomePage() {
                           const isOverdue = daysUntilDue < 0
                           const isDueSoon = daysUntilDue >= 0 && daysUntilDue <= 3
                           
-                          const label = isOverdue 
+                          const daysLabel = isOverdue 
                             ? `${Math.abs(daysUntilDue)}d overdue`
                             : daysUntilDue === 0 
                               ? 'Due Today'
                               : `${daysUntilDue}d`
                           
+                          const dueDateStr = format(dueDate, 'MMM d')
+                          
                           return (
-                            <Chip 
-                              label={label}
-                              size="small" 
-                              sx={{ 
-                                bgcolor: isOverdue ? '#FEE2E2' : isDueSoon ? '#FEF3C7' : '#DCFCE7',
-                                color: isOverdue ? '#DC2626' : isDueSoon ? '#D97706' : '#16A34A',
-                                fontWeight: 600,
-                                fontSize: '0.7rem'
-                              }}
-                            />
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.3 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 500, color: '#64748B', fontSize: '0.65rem' }}>
+                                {dueDateStr}
+                              </Typography>
+                              <Chip 
+                                label={daysLabel}
+                                size="small" 
+                                sx={{ 
+                                  bgcolor: isOverdue ? '#FEE2E2' : isDueSoon ? '#FEF3C7' : '#DCFCE7',
+                                  color: isOverdue ? '#DC2626' : isDueSoon ? '#D97706' : '#16A34A',
+                                  fontWeight: 600,
+                                  fontSize: '0.65rem',
+                                  height: 20
+                                }}
+                              />
+                            </Box>
                           )
                         })()}
                       </TableCell>
