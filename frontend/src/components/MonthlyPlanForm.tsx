@@ -60,10 +60,32 @@ const QUARTER_MONTHS: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', { months: number[], labe
   Q4: { months: [10, 11, 12], labels: ['October', 'November', 'December'] },
 }
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
 // Get month name from number
 const getMonthName = (month: number): string => {
   const date = new Date(2000, month - 1, 1)
   return date.toLocaleString('default', { month: 'long' })
+}
+
+// Generate delivery month options for CIF contracts
+// Shows months from loading month onwards for the next 3 months (typical voyage + buffer)
+const getDeliveryMonthOptions = (loadingMonth: number, loadingYear: number): Array<{ value: string, label: string }> => {
+  const options: Array<{ value: string, label: string }> = []
+  
+  // Generate options for 4 months starting from loading month (covers typical voyage times)
+  for (let i = 0; i < 4; i++) {
+    const date = new Date(loadingYear, loadingMonth - 1 + i, 1)
+    const month = date.getMonth() + 1
+    const year = date.getFullYear()
+    const monthName = MONTH_NAMES[month - 1]
+    options.push({
+      value: `${monthName} ${year}`,
+      label: `${monthName} ${year}`
+    })
+  }
+  
+  return options
 }
 
 // Determine quarter order based on contract start month
@@ -80,12 +102,18 @@ const getQuarterOrder = (startMonth: number): ('Q1' | 'Q2' | 'Q3' | 'Q4')[] => {
 }
 
 // Get all months in contract period with their years
-const getContractMonths = (startPeriod: string, endPeriod: string): Array<{ month: number, year: number }> => {
+// For CIF contracts, include one month BEFORE contract start (for loadings that deliver in first month)
+const getContractMonths = (startPeriod: string, endPeriod: string, isCIF: boolean = false): Array<{ month: number, year: number }> => {
   const start = new Date(startPeriod)
   const end = new Date(endPeriod)
   const months: Array<{ month: number, year: number }> = []
   
+  // For CIF contracts, start one month earlier to allow pre-contract loadings
   const current = new Date(start)
+  if (isCIF) {
+    current.setMonth(current.getMonth() - 1)
+  }
+  
   while (current <= end) {
     months.push({
       month: current.getMonth() + 1,
@@ -345,7 +373,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         const order = getQuarterOrder(startMonth)
         setQuarterOrder(order)
         
-        const months = getContractMonths(propContract.start_period, propContract.end_period)
+        const isCIF = propContract.contract_type === 'CIF'
+        const months = getContractMonths(propContract.start_period, propContract.end_period, isCIF)
         setContractMonths(months)
       } else if (contractId) {
         try {
@@ -359,7 +388,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           const order = getQuarterOrder(startMonth)
           setQuarterOrder(order)
           
-          const months = getContractMonths(contractData.start_period, contractData.end_period)
+          const isCIF = contractData.contract_type === 'CIF'
+          const months = getContractMonths(contractData.start_period, contractData.end_period, isCIF)
           setContractMonths(months)
         } catch (error) {
           console.error('Error loading contract:', error)
@@ -1059,9 +1089,51 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     return getQuarterlyQuantity(productName, quarterPosition) - getQuarterlyTopup(productName, quarterPosition)
   }
 
+  // Parse delivery month string (e.g., "February 2025") into { month, year }
+  const parseDeliveryMonth = (deliveryMonth: string): { month: number, year: number } | null => {
+    if (!deliveryMonth) return null
+    const parts = deliveryMonth.split(' ')
+    if (parts.length !== 2) return null
+    const monthIndex = MONTH_NAMES.indexOf(parts[0])
+    const year = parseInt(parts[1], 10)
+    if (monthIndex === -1 || isNaN(year)) return null
+    return { month: monthIndex + 1, year }
+  }
+
   // Get total entered for a quarter for a specific product
+  // For FOB: uses loading month (the month the entry is in)
+  // For CIF: uses delivery month (from the delivery_month field)
   const getTotalEntered = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', productName: string): number => {
     const quarterMonths = getQuarterMonths(quarter)
+    
+    if (contractType === 'CIF') {
+      // For CIF, sum quantities where delivery_month falls in this quarter
+      let total = 0
+      Object.keys(monthEntries).forEach(key => {
+        const entries = monthEntries[key] || []
+        entries.forEach(entry => {
+          const deliveryMonthParsed = parseDeliveryMonth(entry.delivery_month)
+          if (!deliveryMonthParsed) return
+          
+          // Check if delivery month falls in this quarter
+          const isInQuarter = quarterMonths.some(qm => 
+            qm.month === deliveryMonthParsed.month && qm.year === deliveryMonthParsed.year
+          )
+          if (!isInQuarter) return
+          
+          if (entry.is_combi) {
+            const productQty = parseFloat(entry.combi_quantities[productName] || '0') || 0
+            total += productQty
+          } else if (entry.product_name === productName) {
+            const qty = parseFloat(entry.quantity || '0') || 0
+            total += qty
+          }
+        })
+      })
+      return total
+    }
+    
+    // For FOB, use loading month (original logic)
     return quarterMonths.reduce((sum, { month, year }) => {
       const key = `${month}-${year}`
       const entries = monthEntries[key] || []
@@ -1090,6 +1162,21 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     if (!skipQuarterlyPlan && quarterlyPlans.length === 0) {
       alert('Please create quarterly plans first.')
       return
+    }
+
+    // For CIF contracts, validate that delivery_month is set for all entries with quantity
+    if (contractType === 'CIF') {
+      for (const key of Object.keys(monthEntries)) {
+        const entries = monthEntries[key] || []
+        for (const entry of entries) {
+          const quantity = parseFloat(entry.quantity || '0')
+          if (quantity > 0 && !entry.delivery_month) {
+            const [month, year] = key.split('-').map(Number)
+            alert(`Error: Delivery Month is required for CIF contracts. Please select a delivery month for ${getMonthName(month)} ${year}.`)
+            return
+          }
+        }
+      }
     }
 
     // Validate quantities for each product and quarter (skip for SPOT/Range contracts)
@@ -1984,6 +2071,23 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                             </TextField>
                             <TextField
                               size="small"
+                              label="Delivery Month *"
+                              value={entry.delivery_month}
+                              onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_month', e.target.value)}
+                              select
+                              required
+                              fullWidth
+                              sx={{ mb: 1 }}
+                            >
+                              <MenuItem value="">
+                                <em>Select month</em>
+                              </MenuItem>
+                              {getDeliveryMonthOptions(month, year).map((opt) => (
+                                <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                              ))}
+                            </TextField>
+                            <TextField
+                              size="small"
                               label="Delivery Window"
                               value={entry.delivery_window}
                               onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
@@ -2551,18 +2655,25 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                   </TextField>
                                   <Box sx={{ display: 'flex', gap: 1 }}>
                                     <TextField
-                                      label="Delivery Month"
+                                      label="Delivery Month *"
                                       size="small"
                                       value={entry.delivery_month}
                                       onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_month', e.target.value)}
-                                      placeholder="e.g., Sep"
+                                      select
+                                      required
                                       disabled={isLocked}
                                       sx={{
-                                        width: 140,
+                                        width: 160,
                                         '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
-                                        '& .MuiInputBase-input': { padding: '6px 8px' },
                                       }}
-                                    />
+                                    >
+                                      <MenuItem value="">
+                                        <em>Select month</em>
+                                      </MenuItem>
+                                      {getDeliveryMonthOptions(month, year).map((opt) => (
+                                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                                      ))}
+                                    </TextField>
                                     <TextField
                                       label="Delivery Window"
                                       size="small"
