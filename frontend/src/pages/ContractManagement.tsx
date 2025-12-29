@@ -1275,7 +1275,7 @@ export default function ContractManagement() {
                     <MenuItem value="">
                       <em>None</em>
                     </MenuItem>
-                    <MenuItem value={15}>15 Days</MenuItem>
+                    <MenuItem value={25}>25 Days</MenuItem>
                     <MenuItem value={30}>30 Days</MenuItem>
                   </TextField>
                 </Grid>

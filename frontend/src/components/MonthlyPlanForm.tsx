@@ -1989,7 +1989,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
                               fullWidth
                               sx={{ mb: 1 }}
-                              helperText={contract?.cif_destination ? `Auto-calculated from ${contract.cif_destination}` : 'Set destination in contract'}
+                              helperText={contract?.cif_destination ? `Basis ${contract.cif_destination}` : 'Set destination in contract'}
                             />
                           </>
                         )}
@@ -2571,7 +2571,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       placeholder="Auto-calculated"
                                       fullWidth
                                       disabled={isLocked}
-                                      helperText={contract?.cif_destination ? `Based on ${contract.cif_destination}` : ''}
+                                      helperText={contract?.cif_destination ? `Basis ${contract.cif_destination}` : ''}
                                       sx={{
                                         '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
                                         '& .MuiInputBase-input': { padding: '6px 8px' },
