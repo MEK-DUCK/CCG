@@ -1065,26 +1065,33 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     // Use yearContractMonths to only show months for the selected contract year
     const result = yearContractMonths.filter(cm => quarterMonths.includes(cm.month))
     
-    // For CIF contracts, the pre-month (month before contract start) should appear in the FIRST quarter
-    // because it's used for loadings that deliver in the first month of the contract
-    if (contractType === 'CIF' && selectedYear === 1 && quarter === quarterOrder[0]) {
+    // For CIF contracts, the pre-month (month before contract start) should appear in the quarter
+    // that contains the FIRST month of the contract (since pre-month delivers to first month)
+    // Example: Jan-Dec contract -> Dec pre-month goes with Q1 (Jan is in Q1)
+    // Example: Jul-Jun contract -> Jun pre-month goes with Q3 (Jul is in Q3)
+    if (contractType === 'CIF' && selectedYear === 1) {
       const fiscalStartMonth = contract?.fiscal_start_month || new Date(contract?.start_period || '').getMonth() + 1
       const contractStartYear = new Date(contract?.start_period || '').getFullYear()
       
-      // Calculate pre-month
-      let preMonth = fiscalStartMonth - 1
-      let preYear = contractStartYear
-      if (preMonth < 1) {
-        preMonth = 12
-        preYear -= 1
-      }
+      // Check if the first month of the contract is in THIS quarter
+      const firstMonthInThisQuarter = quarterMonths.includes(fiscalStartMonth)
       
-      // Check if pre-month exists in yearContractMonths and add it to the beginning if not already included
-      const preMonthExists = result.some(cm => cm.month === preMonth && cm.year === preYear)
-      if (!preMonthExists) {
-        const preMonthInYear = yearContractMonths.find(cm => cm.month === preMonth && cm.year === preYear)
-        if (preMonthInYear) {
-          result.unshift(preMonthInYear)
+      if (firstMonthInThisQuarter) {
+        // Calculate pre-month
+        let preMonth = fiscalStartMonth - 1
+        let preYear = contractStartYear
+        if (preMonth < 1) {
+          preMonth = 12
+          preYear -= 1
+        }
+        
+        // Check if pre-month exists in yearContractMonths and add it to the beginning if not already included
+        const preMonthExists = result.some(cm => cm.month === preMonth && cm.year === preYear)
+        if (!preMonthExists) {
+          const preMonthInYear = yearContractMonths.find(cm => cm.month === preMonth && cm.year === preYear)
+          if (preMonthInYear) {
+            result.unshift(preMonthInYear)
+          }
         }
       }
     }
