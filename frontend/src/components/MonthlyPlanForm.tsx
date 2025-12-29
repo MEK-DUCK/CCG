@@ -26,7 +26,8 @@ import {
   Tabs,
   Tab,
 } from '@mui/material'
-import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp, CalendarMonth, History } from '@mui/icons-material'
+import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp, CalendarMonth, History, ViewModule, ViewList } from '@mui/icons-material'
+import { ToggleButton, ToggleButtonGroup } from '@mui/material'
 import { monthlyPlanAPI, contractAPI, cargoAPI, MonthlyPlanTopUpRequest } from '../api/client'
 import { MonthlyPlanStatus } from '../types'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
@@ -184,6 +185,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const [planStatuses, setPlanStatuses] = useState<Record<number, MonthlyPlanStatus>>({})
   const autosaveTimersRef = useRef<Record<string, number>>({})
   const [editingUser, setEditingUser] = useState<{ user: PresenceUser; field: string } | null>(null)
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
   
   // Real-time presence tracking for this contract's monthly plan
   const handleDataChanged = useCallback(() => {
@@ -2221,13 +2223,28 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             </Box>
           )}
         </Box>
-        <ActiveUsersIndicator 
-          users={otherUsers} 
-          isConnected={isConnected}
-          variant="avatars"
-          showConnectionStatus
-          label="Also editing"
-        />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(_, newMode) => newMode && setViewMode(newMode)}
+            size="small"
+          >
+            <ToggleButton value="grid" aria-label="grid view">
+              <ViewModule fontSize="small" />
+            </ToggleButton>
+            <ToggleButton value="table" aria-label="table view">
+              <ViewList fontSize="small" />
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <ActiveUsersIndicator 
+            users={otherUsers} 
+            isConnected={isConnected}
+            variant="avatars"
+            showConnectionStatus
+            label="Also editing"
+          />
+        </Box>
       </Box>
       
       {/* Warning banner when others are editing */}
@@ -2345,6 +2362,144 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         </Grid>
       </Box>
       
+      {/* Table View - Compact list of all cargos */}
+      {viewMode === 'table' && (
+        <Box sx={{ mt: 2 }}>
+          <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+            <Box sx={{ 
+              display: 'grid', 
+              gridTemplateColumns: contractType === 'CIF' 
+                ? 'minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(80px, 0.6fr)'
+                : 'minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(80px, 0.6fr)',
+              bgcolor: '#F8FAFC',
+              borderBottom: '1px solid #E2E8F0',
+              px: 2,
+              py: 1,
+            }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Loading Month</Typography>
+              <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Quantity</Typography>
+              {contractType === 'FOB' ? (
+                <>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>5-Day Laycan</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>2-Day Laycan</Typography>
+                </>
+              ) : (
+                <>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Loading Window</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Delivery Month</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Delivery Window</Typography>
+                </>
+              )}
+              <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Actions</Typography>
+            </Box>
+            {/* Table rows */}
+            {Object.entries(monthEntries)
+              .sort(([a], [b]) => {
+                const [aMonth, aYear] = a.split('-').map(Number)
+                const [bMonth, bYear] = b.split('-').map(Number)
+                return aYear !== bYear ? aYear - bYear : aMonth - bMonth
+              })
+              .flatMap(([key, entries]) => {
+                const [month, year] = key.split('-').map(Number)
+                return entries.map((entry, idx) => {
+                  const quantity = entry.is_combi 
+                    ? Object.values(entry.combi_quantities).reduce((sum, q) => sum + (parseFloat(q) || 0), 0)
+                    : parseFloat(entry.quantity || '0')
+                  if (quantity === 0) return null
+                  
+                  return (
+                    <Box 
+                      key={`${key}-${idx}`}
+                      sx={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: contractType === 'CIF' 
+                          ? 'minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(80px, 0.6fr)'
+                          : 'minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(80px, 0.6fr)',
+                        px: 2,
+                        py: 1.5,
+                        borderBottom: '1px solid #F1F5F9',
+                        '&:hover': { bgcolor: '#F8FAFC' },
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {getMonthName(month)} {year}
+                        </Typography>
+                        {entry.is_combi && (
+                          <Chip label="Combi" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: '#FEF3C7', color: '#92400E', mt: 0.5 }} />
+                        )}
+                        {!entry.is_combi && isMultiProduct && (
+                          <Typography variant="caption" sx={{ color: '#64748B' }}>{entry.product_name}</Typography>
+                        )}
+                      </Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                        {quantity.toLocaleString()} KT
+                      </Typography>
+                      {contractType === 'FOB' ? (
+                        <>
+                          <Typography variant="body2" sx={{ color: entry.laycan_5_days ? '#1E293B' : '#94A3B8' }}>
+                            {entry.laycan_5_days || '-'}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: entry.laycan_2_days ? '#1E293B' : '#94A3B8' }}>
+                            {entry.laycan_2_days || '-'}
+                          </Typography>
+                        </>
+                      ) : (
+                        <>
+                          <Typography variant="body2" sx={{ color: entry.loading_window ? '#1E293B' : '#94A3B8' }}>
+                            {entry.loading_window || '-'}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: entry.delivery_month ? '#1E293B' : '#94A3B8' }}>
+                            {entry.delivery_month || '-'}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: entry.delivery_window ? '#1E293B' : '#94A3B8' }}>
+                            {entry.delivery_window || '-'}
+                          </Typography>
+                        </>
+                      )}
+                      <Button 
+                        size="small" 
+                        onClick={() => setViewMode('grid')}
+                        sx={{ minWidth: 'auto', fontSize: '0.75rem' }}
+                      >
+                        Edit
+                      </Button>
+                    </Box>
+                  )
+                }).filter(Boolean)
+              })}
+            {/* Empty state */}
+            {Object.values(monthEntries).every(entries => 
+              entries.every(e => {
+                const qty = e.is_combi 
+                  ? Object.values(e.combi_quantities).reduce((sum, q) => sum + (parseFloat(q) || 0), 0)
+                  : parseFloat(e.quantity || '0')
+                return qty === 0
+              })
+            ) && (
+              <Box sx={{ p: 4, textAlign: 'center' }}>
+                <Typography color="text.secondary">No cargos planned yet. Switch to Grid View to add cargos.</Typography>
+              </Box>
+            )}
+          </Paper>
+          
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<Save />}
+              onClick={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? 'Saving All Monthly Plans...' : 'Save All Monthly Plans'}
+            </Button>
+          </Box>
+        </Box>
+      )}
+      
+      {/* Grid View - Detailed editing by quarter */}
+      {viewMode === 'grid' && (
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         {quarterOrder.map((quarter, quarterIndex) => {
           const quarterMonths = getQuarterMonths(quarter)
@@ -2812,6 +2967,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           </Button>
         </Box>
       </Box>
+      )}
       
       {/* Action Menu for existing entries */}
       <Menu
