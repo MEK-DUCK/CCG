@@ -1063,7 +1063,33 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const getQuarterMonths = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): Array<{ month: number, year: number }> => {
     const quarterMonths = QUARTER_MONTHS[quarter].months
     // Use yearContractMonths to only show months for the selected contract year
-    return yearContractMonths.filter(cm => quarterMonths.includes(cm.month))
+    const result = yearContractMonths.filter(cm => quarterMonths.includes(cm.month))
+    
+    // For CIF contracts, the pre-month (month before contract start) should appear in the FIRST quarter
+    // because it's used for loadings that deliver in the first month of the contract
+    if (contractType === 'CIF' && selectedYear === 1 && quarter === quarterOrder[0]) {
+      const fiscalStartMonth = contract?.fiscal_start_month || new Date(contract?.start_period || '').getMonth() + 1
+      const contractStartYear = new Date(contract?.start_period || '').getFullYear()
+      
+      // Calculate pre-month
+      let preMonth = fiscalStartMonth - 1
+      let preYear = contractStartYear
+      if (preMonth < 1) {
+        preMonth = 12
+        preYear -= 1
+      }
+      
+      // Check if pre-month exists in yearContractMonths and add it to the beginning if not already included
+      const preMonthExists = result.some(cm => cm.month === preMonth && cm.year === preYear)
+      if (!preMonthExists) {
+        const preMonthInYear = yearContractMonths.find(cm => cm.month === preMonth && cm.year === preYear)
+        if (preMonthInYear) {
+          result.unshift(preMonthInYear)
+        }
+      }
+    }
+    
+    return result
   }
 
   // Get quarterly quantity for a product and quarter position
