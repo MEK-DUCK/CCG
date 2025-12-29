@@ -69,12 +69,14 @@ const getMonthName = (month: number): string => {
 }
 
 // Generate delivery month options for CIF contracts
-// Shows months from loading month onwards for the next 3 months (typical voyage + buffer)
+// Shows months AFTER the loading month (delivery cannot be same month as loading)
+// Typically shows next 3 months after loading month
 const getDeliveryMonthOptions = (loadingMonth: number, loadingYear: number): Array<{ value: string, label: string }> => {
   const options: Array<{ value: string, label: string }> = []
   
-  // Generate options for 4 months starting from loading month (covers typical voyage times)
-  for (let i = 0; i < 4; i++) {
+  // Generate options for 3 months AFTER loading month (i starts at 1, not 0)
+  // Delivery is always after loading, so skip the loading month itself
+  for (let i = 1; i <= 3; i++) {
     const date = new Date(loadingYear, loadingMonth - 1 + i, 1)
     const month = date.getMonth() + 1
     const year = date.getFullYear()
@@ -86,6 +88,15 @@ const getDeliveryMonthOptions = (loadingMonth: number, loadingYear: number): Arr
   }
   
   return options
+}
+
+// Get the loading month option for a specific month/year (single option dropdown)
+const getLoadingMonthOption = (loadingMonth: number, loadingYear: number): { value: string, label: string } => {
+  const monthName = MONTH_NAMES[loadingMonth - 1]
+  return {
+    value: `${monthName} ${loadingYear}`,
+    label: `${monthName} ${loadingYear}`
+  }
 }
 
 // Determine quarter order based on contract start month
@@ -2092,6 +2103,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           <>
                             <TextField
                               size="small"
+                              label="Loading Month"
+                              value={entry.loading_month || getLoadingMonthOption(month, year).value}
+                              onChange={(e) => handleLaycanChange(month, year, entryIndex, 'loading_month', e.target.value)}
+                              select
+                              fullWidth
+                              sx={{ mb: 1 }}
+                            >
+                              <MenuItem value={getLoadingMonthOption(month, year).value}>
+                                {getLoadingMonthOption(month, year).label}
+                              </MenuItem>
+                            </TextField>
+                            <TextField
+                              size="small"
                               label="Loading Window"
                               value={entry.loading_window}
                               onChange={(e) => handleLaycanChange(month, year, entryIndex, 'loading_window', e.target.value)}
@@ -2656,16 +2680,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                     <TextField
                                       label="Loading Month"
                                       size="small"
-                                      value={entry.loading_month}
+                                      value={entry.loading_month || getLoadingMonthOption(month, year).value}
                                       onChange={(e) => handleLaycanChange(month, year, entryIndex, 'loading_month', e.target.value)}
-                                      placeholder="e.g., Aug"
+                                      select
                                       disabled={isLocked}
                                       sx={{
-                                        width: 140,
+                                        width: 160,
                                         '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
-                                        '& .MuiInputBase-input': { padding: '6px 8px' },
                                       }}
-                                    />
+                                    >
+                                      <MenuItem value={getLoadingMonthOption(month, year).value}>
+                                        {getLoadingMonthOption(month, year).label}
+                                      </MenuItem>
+                                    </TextField>
                                     <TextField
                                       label="Loading Window"
                                       size="small"
