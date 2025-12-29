@@ -2136,6 +2136,17 @@ export default function HomePage() {
       }
     }
 
+    // Handler for ND Completed checkbox
+    const handleNDCompletedChange = async (cargo: Cargo, checked: boolean) => {
+      try {
+        const result = await cargoAPI.update(cargo.id, { nd_completed: checked, version: cargo.version || 1 })
+        // Update local state with new version
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, nd_completed: checked, version: result.data.version } : c))
+      } catch (error) {
+        console.error('Error updating ND Completed:', error)
+      }
+    }
+
     // Handler for inline ETA Discharge Port update
     const handleETADischargePortChange = async (cargo: Cargo, newValue: string) => {
       try {
@@ -2155,6 +2166,17 @@ export default function HomePage() {
         setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, discharge_port_location: newValue, version: result.data.version } : c))
       } catch (error) {
         console.error('Error updating Discharge Port Location:', error)
+      }
+    }
+
+    // Handler for inline ND Days dropdown update
+    const handleNDDaysChange = async (cargo: Cargo, newValue: string) => {
+      try {
+        const result = await cargoAPI.update(cargo.id, { nd_days: newValue || undefined, version: cargo.version || 1 })
+        // Update local state with new version
+        setInRoadCIF(prev => prev.map(c => c.id === cargo.id ? { ...c, nd_days: newValue, version: result.data.version } : c))
+      } catch (error) {
+        console.error('Error updating ND Days:', error)
       }
     }
 
@@ -2202,9 +2224,9 @@ export default function HomePage() {
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>5-ND</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>ND Due Date</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>ND Del Window</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Delivery Window</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Original DW</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>ETA Discharge</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Payment Status</TableCell>
@@ -2307,35 +2329,104 @@ export default function HomePage() {
                   <TableCell 
                     onClick={(e) => e.stopPropagation()} // Prevent row click when editing
                   >
-                    <TextField
-                      size="small"
-                      type="date"
-                      value={cargo.five_nd_date || ''}
-                      onChange={(e) => handleFiveNDDateChange(cargo, e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                      sx={{ 
-                        width: 140,
-                        '& .MuiInputBase-input': {
-                          fontSize: '0.875rem',
-                          py: 0.5,
-                        },
-                      }}
-                    />
+                    {(() => {
+                      // Check if we're within 3 days before or on the ND Due Date
+                      // But only highlight if nd_completed is not checked
+                      const isNDCompleted = (cargo as any).nd_completed || false
+                      let isHighlighted = false
+                      if (cargo.five_nd_date && !isNDCompleted) {
+                        const dueDate = new Date(cargo.five_nd_date)
+                        const today = new Date()
+                        today.setHours(0, 0, 0, 0)
+                        dueDate.setHours(0, 0, 0, 0)
+                        const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                        // Highlight if within 3 days before or on the due date (diffDays <= 3 and >= 0)
+                        // Also highlight if past due (diffDays < 0)
+                        isHighlighted = diffDays <= 3
+                      }
+                      return (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <TextField
+                            size="small"
+                            type="date"
+                            value={cargo.five_nd_date || ''}
+                            onChange={(e) => handleFiveNDDateChange(cargo, e.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                            sx={{ 
+                              width: 130,
+                              '& .MuiInputBase-input': {
+                                fontSize: '0.875rem',
+                                py: 0.5,
+                              },
+                              ...(isHighlighted && {
+                                '& .MuiOutlinedInput-root': {
+                                  bgcolor: '#FEF3C7',
+                                  '& fieldset': {
+                                    borderColor: '#F59E0B',
+                                    borderWidth: 2,
+                                  },
+                                  '&:hover fieldset': {
+                                    borderColor: '#D97706',
+                                  },
+                                },
+                                '& .MuiInputBase-input': {
+                                  fontSize: '0.875rem',
+                                  py: 0.5,
+                                  fontWeight: 600,
+                                  color: '#B45309',
+                                },
+                              }),
+                            }}
+                          />
+                          <Checkbox
+                            size="small"
+                            checked={isNDCompleted}
+                            onChange={(e) => handleNDCompletedChange(cargo, e.target.checked)}
+                            sx={{ 
+                              p: 0.25,
+                              color: isNDCompleted ? '#10B981' : '#9CA3AF',
+                              '&.Mui-checked': {
+                                color: '#10B981',
+                              },
+                            }}
+                            title={isNDCompleted ? 'ND Completed' : 'Mark as ND Completed'}
+                          />
+                        </Box>
+                      )
+                    })()}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
-                    <TextField
-                      size="small"
-                      value={cargo.nd_delivery_window || ''}
-                      onChange={(e) => handleNDDeliveryWindowChange(cargo, e.target.value)}
-                      placeholder="Enter ND window"
-                      sx={{ 
-                        width: 120,
-                        '& .MuiInputBase-input': {
-                          fontSize: '0.875rem',
-                          py: 0.5,
-                        },
-                      }}
-                    />
+                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                      <FormControl size="small" sx={{ minWidth: 80 }}>
+                        <Select
+                          value={cargo.nd_days || ''}
+                          displayEmpty
+                          onChange={(e) => handleNDDaysChange(cargo, e.target.value)}
+                          sx={{ 
+                            fontSize: '0.75rem',
+                            '& .MuiSelect-select': { py: 0.5, px: 1 }
+                          }}
+                        >
+                          <MenuItem value=""><em>Days</em></MenuItem>
+                          <MenuItem value="3 Days">3 Days</MenuItem>
+                          <MenuItem value="5 Days">5 Days</MenuItem>
+                          <MenuItem value="10 Days">10 Days</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        size="small"
+                        value={cargo.nd_delivery_window || ''}
+                        onChange={(e) => handleNDDeliveryWindowChange(cargo, e.target.value)}
+                        placeholder="Enter ND window"
+                        sx={{ 
+                          width: 100,
+                          '& .MuiInputBase-input': {
+                            fontSize: '0.875rem',
+                            py: 0.5,
+                          },
+                        }}
+                      />
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" sx={{ 
@@ -2470,9 +2561,9 @@ export default function HomePage() {
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>5-ND</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>ND Due Date</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>ND Del Window</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Delivery Window</TableCell>
+              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Original DW</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>ETA Discharge</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
               <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Payment Status</TableCell>

@@ -515,7 +515,9 @@ class CargoBase(BaseModel):
     discharge_completion_time: Optional[datetime] = None
     # CIF In-Road tracking fields
     five_nd_date: Optional[str] = None  # 5-ND: Due date for narrowing down delivery window
-    nd_delivery_window: Optional[str] = None  # Narrowed Down Delivery Window
+    nd_completed: Optional[bool] = False  # ND Completed checkbox - removes highlight when checked
+    nd_days: Optional[str] = None  # ND Days selection (3 Days, 5 Days, 7 Days, 10 Days)
+    nd_delivery_window: Optional[str] = None  # Narrowed Down Delivery Window (actual dates)
     notes: Optional[str] = None
     # Completion tracking fields
     sailing_fax_entry_completed: Optional[bool] = False
@@ -557,7 +559,9 @@ class CargoUpdate(BaseModel):
     discharge_completion_time: Optional[datetime] = None
     # CIF In-Road tracking fields
     five_nd_date: Optional[str] = None  # 5-ND: Due date for narrowing down delivery window
-    nd_delivery_window: Optional[str] = None  # Narrowed Down Delivery Window
+    nd_completed: Optional[bool] = None  # ND Completed checkbox - removes highlight when checked
+    nd_days: Optional[str] = None  # ND Days selection (3 Days, 5 Days, 7 Days, 10 Days)
+    nd_delivery_window: Optional[str] = None  # Narrowed Down Delivery Window (actual dates)
     status: Optional[CargoStatus] = None
     notes: Optional[str] = None
     # Accept empty string from UI; router converts '' -> None before writing to DB.

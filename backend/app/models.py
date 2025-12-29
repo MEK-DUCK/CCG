@@ -368,7 +368,9 @@ class Cargo(Base):
     discharge_port_location = Column(String)
     discharge_completion_time = Column(DateTime)
     five_nd_date = Column(String, nullable=True)  # 5-ND: Narrowing down due date
-    nd_delivery_window = Column(String, nullable=True)  # Narrowed Down Delivery Window
+    nd_completed = Column(Boolean, default=False)  # ND Completed checkbox - removes highlight when checked
+    nd_days = Column(String, nullable=True)  # ND Days selection (3 Days, 5 Days, 7 Days, 10 Days)
+    nd_delivery_window = Column(String, nullable=True)  # Narrowed Down Delivery Window (actual dates)
     
     # Completion tracking
     sailing_fax_entry_completed = Column(Boolean, default=False)

@@ -160,7 +160,9 @@ export interface Cargo {
   discharge_completion_time?: string
   // CIF In-Road tracking fields
   five_nd_date?: string  // 5-ND: Due date for narrowing down delivery window
-  nd_delivery_window?: string  // Narrowed Down Delivery Window
+  nd_completed?: boolean  // ND Completed checkbox - removes highlight when checked
+  nd_days?: string  // ND Days selection (3 Days, 5 Days, 7 Days, 10 Days)
+  nd_delivery_window?: string  // Narrowed Down Delivery Window (actual dates)
   status: CargoStatus
   notes?: string
   monthly_plan_id: number
