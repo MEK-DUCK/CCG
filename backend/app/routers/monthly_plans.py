@@ -617,6 +617,44 @@ def move_monthly_plan(plan_id: int, move_request: schemas.MonthlyPlanMoveRequest
     db_plan.year = move_request.target_year
     db_plan.version = (db_plan.version or 1) + 1  # Increment version for optimistic locking
     
+    # For CIF contracts, update delivery_month to match the new loading month
+    # This ensures the quantity is tracked against the correct delivery quarter
+    # Get the contract to check if it's CIF
+    contract = None
+    if db_plan.quarterly_plan_id:
+        quarterly_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == db_plan.quarterly_plan_id).first()
+        if quarterly_plan:
+            contract = db.query(models.Contract).filter(models.Contract.id == quarterly_plan.contract_id).first()
+    elif db_plan.contract_id:
+        contract = db.query(models.Contract).filter(models.Contract.id == db_plan.contract_id).first()
+    
+    if contract and contract.contract_type == 'CIF' and db_plan.delivery_month:
+        # Calculate new delivery month based on the move
+        # The delivery month should shift by the same amount as the loading month
+        old_delivery_month = db_plan.delivery_month  # e.g., "January 2026"
+        month_diff = (move_request.target_year * 12 + move_request.target_month) - (old_year * 12 + old_month)
+        
+        # Parse the old delivery month
+        try:
+            parts = old_delivery_month.split(' ')
+            if len(parts) == 2:
+                old_del_month_name = parts[0]
+                old_del_year = int(parts[1])
+                # Convert month name to number
+                month_names_list = ['January', 'February', 'March', 'April', 'May', 'June', 
+                                   'July', 'August', 'September', 'October', 'November', 'December']
+                if old_del_month_name in month_names_list:
+                    old_del_month_num = month_names_list.index(old_del_month_name) + 1
+                    # Calculate new delivery month
+                    new_del_total = old_del_year * 12 + old_del_month_num + month_diff
+                    new_del_year = (new_del_total - 1) // 12
+                    new_del_month_num = ((new_del_total - 1) % 12) + 1
+                    new_del_month_name = month_names_list[new_del_month_num - 1]
+                    db_plan.delivery_month = f"{new_del_month_name} {new_del_year}"
+                    logger.info(f"Updated delivery_month from '{old_delivery_month}' to '{db_plan.delivery_month}'")
+        except Exception as e:
+            logger.warning(f"Could not update delivery_month: {e}")
+    
     # Build description for monthly plan audit log
     description = f"{action_verb} {db_plan.month_quantity:,.0f} KT from {old_month_name} {old_year} to {new_month_name} {move_request.target_year}"
     if moved_cargo_ids:
