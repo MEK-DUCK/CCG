@@ -215,6 +215,8 @@ export default function ReconciliationPage() {
         return 'warning'
       case 'ADVANCE':
         return 'secondary'
+      case 'AUTHORITY_TOPUP':
+        return 'success'
       default:
         return 'default'
     }
@@ -313,6 +315,7 @@ export default function ReconciliationPage() {
                 <MenuItem value="DELETE">Delete</MenuItem>
                 <MenuItem value="DEFER">Defer</MenuItem>
                 <MenuItem value="ADVANCE">Advance</MenuItem>
+                <MenuItem value="AUTHORITY_TOPUP">Authority Top-Up</MenuItem>
               </Select>
             </FormControl>
           </Grid>

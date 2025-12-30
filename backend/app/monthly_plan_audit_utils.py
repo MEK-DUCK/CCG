@@ -36,9 +36,15 @@ def log_monthly_plan_action(
         year = monthly_plan.year
         quarterly_plan_id = monthly_plan.quarterly_plan_id
         
-        # Get contract_id and contract info from quarterly plan
-        quarterly_plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == quarterly_plan_id).first()
-        contract_id = quarterly_plan.contract_id if quarterly_plan else None
+        # Get contract_id - first try from quarterly plan, then from monthly plan directly (SPOT/Range contracts)
+        contract_id = None
+        if quarterly_plan_id:
+            quarterly_plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == quarterly_plan_id).first()
+            contract_id = quarterly_plan.contract_id if quarterly_plan else None
+        
+        # For SPOT/Range contracts, contract_id is stored directly on the monthly plan
+        if not contract_id and hasattr(monthly_plan, 'contract_id') and monthly_plan.contract_id:
+            contract_id = monthly_plan.contract_id
         
         # Get contract details
         contract_number = None
@@ -71,8 +77,16 @@ def log_monthly_plan_action(
                 month = plan.month
                 year = plan.year
                 quarterly_plan_id = plan.quarterly_plan_id
-                quarterly_plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == quarterly_plan_id).first()
-                contract_id = quarterly_plan.contract_id if quarterly_plan else None
+                
+                # Get contract_id - first try from quarterly plan, then from monthly plan directly (SPOT/Range contracts)
+                contract_id = None
+                if quarterly_plan_id:
+                    quarterly_plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == quarterly_plan_id).first()
+                    contract_id = quarterly_plan.contract_id if quarterly_plan else None
+                
+                # For SPOT/Range contracts, contract_id is stored directly on the monthly plan
+                if not contract_id and hasattr(plan, 'contract_id') and plan.contract_id:
+                    contract_id = plan.contract_id
                 
                 # Get contract details
                 contract_number = None
