@@ -2628,19 +2628,30 @@ export default function HomePage() {
   }
 
   // Handle TNG checkbox changes
-  const handleTngIssuedChange = async (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }, checked: boolean) => {
+  const handleTngIssuedChange = async (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }, checked: boolean, combiGroupId?: string) => {
     try {
       const updateData: any = {
         tng_issued: checked,
         version: plan.version || 1
       }
-      // If checking, set the date to today
+      // If checking, set the date to today and add user initials
       if (checked) {
         updateData.tng_issued_date = format(new Date(), 'yyyy-MM-dd')
+        updateData.tng_issued_initials = user?.initials || ''
       } else {
         updateData.tng_issued_date = null
+        updateData.tng_issued_initials = null
       }
-      await monthlyPlanAPI.update(plan.id, updateData)
+      
+      // If this is a combi cargo, update all plans in the group
+      if (combiGroupId) {
+        const combiPlans = tngMonthlyPlans.filter(p => p.combi_group_id === combiGroupId)
+        await Promise.all(combiPlans.map(p => 
+          monthlyPlanAPI.update(p.id, { ...updateData, version: p.version || 1 })
+        ))
+      } else {
+        await monthlyPlanAPI.update(plan.id, updateData)
+      }
       await loadTngData()  // Reload to get updated version
     } catch (error: any) {
       console.error('Error updating TNG issued status:', error)
@@ -2652,19 +2663,30 @@ export default function HomePage() {
     }
   }
 
-  const handleTngRevisedChange = async (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }, checked: boolean) => {
+  const handleTngRevisedChange = async (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }, checked: boolean, combiGroupId?: string) => {
     try {
       const updateData: any = {
         tng_revised: checked,
         version: plan.version || 1
       }
-      // If checking, set the date to today
+      // If checking, set the date to today and add user initials
       if (checked) {
         updateData.tng_revised_date = format(new Date(), 'yyyy-MM-dd')
+        updateData.tng_revised_initials = user?.initials || ''
       } else {
         updateData.tng_revised_date = null
+        updateData.tng_revised_initials = null
       }
-      await monthlyPlanAPI.update(plan.id, updateData)
+      
+      // If this is a combi cargo, update all plans in the group
+      if (combiGroupId) {
+        const combiPlans = tngMonthlyPlans.filter(p => p.combi_group_id === combiGroupId)
+        await Promise.all(combiPlans.map(p => 
+          monthlyPlanAPI.update(p.id, { ...updateData, version: p.version || 1 })
+        ))
+      } else {
+        await monthlyPlanAPI.update(plan.id, updateData)
+      }
       await loadTngData()  // Reload to get updated version
     } catch (error: any) {
       console.error('Error updating TNG revised status:', error)
@@ -2776,6 +2798,37 @@ export default function HomePage() {
       )
     }
 
+    // Group combi cargos together - they share the same TNG memo
+    const groupedPlans: Array<{
+      plans: typeof filteredPlans,
+      isCombi: boolean,
+      combiGroupId?: string
+    }> = []
+    
+    const processedCombiGroups = new Set<string>()
+    
+    filteredPlans.forEach(plan => {
+      if (plan.combi_group_id) {
+        // Skip if we've already processed this combi group
+        if (processedCombiGroups.has(plan.combi_group_id)) return
+        processedCombiGroups.add(plan.combi_group_id)
+        
+        // Find all plans in this combi group
+        const combiPlans = filteredPlans.filter(p => p.combi_group_id === plan.combi_group_id)
+        groupedPlans.push({
+          plans: combiPlans,
+          isCombi: true,
+          combiGroupId: plan.combi_group_id
+        })
+      } else {
+        // Single plan (not combi)
+        groupedPlans.push({
+          plans: [plan],
+          isCombi: false
+        })
+      }
+    })
+
     return (
       <TableContainer 
         component={Paper}
@@ -2799,18 +2852,25 @@ export default function HomePage() {
               <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 80 }}>Lead Days</TableCell>
               <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 100 }}>TNG Due</TableCell>
               <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 80, textAlign: 'center' }}>Issued</TableCell>
-              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 100 }}>Issued Date</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 120 }}>Issued Date</TableCell>
               <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 80, textAlign: 'center' }}>Revised</TableCell>
-              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 100 }}>Revised Date</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 120 }}>Revised Date</TableCell>
               <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 150 }}>Remarks</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredPlans.map((plan) => {
-              const contract = plan.contract || plan.quarterly_plan?.contract
-              const customer = contract?.customer || plan.quarterly_plan?.contract?.customer
-              const { dueDate, daysUntilDue, isOverdue, isDueSoon } = calculateTngDueDate(plan)
-              const tngIssued = plan.tng_issued || false
+            {groupedPlans.map((group, groupIndex) => {
+              const primaryPlan = group.plans[0]
+              const contract = primaryPlan.contract || primaryPlan.quarterly_plan?.contract
+              const customer = contract?.customer || primaryPlan.quarterly_plan?.contract?.customer
+              const { dueDate, daysUntilDue, isOverdue, isDueSoon } = calculateTngDueDate(primaryPlan)
+              const tngIssued = primaryPlan.tng_issued || false
+              
+              // For combi, combine product names and sum quantities
+              const productNames = group.isCombi 
+                ? group.plans.map(p => p.product_name || p.quarterly_plan?.product_name || '-').join(' + ')
+                : primaryPlan.product_name || primaryPlan.quarterly_plan?.product_name || '-'
+              const totalQuantity = group.plans.reduce((sum, p) => sum + (p.month_quantity || 0), 0)
               
               // Highlight row if TNG is due soon or overdue and not yet issued
               const needsHighlight = !tngIssued && (isOverdue || isDueSoon)
@@ -2827,13 +2887,15 @@ export default function HomePage() {
               
               return (
                 <TableRow 
-                  key={plan.id}
+                  key={group.combiGroupId || primaryPlan.id}
                   sx={{
                     bgcolor: needsHighlight 
                       ? isOverdue 
                         ? '#FEE2E2'  // Red for overdue
                         : '#FEF3C7'  // Yellow for due soon
-                      : 'inherit',
+                      : group.isCombi 
+                        ? '#F0F9FF'  // Light blue for combi
+                        : 'inherit',
                     '&:hover': {
                       bgcolor: needsHighlight 
                         ? isOverdue 
@@ -2845,12 +2907,27 @@ export default function HomePage() {
                 >
                   <TableCell>{customer?.name || '-'}</TableCell>
                   <TableCell>{contract?.contract_number || '-'}</TableCell>
-                  <TableCell>{plan.product_name || plan.quarterly_plan?.product_name || '-'}</TableCell>
                   <TableCell>
-                    {new Date(2000, (plan.month || 1) - 1).toLocaleString('default', { month: 'short' })} {plan.year}
+                    {group.isCombi && (
+                      <Chip 
+                        label="COMBI" 
+                        size="small" 
+                        sx={{ 
+                          mr: 0.5, 
+                          bgcolor: '#8B5CF6', 
+                          color: 'white',
+                          fontSize: '0.65rem',
+                          height: 18
+                        }} 
+                      />
+                    )}
+                    {productNames}
                   </TableCell>
-                  <TableCell>{plan.month_quantity?.toFixed(2) || '-'}</TableCell>
-                  <TableCell>{plan.loading_window || '-'}</TableCell>
+                  <TableCell>
+                    {new Date(2000, (primaryPlan.month || 1) - 1).toLocaleString('default', { month: 'short' })} {primaryPlan.year}
+                  </TableCell>
+                  <TableCell>{totalQuantity.toFixed(2)}</TableCell>
+                  <TableCell>{primaryPlan.loading_window || '-'}</TableCell>
                   <TableCell>
                     {contract?.tng_lead_days ? (
                       <Chip label={`${contract.tng_lead_days} Days`} size="small" sx={{ bgcolor: '#E0E7FF', color: '#3730A3' }} />
@@ -2892,7 +2969,7 @@ export default function HomePage() {
                   <TableCell align="center">
                     <Checkbox
                       checked={tngIssued}
-                      onChange={(e) => handleTngIssuedChange(plan, e.target.checked)}
+                      onChange={(e) => handleTngIssuedChange(primaryPlan, e.target.checked, group.combiGroupId)}
                       sx={{
                         color: tngIssued ? '#10B981' : '#94A3B8',
                         '&.Mui-checked': { color: '#10B981' }
@@ -2900,26 +2977,48 @@ export default function HomePage() {
                     />
                   </TableCell>
                   <TableCell>
-                    {plan.tng_issued_date ? format(new Date(plan.tng_issued_date), 'MMM d, yyyy') : '-'}
+                    {primaryPlan.tng_issued_date ? (
+                      <Box>
+                        <Typography variant="body2">
+                          {format(new Date(primaryPlan.tng_issued_date), 'MMM d, yyyy')}
+                        </Typography>
+                        {primaryPlan.tng_issued_initials && (
+                          <Typography variant="caption" sx={{ color: '#10B981', fontWeight: 600 }}>
+                            {primaryPlan.tng_issued_initials}
+                          </Typography>
+                        )}
+                      </Box>
+                    ) : '-'}
                   </TableCell>
                   <TableCell align="center">
                     <Checkbox
-                      checked={plan.tng_revised || false}
-                      onChange={(e) => handleTngRevisedChange(plan, e.target.checked)}
+                      checked={primaryPlan.tng_revised || false}
+                      onChange={(e) => handleTngRevisedChange(primaryPlan, e.target.checked, group.combiGroupId)}
                       disabled={!tngIssued}
                       sx={{
-                        color: plan.tng_revised ? '#8B5CF6' : '#94A3B8',
+                        color: primaryPlan.tng_revised ? '#8B5CF6' : '#94A3B8',
                         '&.Mui-checked': { color: '#8B5CF6' }
                       }}
                     />
                   </TableCell>
                   <TableCell>
-                    {plan.tng_revised_date ? format(new Date(plan.tng_revised_date), 'MMM d, yyyy') : '-'}
+                    {primaryPlan.tng_revised_date ? (
+                      <Box>
+                        <Typography variant="body2">
+                          {format(new Date(primaryPlan.tng_revised_date), 'MMM d, yyyy')}
+                        </Typography>
+                        {primaryPlan.tng_revised_initials && (
+                          <Typography variant="caption" sx={{ color: '#8B5CF6', fontWeight: 600 }}>
+                            {primaryPlan.tng_revised_initials}
+                          </Typography>
+                        )}
+                      </Box>
+                    ) : '-'}
                   </TableCell>
                   <TableCell>
                     <InlineTextField
-                      value={plan.tng_remarks || ''}
-                      onSave={(val) => handleTngRemarksChange(plan, val)}
+                      value={primaryPlan.tng_remarks || ''}
+                      onSave={(val) => handleTngRemarksChange(primaryPlan, val)}
                       fullWidth
                     />
                   </TableCell>

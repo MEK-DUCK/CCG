@@ -316,8 +316,10 @@ class MonthlyPlan(Base):
     # Tonnage Memo (TNG) tracking for CIF contracts
     tng_issued = Column(Boolean, default=False)  # Whether TNG has been issued
     tng_issued_date = Column(Date, nullable=True)  # Date TNG was issued
+    tng_issued_initials = Column(String(10), nullable=True)  # Initials of user who issued TNG
     tng_revised = Column(Boolean, default=False)  # Whether TNG has been revised
     tng_revised_date = Column(Date, nullable=True)  # Date TNG was revised
+    tng_revised_initials = Column(String(10), nullable=True)  # Initials of user who revised TNG
     tng_remarks = Column(Text, nullable=True)  # Notes about the TNG
     
     # Nullable for SPOT contracts that skip quarterly planning

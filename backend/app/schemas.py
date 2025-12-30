@@ -349,8 +349,10 @@ class MonthlyPlanBase(BaseModel):
     # Tonnage Memo (TNG) tracking for CIF contracts
     tng_issued: Optional[bool] = False  # Whether TNG has been issued
     tng_issued_date: Optional[date] = None  # Date TNG was issued
+    tng_issued_initials: Optional[str] = Field(None, max_length=10)  # Initials of user who issued TNG
     tng_revised: Optional[bool] = False  # Whether TNG has been revised
     tng_revised_date: Optional[date] = None  # Date TNG was revised
+    tng_revised_initials: Optional[str] = Field(None, max_length=10)  # Initials of user who revised TNG
     tng_remarks: Optional[str] = Field(None, max_length=1000)  # Notes about the TNG
 
 class MonthlyPlanCreate(MonthlyPlanBase):
@@ -389,8 +391,10 @@ class MonthlyPlanUpdate(BaseModel):
     # Tonnage Memo (TNG) tracking for CIF contracts
     tng_issued: Optional[bool] = None
     tng_issued_date: Optional[date] = None
+    tng_issued_initials: Optional[str] = Field(None, max_length=10)
     tng_revised: Optional[bool] = None
     tng_revised_date: Optional[date] = None
+    tng_revised_initials: Optional[str] = Field(None, max_length=10)
     tng_remarks: Optional[str] = Field(None, max_length=1000)
     version: Optional[int] = None  # Optimistic locking - send to detect conflicts
 

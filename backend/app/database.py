@@ -253,8 +253,10 @@ def ensure_schema():
             tng_cols = [
                 ("tng_issued", "BOOLEAN DEFAULT FALSE" if dialect == "postgresql" else "BOOLEAN DEFAULT 0"),
                 ("tng_issued_date", "DATE"),
+                ("tng_issued_initials", "VARCHAR(10)"),
                 ("tng_revised", "BOOLEAN DEFAULT FALSE" if dialect == "postgresql" else "BOOLEAN DEFAULT 0"),
                 ("tng_revised_date", "DATE"),
+                ("tng_revised_initials", "VARCHAR(10)"),
                 ("tng_remarks", "TEXT"),
             ]
             for col_name, col_type in tng_cols:

@@ -119,8 +119,10 @@ export interface MonthlyPlan {
   // Tonnage Memo (TNG) tracking for CIF contracts
   tng_issued?: boolean  // Whether TNG has been issued
   tng_issued_date?: string  // Date TNG was issued
+  tng_issued_initials?: string  // Initials of user who issued TNG
   tng_revised?: boolean  // Whether TNG has been revised
   tng_revised_date?: string  // Date TNG was revised
+  tng_revised_initials?: string  // Initials of user who revised TNG
   tng_remarks?: string  // Notes about the TNG
   version?: number  // Optimistic locking version
   created_at: string
