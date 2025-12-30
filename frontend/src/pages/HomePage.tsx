@@ -2715,6 +2715,39 @@ export default function HomePage() {
     }
   }
 
+  // Handle TNG document generation
+  const handleGenerateTng = async (monthlyPlanId: number) => {
+    try {
+      const response = await documentsAPI.generateTng(monthlyPlanId, 'docx')
+      
+      // Get filename from response headers or use default
+      const contentDisposition = response.headers['content-disposition']
+      let filename = `TNG_${monthlyPlanId}.docx`
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^";\n]+)"?/)
+        if (filenameMatch) {
+          filename = filenameMatch[1]
+        }
+      }
+      
+      // Create blob and download
+      const blob = new Blob([response.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+      })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Error generating TNG document:', error)
+      alert('Failed to generate TNG document. Please try again.')
+    }
+  }
+
   // Calculate TNG due date based on loading window and contract's tng_lead_days
   const calculateTngDueDate = (plan: MonthlyPlan & { quarterly_plan?: any; contract?: Contract }): { 
     dueDate: Date | null; 
@@ -2856,6 +2889,7 @@ export default function HomePage() {
               <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 80, textAlign: 'center' }}>Revised</TableCell>
               <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 120 }}>Revised Date</TableCell>
               <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 150 }}>Remarks</TableCell>
+              <TableCell sx={{ fontWeight: 600, bgcolor: '#F8FAFC', minWidth: 100, textAlign: 'center' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -3021,6 +3055,26 @@ export default function HomePage() {
                       onSave={(val) => handleTngRemarksChange(primaryPlan, val)}
                       fullWidth
                     />
+                  </TableCell>
+                  <TableCell align="center">
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Description />}
+                      onClick={() => handleGenerateTng(primaryPlan.id)}
+                      sx={{
+                        fontSize: '0.75rem',
+                        textTransform: 'none',
+                        borderColor: '#2563EB',
+                        color: '#2563EB',
+                        '&:hover': {
+                          borderColor: '#1D4ED8',
+                          bgcolor: 'rgba(37, 99, 235, 0.04)',
+                        },
+                      }}
+                    >
+                      Generate
+                    </Button>
                   </TableCell>
                 </TableRow>
               )

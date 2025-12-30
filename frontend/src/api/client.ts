@@ -305,6 +305,16 @@ export const documentsAPI = {
         'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       }
     }),
+  generateTng: (monthlyPlanId: number, format: 'docx' | 'pdf' = 'docx') =>
+    client.get(`/api/documents/tng/${monthlyPlanId}`, {
+      responseType: 'arraybuffer',
+      params: { format },
+      headers: {
+        'Accept': format === 'pdf' 
+          ? 'application/pdf' 
+          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      }
+    }),
 }
 
 // Version History API

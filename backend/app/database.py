@@ -221,6 +221,15 @@ def ensure_schema():
                     else:
                         conn.execute(text('ALTER TABLE contracts ADD COLUMN tng_lead_days INTEGER'))
                 logger.info("Added tng_lead_days column to contracts table")
+            
+            # Add tng_notes for TNG-specific notes
+            if "tng_notes" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE contracts ADD COLUMN IF NOT EXISTS tng_notes TEXT'))
+                    else:
+                        conn.execute(text('ALTER TABLE contracts ADD COLUMN tng_notes TEXT'))
+                logger.info("Added tng_notes column to contracts table")
         
         # Monthly plans migrations - add authority top-up fields
         if insp.has_table("monthly_plans"):

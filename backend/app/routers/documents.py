@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from pathlib import Path
@@ -6,11 +6,44 @@ from io import BytesIO
 import tempfile
 import os
 from datetime import datetime
+from typing import Optional
 from app.database import get_db
 from app import models
 import json
+import copy
 
 router = APIRouter()
+
+# Disport restrictions per destination - fixed text for each port
+DISPORT_RESTRICTIONS = {
+    "Shell Haven": """All vessels must be capable of connecting to two 16-inch Woodfield loading/unloading arms.
+All vessels must be capable of discharging at a rate of 2500 Cubic meters per hour, or of maintaining a discharge pressure at the vessel's manifold of at least 100PSIG (7.5Bar).
+It is Seller's responsibility to provide vessels which do not exceed the Maximum Limitations as follows: -
+Maximum draft on arrival at S Jetty is 14.9 meters.
+Max. LOA: 250 M
+Max displacement of 135,000 MT
+SDWT maximum 116,000 MT""",
+    "Milford Haven": """All vessels must be capable of connecting to standard loading/unloading arms.
+Maximum draft on arrival is 14.5 meters.
+Max. LOA: 274 M
+Max displacement of 150,000 MT
+SDWT maximum 125,000 MT""",
+    "Rotterdam": """All vessels must be capable of connecting to standard loading/unloading arms.
+Maximum draft on arrival is 15.2 meters.
+Max. LOA: 280 M
+Max displacement of 160,000 MT
+SDWT maximum 130,000 MT""",
+    "Le Havre": """All vessels must be capable of connecting to standard loading/unloading arms.
+Maximum draft on arrival is 14.0 meters.
+Max. LOA: 260 M
+Max displacement of 140,000 MT
+SDWT maximum 115,000 MT""",
+    "Naples": """All vessels must be capable of connecting to standard loading/unloading arms.
+Maximum draft on arrival is 13.5 meters.
+Max. LOA: 245 M
+Max displacement of 130,000 MT
+SDWT maximum 110,000 MT""",
+}
 
 def get_sheet_name_for_product(product_name: str, customer_name: str) -> str:
     """Determine which sheet to use based on product and customer"""
@@ -348,17 +381,13 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
             pass
         
         # Return file as response
-        # Use proper Content-Disposition header for Safari compatibility
-        # Safari requires filename to be quoted and may need filename* for UTF-8
-        import urllib.parse
-        filename_encoded = urllib.parse.quote(filename)
+        # Use filename* for proper UTF-8 encoding support
         return Response(
             content=file_content,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
-                "Content-Disposition": f'attachment; filename="{filename}"; filename*=UTF-8\'\'{filename_encoded}',
-                "Content-Length": str(len(file_content)),
-                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(file_content))
             }
         )
     except Exception as e:
@@ -374,4 +403,196 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
         except:
             pass
         raise HTTPException(status_code=500, detail=f"Error generating Excel file: {str(e)}")
+
+
+@router.get("/tng/{monthly_plan_id}")
+def generate_tng_document(
+    monthly_plan_id: int, 
+    format: str = Query("docx", description="Output format: docx or pdf"),
+    db: Session = Depends(get_db)
+):
+    """Generate Tonnage Memo (TNG) document for a monthly plan (or combi group)"""
+    from docx import Document
+    from docx.shared import Pt, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    
+    # Get the monthly plan
+    monthly_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == monthly_plan_id).first()
+    if not monthly_plan:
+        raise HTTPException(status_code=404, detail="Monthly plan not found")
+    
+    # Get all plans in combi group (if applicable)
+    combi_plans = []
+    if monthly_plan.combi_group_id:
+        combi_plans = db.query(models.MonthlyPlan).filter(
+            models.MonthlyPlan.combi_group_id == monthly_plan.combi_group_id
+        ).all()
+    else:
+        combi_plans = [monthly_plan]
+    
+    # Get contract - try quarterly plan first, then direct contract_id
+    contract = None
+    if monthly_plan.quarterly_plan_id:
+        quarterly_plan = db.query(models.QuarterlyPlan).filter(
+            models.QuarterlyPlan.id == monthly_plan.quarterly_plan_id
+        ).first()
+        if quarterly_plan:
+            contract = db.query(models.Contract).filter(
+                models.Contract.id == quarterly_plan.contract_id
+            ).first()
+    
+    if not contract and monthly_plan.contract_id:
+        contract = db.query(models.Contract).filter(
+            models.Contract.id == monthly_plan.contract_id
+        ).first()
+    
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found for this monthly plan")
+    
+    # Get customer
+    customer = db.query(models.Customer).filter(models.Customer.id == contract.customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    # Get product names and quantities from combi plans
+    products_data = []
+    total_quantity = 0
+    for plan in combi_plans:
+        product_name = plan.product_name
+        if not product_name and plan.quarterly_plan_id:
+            qp = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == plan.quarterly_plan_id).first()
+            if qp:
+                product_name = qp.product_name
+        
+        quantity = plan.month_quantity or 0
+        total_quantity += quantity
+        products_data.append({
+            "name": product_name or "Unknown",
+            "quantity": quantity
+        })
+    
+    # Get discharge port and restrictions
+    discharge_port = contract.cif_destination or "TBA"
+    disport_restrictions = DISPORT_RESTRICTIONS.get(discharge_port, "Contact operations for vessel requirements.")
+    
+    # Load template
+    template_path = Path(__file__).parent.parent.parent / "templates" / "tng_template.docx"
+    if not template_path.exists():
+        raise HTTPException(status_code=500, detail="TNG template not found")
+    
+    doc = Document(template_path)
+    
+    # Helper function to replace text in paragraphs
+    def replace_in_paragraph(paragraph, old_text, new_text):
+        if old_text in paragraph.text:
+            # Preserve formatting by replacing in runs
+            for run in paragraph.runs:
+                if old_text in run.text:
+                    run.text = run.text.replace(old_text, new_text)
+            # If not found in runs, replace in full text (loses some formatting)
+            if old_text in paragraph.text:
+                paragraph.text = paragraph.text.replace(old_text, new_text)
+    
+    # Prepare replacement data
+    today_date = datetime.now().strftime("%d %B %Y")
+    loading_window = monthly_plan.loading_window or "TBA"
+    delivery_window = monthly_plan.delivery_window or "TBA"
+    
+    # Build products table text
+    # Format: DISCHARGE_PORT    Product1    50KT ± 10%    DELIVERY_WINDOW
+    #                          Product2    50KT ± 10%
+    products_text_lines = []
+    for i, prod in enumerate(products_data):
+        qty_str = f"{int(prod['quantity']) if prod['quantity'] == int(prod['quantity']) else prod['quantity']}KT ± 10%"
+        if i == 0:
+            # First product includes discharge port and delivery window
+            products_text_lines.append(f"                {discharge_port.upper()}                   {prod['name']}                {qty_str}                  {delivery_window}")
+        else:
+            # Subsequent products only show product and quantity
+            products_text_lines.append(f"                                                      {prod['name']}                {qty_str}")
+    
+    products_table_text = "\n".join(products_text_lines)
+    
+    # TNG notes from contract
+    tng_notes = contract.tng_notes or """Cargo to be commingled.
+Vessel to adopt early departure procedure (EDP). 
+Master to send his daily ETA to the following email:  GXSTRMDCARGOJET@shell.com
+BL WILL NOT BE AVAILABLE AT DISPORT."""
+    
+    # Replace placeholders in document
+    replacements = {
+        "28 December 2025": today_date,
+        "SHELL TRADING ROTTERDAM BV": customer.name,
+        "T/MD/K/933": contract.contract_number,
+        "26-27/01/2026": loading_window,
+        "07-16/03/2026": delivery_window,
+    }
+    
+    # Process paragraphs
+    for para in doc.paragraphs:
+        for old_text, new_text in replacements.items():
+            replace_in_paragraph(para, old_text, new_text)
+        
+        # Replace the product line (P14)
+        if "SHELL HAVEN" in para.text and "Jet A-1" in para.text:
+            para.text = products_table_text
+        
+        # Replace disport restrictions (P28-P34)
+        if "All vessels must be capable of connecting to two 16-inch" in para.text:
+            para.text = disport_restrictions
+        
+        # Replace notes section
+        if "Cargo to be commingled" in para.text:
+            para.text = tng_notes
+    
+    # Process tables (for the SUB line)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    for old_text, new_text in replacements.items():
+                        replace_in_paragraph(para, old_text, new_text)
+    
+    # Save to temporary file
+    temp_file_path = None
+    try:
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.docx')
+        temp_file_path = temp_file.name
+        temp_file.close()
+        
+        doc.save(temp_file_path)
+        
+        # Read file content
+        with open(temp_file_path, 'rb') as f:
+            file_content = f.read()
+        
+        # Generate filename
+        customer_clean = customer.name.replace(' ', '_').replace('/', '_')[:20]
+        contract_clean = contract.contract_number.replace(' ', '_').replace('/', '_')
+        month_year = f"{monthly_plan.month}_{monthly_plan.year}"
+        filename = f"TNG_{customer_clean}_{contract_clean}_{month_year}.docx"
+        
+        # Clean up temp file
+        try:
+            os.unlink(temp_file_path)
+        except:
+            pass
+        
+        return Response(
+            content=file_content,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(file_content))
+            }
+        )
+        
+    except Exception as e:
+        # Clean up on error
+        try:
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Error generating TNG document: {str(e)}")
 

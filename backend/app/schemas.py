@@ -208,8 +208,10 @@ class ContractBase(BaseModel):
     concluded_memo_received: Optional[bool] = None
     concluded_memo_received_date: Optional[date] = None
     remarks: Optional[str] = Field(None, max_length=10000)
-    # CIF Tonnage Memo lead days (15 or 30 typically)
+    # CIF Tonnage Memo lead days (25 or 30 typically)
     tng_lead_days: Optional[int] = Field(None, ge=1, le=90)
+    # TNG-specific notes for tonnage memo generation
+    tng_notes: Optional[str] = Field(None, max_length=10000)
     # CIF base destination for delivery window calculation
     cif_destination: Optional[str] = None
 
@@ -261,6 +263,7 @@ class ContractUpdate(BaseModel):
     concluded_memo_received_date: Optional[date] = None
     remarks: Optional[str] = Field(None, max_length=10000)
     tng_lead_days: Optional[int] = Field(None, ge=1, le=90)  # CIF Tonnage Memo lead days
+    tng_notes: Optional[str] = Field(None, max_length=10000)  # TNG-specific notes
     cif_destination: Optional[str] = None  # CIF base destination
     customer_id: Optional[int] = None
     version: Optional[int] = None  # Optimistic locking - send to detect conflicts
@@ -441,6 +444,7 @@ class ContractEmbedded(BaseModel):
     fiscal_start_month: Optional[int] = 1
     products: List[ContractProduct]
     tng_lead_days: Optional[int] = None  # CIF Tonnage Memo lead days
+    tng_notes: Optional[str] = None  # TNG-specific notes
     cif_destination: Optional[str] = None  # CIF base destination for delivery window
     customer_id: int
     customer: Optional[CustomerEmbedded] = None
@@ -473,6 +477,7 @@ class ContractEmbedded(BaseModel):
                         "end_period": data.end_period,
                         "products": json.loads(products),
                         "tng_lead_days": getattr(data, "tng_lead_days", None),
+                        "tng_notes": getattr(data, "tng_notes", None),
                         "cif_destination": getattr(data, "cif_destination", None),
                         "customer_id": data.customer_id,
                         "customer": data.customer if hasattr(data, "customer") else None,

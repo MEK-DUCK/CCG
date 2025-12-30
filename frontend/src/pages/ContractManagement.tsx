@@ -133,7 +133,8 @@ export default function ContractManagement() {
     fax_received_date: '',
     concluded_memo_received: '' as '' | 'yes' | 'no',
     concluded_memo_received_date: '',
-    tng_lead_days: '' as '' | number,  // CIF Tonnage Memo lead days (15 or 30)
+    tng_lead_days: '' as '' | number,  // CIF Tonnage Memo lead days (25 or 30)
+    tng_notes: '' as string,  // TNG-specific notes for tonnage memo
     cif_destination: '' as string,  // CIF base destination for delivery window calculation
   })
 
@@ -230,6 +231,7 @@ export default function ContractManagement() {
         concluded_memo_received: contract.concluded_memo_received === true ? 'yes' : contract.concluded_memo_received === false ? 'no' : '',
         concluded_memo_received_date: contract.concluded_memo_received_date || '',
         tng_lead_days: contract.tng_lead_days || '',
+        tng_notes: contract.tng_notes || '',
         cif_destination: contract.cif_destination || '',
       })
     } else {
@@ -252,6 +254,7 @@ export default function ContractManagement() {
         concluded_memo_received: '',
         concluded_memo_received_date: '',
         tng_lead_days: '',
+        tng_notes: '',
         cif_destination: '',
       })
     }
@@ -465,6 +468,7 @@ export default function ContractManagement() {
       concluded_memo_received: '',
       concluded_memo_received_date: '',
       tng_lead_days: '',
+      tng_notes: '',
       cif_destination: '',
     })
   }
@@ -539,6 +543,7 @@ export default function ContractManagement() {
         concluded_memo_received_date: formData.concluded_memo_received === 'yes' && formData.concluded_memo_received_date ? formData.concluded_memo_received_date : undefined,
         authority_amendments: formData.authority_amendments.length > 0 ? formData.authority_amendments : undefined,
         tng_lead_days: formData.contract_type === 'CIF' && formData.tng_lead_days ? Number(formData.tng_lead_days) : undefined,
+        tng_notes: formData.contract_type === 'CIF' && formData.tng_notes ? formData.tng_notes : undefined,
         cif_destination: formData.contract_type === 'CIF' && formData.cif_destination ? formData.cif_destination : undefined,
       }
       
@@ -1282,21 +1287,33 @@ export default function ContractManagement() {
               )}
             </Grid>
             {formData.contract_type === 'CIF' && (
-              <TextField
-                label="Base Destination"
-                value={formData.cif_destination}
-                onChange={(e) => setFormData({ ...formData, cif_destination: e.target.value })}
-                select
-                fullWidth
-                helperText="Destination port for delivery window calculation"
-              >
-                <MenuItem value="">
-                  <em>Select destination</em>
-                </MenuItem>
-                {CIF_DESTINATIONS.map((dest) => (
-                  <MenuItem key={dest} value={dest}>{dest}</MenuItem>
-                ))}
-              </TextField>
+              <>
+                <TextField
+                  label="Base Destination"
+                  value={formData.cif_destination}
+                  onChange={(e) => setFormData({ ...formData, cif_destination: e.target.value })}
+                  select
+                  fullWidth
+                  helperText="Destination port for delivery window calculation"
+                >
+                  <MenuItem value="">
+                    <em>Select destination</em>
+                  </MenuItem>
+                  {CIF_DESTINATIONS.map((dest) => (
+                    <MenuItem key={dest} value={dest}>{dest}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  label="TNG Notes"
+                  value={formData.tng_notes || ''}
+                  onChange={(e) => setFormData({ ...formData, tng_notes: e.target.value })}
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  helperText="Notes to include in Tonnage Memo (e.g., cargo commingling, EDP requirements)"
+                  sx={{ mt: 2 }}
+                />
+              </>
             )}
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>

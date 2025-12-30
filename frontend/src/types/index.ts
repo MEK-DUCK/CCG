@@ -74,7 +74,8 @@ export interface Contract {
   concluded_memo_received?: boolean
   concluded_memo_received_date?: string
   remarks?: string
-  tng_lead_days?: number  // CIF Tonnage Memo lead days (15 or 30 typically)
+  tng_lead_days?: number  // CIF Tonnage Memo lead days (25 or 30 typically)
+  tng_notes?: string  // TNG-specific notes for tonnage memo generation
   cif_destination?: string  // CIF base destination for delivery window calculation
   customer_id: number
   created_at: string

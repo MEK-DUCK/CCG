@@ -216,8 +216,10 @@ class Contract(Base):
     remarks = Column(Text, nullable=True)
     
     # CIF Tonnage Memo (TNG) lead days - how many days before loading window to issue TNG
-    # Only applicable for CIF contracts (15 or 30 days typically)
+    # Only applicable for CIF contracts (25 or 30 days typically)
     tng_lead_days = Column(Integer, nullable=True)
+    # TNG-specific notes for tonnage memo generation (separate from general contract notes)
+    tng_notes = Column(Text, nullable=True)
     
     # CIF Delivery Window calculation - base destination for voyage duration lookup
     # Options: Rotterdam, Le Havre, Shell Haven, Naples, Milford Haven

@@ -11,5 +11,6 @@ python-jose[cryptography]==3.3.0
 alembic==1.12.1
 psycopg2-binary==2.9.9  # PostgreSQL adapter
 openpyxl==3.1.5  # Excel file generation
+python-docx==1.1.0  # Word document generation for TNG memos
 slowapi==0.1.9  # Rate limiting for API endpoints
 
