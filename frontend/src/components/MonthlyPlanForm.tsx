@@ -2470,14 +2470,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                         </>
                       ) : (
                         <>
-                          <Typography variant="body2" sx={{ color: entry.loading_window ? '#1E293B' : '#94A3B8' }}>
-                            {entry.loading_window || '-'}
+                          <Typography variant="body2" sx={{ color: entry.loading_window ? '#1E293B' : '#94A3B8', fontStyle: entry.loading_window ? 'normal' : 'italic' }}>
+                            {entry.loading_window || `${getMonthName(month)} ${year}`}
                           </Typography>
                           <Typography variant="body2" sx={{ color: entry.delivery_month ? '#1E293B' : '#94A3B8' }}>
                             {entry.delivery_month || '-'}
                           </Typography>
-                          <Typography variant="body2" sx={{ color: entry.delivery_window ? '#1E293B' : '#94A3B8' }}>
-                            {entry.delivery_window || '-'}
+                          <Typography variant="body2" sx={{ color: entry.delivery_window ? '#1E293B' : '#94A3B8', fontStyle: entry.delivery_window ? 'normal' : 'italic' }}>
+                            {entry.delivery_window || (entry.delivery_month || '-')}
                           </Typography>
                         </>
                       )}
