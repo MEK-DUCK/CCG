@@ -48,6 +48,7 @@ import { useLaycanAlerts } from '../hooks/useLaycanAlerts'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { useRealTimeSync, DataSyncEvent } from '../hooks/useRealTimeSync'
 import { useConflictHandler, EditingWarningBanner, ActiveUsersIndicator } from '../components/Presence'
+import { useAuth } from '../contexts/AuthContext'
 import { VersionHistoryDialog } from '../components/VersionHistory'
 
 interface TabPanelProps {
@@ -115,6 +116,7 @@ const InlineTextField = memo(function InlineTextField({ value, onSave, fullWidth
 export default function HomePage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const { user } = useAuth()
 
   const [dataChangedNotification, setDataChangedNotification] = useState<string | null>(null)
 
@@ -3511,12 +3513,7 @@ export default function HomePage() {
                       checked={cargo.sailing_fax_entry_completed || false}
                       onChange={(e) => {
                         const checked = e.target.checked
-                        const initials = checked 
-                          ? prompt('Enter your initials:') || ''
-                          : ''
-                        if (checked && !initials) {
-                          return
-                        }
+                        const initials = checked ? (user?.initials || '') : ''
                         handleTaskCompletion(cargo.id, 'sailing_fax_entry', checked, initials)
                       }}
                       color="primary"
@@ -3548,12 +3545,7 @@ export default function HomePage() {
                       checked={cargo.documents_mailing_completed || false}
                       onChange={(e) => {
                         const checked = e.target.checked
-                        const initials = checked 
-                          ? prompt('Enter your initials:') || ''
-                          : ''
-                        if (checked && !initials) {
-                          return
-                        }
+                        const initials = checked ? (user?.initials || '') : ''
                         handleTaskCompletion(cargo.id, 'documents_mailing', checked, initials)
                       }}
                       color="primary"
@@ -3585,12 +3577,7 @@ export default function HomePage() {
                       checked={cargo.inspector_invoice_completed || false}
                       onChange={(e) => {
                         const checked = e.target.checked
-                        const initials = checked 
-                          ? prompt('Enter your initials:') || ''
-                          : ''
-                        if (checked && !initials) {
-                          return
-                        }
+                        const initials = checked ? (user?.initials || '') : ''
                         handleTaskCompletion(cargo.id, 'inspector_invoice', checked, initials)
                       }}
                       color="primary"
