@@ -33,7 +33,7 @@ import { MonthlyPlanStatus } from '../types'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 import { VersionHistoryDialog } from './VersionHistory'
-import { CIF_ROUTES, calculateDeliveryWindow } from '../utils/voyageDuration'
+import { CIF_ROUTES, calculateDeliveryWindow, calculateETA } from '../utils/voyageDuration'
 
 // Simple UUID generator
 const generateUUID = (): string => {
@@ -2196,8 +2196,18 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               value={entry.delivery_window}
                               onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
                               fullWidth
-                              sx={{ mb: 1 }}
-                              helperText={contract?.cif_destination ? `Basis ${contract.cif_destination}` : 'Set destination in contract'}
+                              sx={{ 
+                                mb: 1,
+                                '& .MuiFormHelperText-root': { 
+                                  color: entry.loading_window && entry.cif_route ? '#6366F1' : undefined,
+                                  fontStyle: 'italic',
+                                },
+                              }}
+                              helperText={
+                                entry.loading_window && entry.cif_route && contract?.cif_destination
+                                  ? `ETA: ${calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route, month, year) || '-'}`
+                                  : (contract?.cif_destination ? `Basis ${contract.cif_destination}` : 'Set destination in contract')
+                              }
                             />
                           </>
                         )}
@@ -2476,9 +2486,17 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           <Typography variant="body2" sx={{ color: entry.delivery_month ? '#1E293B' : '#94A3B8' }}>
                             {entry.delivery_month || '-'}
                           </Typography>
-                          <Typography variant="body2" sx={{ color: entry.delivery_window ? '#1E293B' : '#94A3B8', fontStyle: entry.delivery_window ? 'normal' : 'italic' }}>
-                            {entry.delivery_window || (entry.delivery_month || '-')}
-                          </Typography>
+                          <Box>
+                            <Typography variant="body2" sx={{ color: entry.delivery_window ? '#1E293B' : '#94A3B8', fontStyle: entry.delivery_window ? 'normal' : 'italic' }}>
+                              {entry.delivery_window || (entry.delivery_month || '-')}
+                            </Typography>
+                            {/* Show ETA if loading window, route, and destination are available */}
+                            {entry.loading_window && entry.cif_route && contract?.cif_destination && (
+                              <Typography variant="caption" sx={{ color: '#6366F1', fontStyle: 'italic', display: 'block' }}>
+                                ETA: {calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route, month, year) || '-'}
+                              </Typography>
+                            )}
+                          </Box>
                         </>
                       )}
                       <Button 
@@ -2944,12 +2962,20 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
                                       placeholder="Auto"
                                       disabled={isLocked}
-                                      helperText={contract?.cif_destination ? `Basis ${contract.cif_destination}` : ''}
+                                      helperText={
+                                        entry.loading_window && entry.cif_route && contract?.cif_destination
+                                          ? `ETA: ${calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route, month, year) || '-'}`
+                                          : (contract?.cif_destination ? `Basis ${contract.cif_destination}` : '')
+                                      }
                                       sx={{
                                         flex: 0.8,
                                         minWidth: 100,
                                         '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
                                         '& .MuiInputBase-input': { padding: '6px 8px' },
+                                        '& .MuiFormHelperText-root': { 
+                                          color: entry.loading_window && entry.cif_route ? '#6366F1' : undefined,
+                                          fontStyle: 'italic',
+                                        },
                                       }}
                                     />
                                   </Box>

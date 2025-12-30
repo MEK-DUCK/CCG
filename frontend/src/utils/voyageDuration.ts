@@ -90,6 +90,62 @@ function getLastDayOfMonth(year: number, month: number): number {
 }
 
 /**
+ * Calculate the ETA (Estimated Time of Arrival) date.
+ * ETA = First day of loading window + voyage duration
+ * 
+ * Returns a formatted date string like "Mar 24" or null if cannot calculate.
+ */
+export function calculateETA(
+  loadingWindow: string,
+  destination: string,
+  route: string,
+  month: number,
+  year: number
+): string | null {
+  // Get voyage duration
+  const duration = getVoyageDuration(destination, route)
+  if (duration === null) return null
+  
+  // Parse loading window start date
+  const loadingStart = parseLoadingWindowStart(loadingWindow, month, year)
+  if (!loadingStart) return null
+  
+  // Calculate ETA
+  const eta = new Date(loadingStart)
+  eta.setDate(eta.getDate() + duration)
+  
+  // Format as "Mon DD" (e.g., "Mar 24")
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${monthNames[eta.getMonth()]} ${eta.getDate()}`
+}
+
+/**
+ * Calculate the full ETA date object.
+ * Returns the Date object or null if cannot calculate.
+ */
+export function calculateETADate(
+  loadingWindow: string,
+  destination: string,
+  route: string,
+  month: number,
+  year: number
+): Date | null {
+  // Get voyage duration
+  const duration = getVoyageDuration(destination, route)
+  if (duration === null) return null
+  
+  // Parse loading window start date
+  const loadingStart = parseLoadingWindowStart(loadingWindow, month, year)
+  if (!loadingStart) return null
+  
+  // Calculate ETA
+  const eta = new Date(loadingStart)
+  eta.setDate(eta.getDate() + duration)
+  
+  return eta
+}
+
+/**
  * Calculate the delivery window based on loading window, destination, and route.
  * 
  * Formula logic:
