@@ -521,11 +521,16 @@ BL WILL NOT BE AVAILABLE AT DISPORT."""
     
     # Replace placeholders in document
     replacements = {
-        "28 December 2025": today_date,
-        "SHELL TRADING ROTTERDAM BV": customer.name,
-        "T/MD/K/933": contract.contract_number,
-        "26-27/01/2026": loading_window,
-        "07-16/03/2026": delivery_window,
+        "{{DATE}}": today_date,
+        "{{CUSTOMER_NAME}}": customer.name,
+        "{{CONTRACT_NUMBER}}": contract.contract_number,
+        "{{LOADING_WINDOW}}": loading_window,
+        "{{DELIVERY_WINDOW}}": delivery_window,
+        "{{DISCHARGE_PORT}}": discharge_port.upper(),
+        "{{PRODUCT_NAME}}": ", ".join([p["name"] for p in products_data]),
+        "{{CARGO_QUANTITY}}": f"{int(total_quantity) if total_quantity == int(total_quantity) else total_quantity}KT ± 10%",
+        "{{DISPORT_RESTRICTIONS}}": disport_restrictions,
+        "{{TNG_NOTES}}": tng_notes,
     }
     
     # Process paragraphs
@@ -533,19 +538,13 @@ BL WILL NOT BE AVAILABLE AT DISPORT."""
         for old_text, new_text in replacements.items():
             replace_in_paragraph(para, old_text, new_text)
         
-        # Replace the product line (P14)
-        if "SHELL HAVEN" in para.text and "Jet A-1" in para.text:
-            para.text = products_table_text
-        
-        # Replace disport restrictions (P28-P34)
-        if "All vessels must be capable of connecting to two 16-inch" in para.text:
-            para.text = disport_restrictions
-        
-        # Replace notes section
-        if "Cargo to be commingled" in para.text:
-            para.text = tng_notes
+        # Handle the products table line specially for combi cargos
+        if "{{PRODUCT_NAME}}" in para.text or any(p["name"] in para.text for p in products_data):
+            # If combi cargo with multiple products, format as multi-line
+            if len(products_data) > 1:
+                para.text = products_table_text
     
-    # Process tables (for the SUB line)
+    # Process tables (for the SUB line with customer name and contract number)
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
