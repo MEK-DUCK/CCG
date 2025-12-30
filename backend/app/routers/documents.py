@@ -519,6 +519,9 @@ Vessel to adopt early departure procedure (EDP).
 Master to send his daily ETA to the following email:  GXSTRMDCARGOJET@shell.com
 BL WILL NOT BE AVAILABLE AT DISPORT."""
     
+    # Get discharge ranges from contract
+    discharge_ranges = contract.discharge_ranges or ""
+    
     # Replace placeholders in document
     replacements = {
         "{{DATE}}": today_date,
@@ -530,6 +533,7 @@ BL WILL NOT BE AVAILABLE AT DISPORT."""
         "{{PRODUCT_NAME}}": ", ".join([p["name"] for p in products_data]),
         "{{CARGO_QUANTITY}}": f"{int(total_quantity) if total_quantity == int(total_quantity) else total_quantity}KT ± 10%",
         "{{DISPORT_RESTRICTIONS}}": disport_restrictions,
+        "{{DISCHARGE_RANGES}}": discharge_ranges,
         "{{TNG_NOTES}}": tng_notes,
     }
     
