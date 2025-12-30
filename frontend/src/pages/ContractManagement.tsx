@@ -213,6 +213,13 @@ export default function ContractManagement() {
   const handleOpen = (contract?: Contract) => {
     if (contract) {
       setEditingContract(contract)
+      // Clean up products - convert null values to undefined for proper mode detection
+      const cleanedProducts = (contract.products || []).map(p => ({
+        ...p,
+        // Only keep min/max if they have actual values (not null)
+        min_quantity: p.min_quantity != null ? p.min_quantity : undefined,
+        max_quantity: p.max_quantity != null && p.max_quantity > 0 ? p.max_quantity : undefined,
+      }))
       setFormData({
         customer_id: contract.customer_id.toString(),
         contract_number: contract.contract_number,
@@ -222,7 +229,7 @@ export default function ContractManagement() {
         start_period: contract.start_period,
         end_period: contract.end_period,
         fiscal_start_month: contract.fiscal_start_month || '',
-        products: contract.products || [],
+        products: cleanedProducts,
         authority_amendments: contract.authority_amendments || [],
         discharge_ranges: contract.discharge_ranges || '',
         additives_required: contract.additives_required === true ? 'yes' : contract.additives_required === false ? 'no' : '',
@@ -265,13 +272,14 @@ export default function ContractManagement() {
   const numContractYears = calculateContractYears(formData.start_period, formData.end_period)
   
   // Determine if a product uses min/max mode (range-based) vs fixed mode
-  // Check if min_quantity or max_quantity is defined (not undefined/null)
+  // Check if min_quantity or max_quantity is defined and has a value (not undefined/null)
   // This allows min=0 to still be considered min/max mode
   const isMinMaxMode = (product: ContractProduct): boolean => {
     // If min_quantity is explicitly set (even to 0), or max_quantity is set and > 0, it's min/max mode
-    // We check min_quantity !== undefined to detect when user has switched to min/max mode
-    return product.min_quantity !== undefined || 
-           (product.max_quantity != null && product.max_quantity > 0)
+    // We check for both undefined AND null since API returns null for unset values
+    const hasMinQuantity = product.min_quantity !== undefined && product.min_quantity !== null
+    const hasMaxQuantity = product.max_quantity != null && product.max_quantity > 0
+    return hasMinQuantity || hasMaxQuantity
   }
 
   const handleAddProduct = () => {

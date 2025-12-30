@@ -99,6 +99,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             concluded_memo_received=getattr(contract, "concluded_memo_received", None),
             concluded_memo_received_date=getattr(contract, "concluded_memo_received_date", None),
             tng_lead_days=getattr(contract, "tng_lead_days", None),  # CIF Tonnage Memo lead days
+            tng_notes=getattr(contract, "tng_notes", None),  # TNG-specific notes
             cif_destination=getattr(contract, "cif_destination", None),  # CIF base destination
             **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
             customer_id=contract.customer_id,
@@ -168,6 +169,7 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
             "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
             "tng_lead_days": getattr(db_contract, "tng_lead_days", None),
+            "tng_notes": getattr(db_contract, "tng_notes", None),
             "cif_destination": getattr(db_contract, "cif_destination", None),
             **({"remarks": getattr(db_contract, "remarks", None)} if has_remarks else {}),
             "customer_id": db_contract.customer_id,
@@ -249,6 +251,7 @@ def read_contracts(
                 "concluded_memo_received": getattr(contract, "concluded_memo_received", None),
                 "concluded_memo_received_date": getattr(contract, "concluded_memo_received_date", None),
                 "tng_lead_days": getattr(contract, "tng_lead_days", None),
+                "tng_notes": getattr(contract, "tng_notes", None),
                 "cif_destination": getattr(contract, "cif_destination", None),
                 **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
                 "customer_id": contract.customer_id,
@@ -326,6 +329,7 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
             "concluded_memo_received": getattr(contract, "concluded_memo_received", None),
             "concluded_memo_received_date": getattr(contract, "concluded_memo_received_date", None),
             "tng_lead_days": getattr(contract, "tng_lead_days", None),
+            "tng_notes": getattr(contract, "tng_notes", None),
             "cif_destination": getattr(contract, "cif_destination", None),
             **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
             "customer_id": contract.customer_id,
@@ -536,6 +540,7 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
         "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
         "tng_lead_days": getattr(db_contract, "tng_lead_days", None),
+        "tng_notes": getattr(db_contract, "tng_notes", None),
         "cif_destination": getattr(db_contract, "cif_destination", None),
         **({"remarks": getattr(db_contract, "remarks", None)} if has_remarks else {}),
         "customer_id": db_contract.customer_id,
