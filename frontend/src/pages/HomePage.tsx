@@ -40,6 +40,7 @@ import { format } from 'date-fns'
 import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, quarterlyPlanAPI, documentsAPI } from '../api/client'
 import type { Cargo, Customer, Contract, MonthlyPlan, CargoStatus, ContractProduct, LCStatus, CargoPortOperation, PortOperationStatus } from '../types'
 import { parseLaycanDate } from '../utils/laycanParser'
+import { calculateETADate } from '../utils/voyageDuration'
 import { getLaycanAlertSeverity, getAlertColor, getAlertMessage } from '../utils/alertUtils'
 import { Tooltip, Badge } from '@mui/material'
 import NotificationBadge from '../components/Notifications/NotificationBadge'
@@ -1067,9 +1068,10 @@ export default function HomePage() {
     // Load monthly plan to get laycan window and quantity
     let laycanWindow = ''
     let cargoQuantity = cargo.cargo_quantity.toString()
+    let monthlyPlan: MonthlyPlan | null = null
     try {
       const monthlyPlanRes = await monthlyPlanAPI.getById(cargo.monthly_plan_id)
-      const monthlyPlan = monthlyPlanRes.data
+      monthlyPlan = monthlyPlanRes.data
       setCargoMonthlyPlan(monthlyPlan) // Store the fetched monthly plan
       
       // Get laycan window from monthly plan:
@@ -1094,11 +1096,40 @@ export default function HomePage() {
     }
     
     // Load contract
+    let contract: Contract | null = null
     try {
       const contractRes = await contractAPI.getById(cargo.contract_id)
-      setCargoContract(contractRes.data)
+      contract = contractRes.data
+      setCargoContract(contract)
     } catch (error) {
       console.error('Error loading contract:', error)
+    }
+    
+    // For CIF contracts, auto-populate ETA Discharge Port and Discharge Port Location if empty
+    let etaDischargePort = cargo.eta_discharge_port || ''
+    let dischargePortLocation = cargo.discharge_port_location || ''
+    
+    if (cargo.contract_type === 'CIF' && contract && monthlyPlan) {
+      // Auto-populate Discharge Port Location from contract's cif_destination if empty
+      if (!dischargePortLocation && contract.cif_destination) {
+        dischargePortLocation = contract.cif_destination
+      }
+      
+      // Auto-populate ETA Discharge Port from calculated ETA if empty
+      if (!etaDischargePort && monthlyPlan.loading_window && monthlyPlan.cif_route && contract.cif_destination) {
+        const etaDate = calculateETADate(
+          monthlyPlan.loading_window,
+          contract.cif_destination,
+          monthlyPlan.cif_route,
+          monthlyPlan.month,
+          monthlyPlan.year
+        )
+        if (etaDate) {
+          // Format as "Mar 24, 2026"
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+          etaDischargePort = `${monthNames[etaDate.getMonth()]} ${etaDate.getDate()}, ${etaDate.getFullYear()}`
+        }
+      }
     }
     
     setCargoFormData({
@@ -1111,8 +1142,8 @@ export default function HomePage() {
       berthed: cargo.berthed || '',
       commenced: cargo.commenced || '',
       etc: cargo.etc || '',
-      eta_discharge_port: cargo.eta_discharge_port || '',
-      discharge_port_location: cargo.discharge_port_location || '',
+      eta_discharge_port: etaDischargePort,
+      discharge_port_location: dischargePortLocation,
       discharge_completion_time: cargo.discharge_completion_time ? (() => {
         const d = new Date(cargo.discharge_completion_time)
         return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16)
@@ -1265,6 +1296,33 @@ export default function HomePage() {
       laycanWindow = monthlyPlan.laycan_5_days
     }
     
+    // For CIF contracts, auto-populate ETA Discharge Port and Discharge Port Location
+    let etaDischargePort = ''
+    let dischargePortLocation = ''
+    
+    if (contract.contract_type === 'CIF') {
+      // Auto-populate Discharge Port Location from contract's cif_destination
+      if (contract.cif_destination) {
+        dischargePortLocation = contract.cif_destination
+      }
+      
+      // Auto-populate ETA Discharge Port from calculated ETA
+      if (monthlyPlan.loading_window && monthlyPlan.cif_route && contract.cif_destination) {
+        const etaDate = calculateETADate(
+          monthlyPlan.loading_window,
+          contract.cif_destination,
+          monthlyPlan.cif_route,
+          monthlyPlan.month,
+          monthlyPlan.year
+        )
+        if (etaDate) {
+          // Format as "Mar 24, 2026"
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+          etaDischargePort = `${monthNames[etaDate.getMonth()]} ${etaDate.getDate()}, ${etaDate.getFullYear()}`
+        }
+      }
+    }
+    
     setCargoFormData({
       vessel_name: 'TBA',
       load_ports: parseLoadPorts((contract as any).allowed_load_ports || ''),
@@ -1275,8 +1333,8 @@ export default function HomePage() {
       berthed: '',
       commenced: '',
       etc: '',
-      eta_discharge_port: '',
-      discharge_port_location: '',
+      eta_discharge_port: etaDischargePort,
+      discharge_port_location: dischargePortLocation,
       discharge_completion_time: '',
       nd_delivery_window: '',
       notes: '',
