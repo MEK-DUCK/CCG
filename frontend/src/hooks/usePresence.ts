@@ -96,13 +96,29 @@ export function usePresence(
   // Get WebSocket URL - connect directly to backend
   const getWsUrl = useCallback(() => {
     // In development, connect directly to the backend WebSocket server
-    // In production, use the same host (assuming reverse proxy handles WS)
+    // In production, use VITE_API_URL if set, otherwise fall back to window.location.host
     const isDev = import.meta.env.DEV
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     
     // For development, always connect to backend directly at port 8000
     // The Vite proxy doesn't handle WebSocket upgrades well
-    const host = isDev ? 'localhost:8000' : window.location.host
+    let host: string
+    if (isDev) {
+      host = 'localhost:8000'
+    } else {
+      const apiUrl = import.meta.env.VITE_API_URL
+      if (apiUrl) {
+        // Extract host from API URL (e.g., https://ccg-2knb.onrender.com -> ccg-2knb.onrender.com)
+        try {
+          const url = new URL(apiUrl)
+          host = url.host
+        } catch {
+          host = window.location.host
+        }
+      } else {
+        host = window.location.host
+      }
+    }
     
     return `${protocol}//${host}/api/ws/presence/${resourceType}/${resourceId}?token=${token}`
   }, [resourceType, resourceId, token])
