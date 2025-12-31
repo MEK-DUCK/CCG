@@ -77,8 +77,8 @@ export function usePresence(
   })
   
   const wsRef = useRef<WebSocket | null>(null)
-  const heartbeatRef = useRef<NodeJS.Timeout | null>(null)
-  const reconnectRef = useRef<NodeJS.Timeout | null>(null)
+  const heartbeatRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttemptsRef = useRef(0)
   const isCleaningUpRef = useRef(false)
   const mountedRef = useRef(true)

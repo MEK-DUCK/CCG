@@ -29,9 +29,9 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 // Quarters are always in order Q1-Q4, but their calendar months are determined by fiscal_start_month
 // This function is kept for backward compatibility but no longer reorders quarters
-const getQuarterOrder = (_startMonth: number): ('Q1' | 'Q2' | 'Q3' | 'Q4')[] => {
-  return ['Q1', 'Q2', 'Q3', 'Q4']
-}
+// const getQuarterOrder = (_startMonth: number): ('Q1' | 'Q2' | 'Q3' | 'Q4')[] => {
+//   return ['Q1', 'Q2', 'Q3', 'Q4']
+// }
 
 // Get the month range for a quarter based on fiscal start month
 const getQuarterMonths = (fiscalStartMonth: number, quarter: number): { months: [number, number, number], label: string } => {
@@ -46,11 +46,11 @@ const getQuarterMonths = (fiscalStartMonth: number, quarter: number): { months: 
 }
 
 // Get quarter label with actual months based on fiscal year
-const getQuarterLabel = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', fiscalStartMonth: number = 1): string => {
-  const quarterNum = parseInt(quarter.replace('Q', ''))
-  const { label } = getQuarterMonths(fiscalStartMonth, quarterNum)
-  return label
-}
+// const getQuarterLabel = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', fiscalStartMonth: number = 1): string => {
+//   const quarterNum = parseInt(quarter.replace('Q', ''))
+//   const { label } = getQuarterMonths(fiscalStartMonth, quarterNum)
+//   return label
+// }
 
 // Get display label for quarter (e.g., "Q1 (Jul-Sep 2025)")
 const getQuarterDisplayLabel = (
@@ -102,24 +102,24 @@ const getContractYears = (startPeriod: string, endPeriod: string): number => {
 }
 
 // Get calendar year for a contract year
-const getCalendarYear = (startPeriod: string, fiscalStartMonth: number, contractYear: number, quarter: number): number => {
-  if (!startPeriod) return new Date().getFullYear()
-  const startDate = new Date(startPeriod)
-  const startYear = startDate.getFullYear()
-  
-  // Base year from contract year
-  let year = startYear + (contractYear - 1)
-  
-  // Calculate which quarter's months we're looking at
-  const quarterStartMonth = fiscalStartMonth + (quarter - 1) * 3
-  
-  // If the quarter months wrap to next calendar year
-  if (quarterStartMonth > 12) {
-    year += 1
-  }
-  
-  return year
-}
+// const getCalendarYear = (startPeriod: string, fiscalStartMonth: number, contractYear: number, quarter: number): number => {
+//   if (!startPeriod) return new Date().getFullYear()
+//   const startDate = new Date(startPeriod)
+//   const startYear = startDate.getFullYear()
+//   
+//   // Base year from contract year
+//   let year = startYear + (contractYear - 1)
+//   
+//   // Calculate which quarter's months we're looking at
+//   const quarterStartMonth = fiscalStartMonth + (quarter - 1) * 3
+//   
+//   // If the quarter months wrap to next calendar year
+//   if (quarterStartMonth > 12) {
+//     year += 1
+//   }
+//   
+//   return year
+// }
 
 export default function QuarterlyPlanForm({ contractId, contract, existingPlans = [], onPlanCreated, onCancel }: QuarterlyPlanFormProps) {
   const [contractData, setContractData] = useState<any>(contract)

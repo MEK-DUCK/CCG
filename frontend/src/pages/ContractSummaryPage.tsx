@@ -252,8 +252,6 @@ export default function ContractSummaryPage() {
         // For multi-year contracts, create a row per year
         return years.map((year, idx) => {
           const qt = quarterTotalsByContractIdAndYear[c.id]?.[year] || { q1: 0, q2: 0, q3: 0, q4: 0 }
-          const yearLabel = years.length > 1 ? ` (Year ${year})` : ''
-          
           return {
             'Customer': idx === 0 ? customerName : '',
             'Contract #': idx === 0 ? c.contract_number : '',

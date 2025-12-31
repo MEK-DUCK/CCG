@@ -149,7 +149,7 @@ const getContractMonths = (startPeriod: string, endPeriod: string, isCIF: boolea
 
 interface MonthlyPlanEntry {
   id?: number
-  quarterly_plan_id: number
+  quarterly_plan_id: number | null  // Can be null for SPOT/Range contracts
   product_name: string  // Product name for this entry
   quantity: string
   laycan_5_days: string
@@ -1032,7 +1032,6 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     setMoveAction(action)
     setMoveEntryData(actionMenuEntry)
     // Set default target month to current + 1 for defer, current - 1 for advance
-    const currentDate = actionMenuEntry.month + actionMenuEntry.year * 12
     if (action === 'DEFER') {
       const nextMonth = actionMenuEntry.month === 12 ? 1 : actionMenuEntry.month + 1
       const nextYear = actionMenuEntry.month === 12 ? actionMenuEntry.year + 1 : actionMenuEntry.year

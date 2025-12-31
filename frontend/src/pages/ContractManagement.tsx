@@ -88,7 +88,7 @@ export default function ContractManagement() {
   const [dataChangedNotification, setDataChangedNotification] = useState<string | null>(null)
 
   // Conflict handler for optimistic locking - loadData is defined below
-  const { handleApiError, ConflictDialogComponent } = useConflictHandler({
+  const { ConflictDialogComponent } = useConflictHandler({
     onRefresh: async () => {
       const [contractsRes, customersRes] = await Promise.all([
         contractAPI.getAll(),

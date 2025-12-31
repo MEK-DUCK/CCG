@@ -37,7 +37,7 @@ import {
 import { FileDownload, Search, Description, Clear, History } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
 import { format } from 'date-fns'
-import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, quarterlyPlanAPI, documentsAPI } from '../api/client'
+import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, documentsAPI } from '../api/client'
 import type { Cargo, Customer, Contract, MonthlyPlan, CargoStatus, ContractProduct, LCStatus, CargoPortOperation, PortOperationStatus } from '../types'
 import { parseLaycanDate } from '../utils/laycanParser'
 import { calculateETADate } from '../utils/voyageDuration'
@@ -47,7 +47,7 @@ import NotificationBadge from '../components/Notifications/NotificationBadge'
 import { useLaycanAlerts } from '../hooks/useLaycanAlerts'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { useRealTimeSync, DataSyncEvent } from '../hooks/useRealTimeSync'
-import { useConflictHandler, EditingWarningBanner, ActiveUsersIndicator } from '../components/Presence'
+import { EditingWarningBanner, ActiveUsersIndicator } from '../components/Presence'
 import { useAuth } from '../contexts/AuthContext'
 import { VersionHistoryDialog } from '../components/VersionHistory'
 
@@ -566,7 +566,7 @@ export default function HomePage() {
   const notifyCargoStoppedEditing = cargoPresence.notifyStoppedEditing
 
   // Real-time sync for port movement page - receives live updates when other users make changes
-  const { isConnected: isRealTimeSyncConnected } = useRealTimeSync('port-movement', {
+  useRealTimeSync('port-movement', {
     onCargoChange: useCallback((event: DataSyncEvent) => {
       console.log(`[RealTimeSync] Cargo ${event.change_type}:`, event.entity_id, event.entity_data)
       
@@ -588,7 +588,7 @@ export default function HomePage() {
               if (prev.some(c => c.id === newCargo.id)) return prev
               return [...prev, newCargo]
             })
-          } else if (newCargo.status === 'Completed Discharge') {
+          } else if (newCargo.status === 'Discharge Complete') {
             setCompletedInRoadCIF(prev => {
               if (prev.some(c => c.id === newCargo.id)) return prev
               return [...prev, newCargo]
@@ -611,7 +611,7 @@ export default function HomePage() {
               if (prev.some(c => c.id === newCargo.id)) return prev
               return [...prev, newCargo]
             })
-          } else if (newCargo.status === 'Completed Loading' || newCargo.status === 'Completed Discharge') {
+          } else if (newCargo.status === 'Completed Loading' || newCargo.status === 'Discharge Complete') {
             setCompletedCargos(prev => {
               if (prev.some(c => c.id === newCargo.id)) return prev
               return [...prev, newCargo]
@@ -660,7 +660,7 @@ export default function HomePage() {
               if (prev.some(c => c.id === updatedCargo.id)) return prev
               return [...prev, updatedCargo]
             })
-          } else if (updatedCargo.status === 'Completed Discharge') {
+          } else if (updatedCargo.status === 'Discharge Complete') {
             // CIF: Completed Discharge -> Completed In-Road CIF
             setInRoadCIF(prev => prev.filter(c => c.id !== updatedCargo.id))
             setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
@@ -688,7 +688,7 @@ export default function HomePage() {
               if (prev.some(c => c.id === updatedCargo.id)) return prev
               return [...prev, updatedCargo]
             })
-          } else if (updatedCargo.status === 'Completed Loading' || updatedCargo.status === 'Completed Discharge') {
+          } else if (updatedCargo.status === 'Completed Loading' || updatedCargo.status === 'Discharge Complete') {
             setPortMovement(prev => prev.filter(c => c.id !== updatedCargo.id))
             setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
             setCompletedCargos(prev => {
@@ -1079,18 +1079,20 @@ export default function HomePage() {
       // Get laycan window from monthly plan:
       // - CIF: use loading_window
       // - FOB: laycan_2_days > laycan_5_days > TBA
-      if (cargo.contract_type === 'CIF') {
-        laycanWindow = monthlyPlan.loading_window || 'TBA'
-      } else if (monthlyPlan.laycan_2_days) {
-        laycanWindow = monthlyPlan.laycan_2_days
-      } else if (monthlyPlan.laycan_5_days) {
-        laycanWindow = monthlyPlan.laycan_5_days
-      } else {
-        laycanWindow = 'TBA'
+      if (monthlyPlan) {
+        if (cargo.contract_type === 'CIF') {
+          laycanWindow = monthlyPlan.loading_window || 'TBA'
+        } else if (monthlyPlan.laycan_2_days) {
+          laycanWindow = monthlyPlan.laycan_2_days
+        } else if (monthlyPlan.laycan_5_days) {
+          laycanWindow = monthlyPlan.laycan_5_days
+        } else {
+          laycanWindow = 'TBA'
+        }
+        
+        // Get quantity from monthly plan
+        cargoQuantity = monthlyPlan.month_quantity.toString()
       }
-      
-      // Get quantity from monthly plan
-      cargoQuantity = monthlyPlan.month_quantity.toString()
     } catch (error) {
       console.error('Error loading monthly plan:', error)
       // Fallback to TBA if monthly plan can't be loaded
@@ -1338,6 +1340,7 @@ export default function HomePage() {
       eta_discharge_port: etaDischargePort,
       discharge_port_location: dischargePortLocation,
       discharge_completion_time: '',
+      five_nd_date: '',
       nd_delivery_window: '',
       notes: '',
       status: 'Planned' as CargoStatus,
@@ -1508,7 +1511,7 @@ export default function HomePage() {
         
         // OPTIMISTIC: If status changed to COMPLETED_LOADING, remove from activeLoadings
         // For combie cargos, remove ALL cargos in the group from activeLoadings
-        if (cargoFormData.status === 'COMPLETED_LOADING') {
+        if (cargoFormData.status === 'Completed Loading') {
           setActiveLoadings(prev => {
             if (editingCargo.combi_group_id) {
               // Remove all cargos in the combie group
@@ -2002,7 +2005,7 @@ export default function HomePage() {
     }
   }
 
-  const renderCargoTable = (cargos: Cargo[]) => {
+  const _renderCargoTable = (cargos: Cargo[]) => {
     if (loading) {
       return (
         <Box display="flex" justifyContent="center" p={4}>
@@ -2893,7 +2896,7 @@ export default function HomePage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {groupedPlans.map((group, groupIndex) => {
+            {groupedPlans.map((group) => {
               const primaryPlan = group.plans[0]
               const contract = primaryPlan.contract || primaryPlan.quarterly_plan?.contract
               const customer = contract?.customer || primaryPlan.quarterly_plan?.contract?.customer

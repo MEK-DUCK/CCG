@@ -37,7 +37,6 @@ import {
   History as HistoryIcon,
   Add as AddIcon,
   Remove as RemoveIcon,
-  Edit as EditIcon,
 } from '@mui/icons-material'
 import { versionHistoryAPI } from '../../api/client'
 import { formatDistanceToNow, format } from 'date-fns'

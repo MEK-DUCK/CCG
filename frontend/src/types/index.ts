@@ -193,6 +193,7 @@ export interface Cargo {
   inspector_invoice_date?: string
   lc_status?: LCStatus  // LC status (only for LC payment method contracts)
   port_operations?: CargoPortOperation[]
+  version?: number  // Optimistic locking version
 }
 
 export type PortOperationStatus = 'Planned' | 'Loading' | 'Completed Loading'

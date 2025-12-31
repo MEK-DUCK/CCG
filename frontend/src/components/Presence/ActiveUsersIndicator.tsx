@@ -2,7 +2,6 @@
  * Component to display active users viewing the same resource.
  * Shows avatars/initials of other users for collaborative awareness.
  */
-import React from 'react'
 import { Box, Chip, Tooltip, Typography, Badge, Avatar, AvatarGroup } from '@mui/material'
 import { Visibility, Circle } from '@mui/icons-material'
 import { PresenceUser } from '../../hooks/usePresence'

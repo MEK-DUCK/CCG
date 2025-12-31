@@ -21,7 +21,7 @@ import {
   Divider,
   Chip,
 } from '@mui/material'
-import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize, AdminPanelSettings, Logout, Person, KeyboardArrowDown } from '@mui/icons-material'
+import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize, AdminPanelSettings, Logout, KeyboardArrowDown } from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
 
 interface LayoutProps {

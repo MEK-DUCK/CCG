@@ -3,7 +3,7 @@
  * Provides real-time awareness to prevent conflicts.
  */
 import React from 'react'
-import { Box, Alert, AlertTitle, Chip, Collapse, IconButton, Typography, Button } from '@mui/material'
+import { Box, Alert, AlertTitle, Chip, Collapse, IconButton, Typography } from '@mui/material'
 import { Warning, Refresh, Close, Edit } from '@mui/icons-material'
 import { PresenceUser } from '../../hooks/usePresence'
 
