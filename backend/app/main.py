@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 Base.metadata.create_all(bind=engine)
 ensure_schema()
 
+# Ensure admin user exists on startup
+from app.startup import ensure_admin_user
+ensure_admin_user()
+
 app = FastAPI(
     title="Oil Lifting Program API", 
     version="1.0.0",
