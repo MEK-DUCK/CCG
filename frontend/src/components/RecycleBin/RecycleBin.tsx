@@ -5,7 +5,7 @@
  * Can be used as a standalone page or embedded in admin section.
  */
 
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   Paper,

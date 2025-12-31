@@ -48,7 +48,7 @@ export default function ReconciliationPage() {
   const [weeklyData, setWeeklyData] = useState<WeeklyQuantityComparisonResponse | null>(null)
   const [weeklyError, setWeeklyError] = useState<string | null>(null)
   const [weeklyProduct, setWeeklyProduct] = useState<string>('GASOIL') // Default to first tab
-  const [contracts, setContracts] = useState<Contract[]>([])
+  const [_contracts, setContracts] = useState<Contract[]>([])
 
   // Pagination for logs table
   const [logsPage, setLogsPage] = useState(0)
