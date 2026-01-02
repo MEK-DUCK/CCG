@@ -61,8 +61,9 @@ ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    # TEMPORARY: Allow all origins for testing - REMOVE AFTER TESTING
+    allow_origins=["*"],
+    allow_credentials=False,  # Required when using ["*"] - TEMPORARY
     # Restrict to specific methods instead of "*"
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     # Restrict to specific headers instead of "*"
