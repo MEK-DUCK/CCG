@@ -271,86 +271,57 @@ export default function ContractDashboard() {
         </Grid>
       </Grid>
 
-      {/* Progress Metrics */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Total Planned Quantity
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                {totalPlanned.toLocaleString()} KT
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Total Cargo Quantity
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                {totalCargo.toLocaleString()} KT
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Completion Rate
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                {totalPlanned > 0 ? ((totalCargo / totalPlanned) * 100).toFixed(1) : 0}%
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Remaining Quantities */}
+      {/* Consolidated Contract Summary */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Remaining Quantities
+          <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+            Contract Summary
           </Typography>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
+          
+          {/* Key Metrics Row */}
+          <Grid container spacing={3} sx={{ mb: 3 }}>
             <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Firm Total
+              <Box>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Total Planned
                 </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                  {firmTotal.toLocaleString()} KT
+                <Typography variant="h5" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                  {contractProgress.totalPlanned.toLocaleString()} KT
                 </Typography>
-              </Paper>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Quarterly Plans
+                </Typography>
+              </Box>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Optional Total
+              <Box>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Monthly Plans
                 </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                  {optionalTotal.toLocaleString()} KT
+                <Typography variant="h5" sx={{ fontWeight: 600, color: 'info.main' }}>
+                  {contractProgress.totalActual.toLocaleString()} KT
                 </Typography>
-              </Paper>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {contractProgress.monthlyPlanRate.toFixed(1)}% of planned
+                </Typography>
+              </Box>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+              <Box>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
                   Lifted (Cargos)
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 600, color: 'success.main' }}>
                   {totalCargo.toLocaleString()} KT
                 </Typography>
-              </Paper>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {contractProgress.completionRate.toFixed(1)}% of planned
+                </Typography>
+              </Box>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+              <Box>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
                   Remaining (Firm)
                 </Typography>
                 <Typography
@@ -363,104 +334,17 @@ export default function ContractDashboard() {
                   {remainingFirm.toLocaleString()} KT
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                  Remaining incl. optional: {remainingWithOptional.toLocaleString()} KT
+                  With optional: {remainingWithOptional.toLocaleString()} KT
                 </Typography>
-              </Paper>
+              </Box>
             </Grid>
           </Grid>
-        </CardContent>
-      </Card>
 
-      {/* Status Breakdown */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Cargo Status Breakdown
-          </Typography>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={6} sm={3}>
-              <Box textAlign="center">
-                <Typography variant="h4" color="primary">
-                  {statusCounts['Planned'] || 0}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Planned
-                </Typography>
-              </Box>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <Box textAlign="center">
-                <Typography variant="h4" color="warning.main">
-                  {statusCounts['Pending Nomination'] || 0}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Pending
-                </Typography>
-              </Box>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <Box textAlign="center">
-                <Typography variant="h4" color="success.main">
-                  {statusCounts['Completed Loading'] || 0}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Completed Loading
-                </Typography>
-              </Box>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
-
-      {/* Contract Progress */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Contract Progress
-          </Typography>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={4}>
-              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Total Planned Quantity
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                  {contractProgress.totalPlanned.toLocaleString()} KT
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Monthly Plans Quantity
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 600, color: 'info.main' }}>
-                  {contractProgress.totalActual.toLocaleString()} KT
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  {contractProgress.monthlyPlanRate.toFixed(1)}% of planned
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <Paper sx={{ p: 3, bgcolor: 'background.default', textAlign: 'center' }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Total Cargo Quantity
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 600, color: 'success.main' }}>
-                  {contractProgress.totalCargo.toLocaleString()} KT
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  {contractProgress.completionRate.toFixed(1)}% of planned
-                </Typography>
-              </Paper>
-            </Grid>
-          </Grid>
           {/* Progress Bar */}
-          <Box sx={{ mt: 3 }}>
+          <Box sx={{ mb: 3 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                Overall Progress
+                Overall Completion
               </Typography>
               <Typography variant="body2" fontWeight="bold">
                 {contractProgress.completionRate.toFixed(1)}%
@@ -469,9 +353,9 @@ export default function ContractDashboard() {
             <Box
               sx={{
                 width: '100%',
-                height: 24,
+                height: 28,
                 bgcolor: 'grey.200',
-                borderRadius: 12,
+                borderRadius: 14,
                 overflow: 'hidden',
                 position: 'relative',
               }}
@@ -482,11 +366,73 @@ export default function ContractDashboard() {
                   height: '100%',
                   bgcolor: contractProgress.completionRate >= 100 ? 'success.main' : 'primary.main',
                   transition: 'width 0.3s ease',
-                  borderRadius: 12,
+                  borderRadius: 14,
                 }}
               />
             </Box>
           </Box>
+
+          {/* Contract Quantities & Status Row */}
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Contract Quantities
+                </Typography>
+                <Grid container spacing={2} sx={{ mt: 0.5 }}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary">
+                      Firm Total
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                      {firmTotal.toLocaleString()} KT
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary">
+                      Optional Total
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                      {optionalTotal.toLocaleString()} KT
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Cargo Status
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, mt: 1, flexWrap: 'wrap' }}>
+                  <Chip
+                    label={`${statusCounts['Planned'] || 0} Planned`}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                  />
+                  <Chip
+                    label={`${statusCounts['Pending Nomination'] || 0} Pending`}
+                    size="small"
+                    color="warning"
+                    variant="outlined"
+                  />
+                  <Chip
+                    label={`${statusCounts['Loading'] || 0} Loading`}
+                    size="small"
+                    color="info"
+                    variant="outlined"
+                  />
+                  <Chip
+                    label={`${statusCounts['Completed Loading'] || 0} Completed`}
+                    size="small"
+                    color="success"
+                    variant="outlined"
+                  />
+                </Box>
+              </Paper>
+            </Grid>
+          </Grid>
         </CardContent>
       </Card>
 
