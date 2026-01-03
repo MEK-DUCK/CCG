@@ -611,7 +611,7 @@ export default function DashboardPage() {
                         <TableCell>
                           <Button
                             size="small"
-                            onClick={() => navigate(`/contracts/${auth.contract_id}`)}
+                            onClick={() => navigate(`/contracts/${auth.contract_id}/dashboard`)}
                             sx={{ textTransform: 'none' }}
                           >
                             {auth.contract_number}
