@@ -194,6 +194,13 @@ export const contractAPI = {
   // Add authority top-up to a contract
   addAuthorityTopup: (contractId: number, topup: AuthorityTopUp) => 
     client.post(`/api/contracts/${contractId}/authority-topup`, topup),
+  // Get all authority amendments and top-ups
+  getAllAuthorities: (contractId?: number, productName?: string) => {
+    const params: any = {}
+    if (contractId) params.contract_id = contractId
+    if (productName) params.product_name = productName
+    return client.get('/api/contracts/authorities/all', { params })
+  },
 }
 
 // Quarterly Plan API

@@ -20,8 +20,12 @@ import {
   CardContent,
   Divider,
   Tooltip,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material'
-import { Visibility, Search } from '@mui/icons-material'
+import { Visibility, Search, FilterList } from '@mui/icons-material'
 import client, { contractAPI, customerAPI } from '../api/client'
 import type { Contract, Customer } from '../types'
 
@@ -48,6 +52,13 @@ export default function DashboardPage() {
   const [searchText, setSearchText] = useState('')
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
+  const [authorities, setAuthorities] = useState<any[]>([])
+  const [authoritiesLoading, setAuthoritiesLoading] = useState(true)
+  const [authorityFilter, setAuthorityFilter] = useState({
+    search: '',
+    type: 'all', // 'all', 'amendment', 'topup'
+    product: ''
+  })
 
   const fetchAnalytics = useCallback(async () => {
     try {
@@ -64,7 +75,20 @@ export default function DashboardPage() {
   useEffect(() => {
     loadData()
     fetchAnalytics()
+    loadAuthorities()
   }, [fetchAnalytics])
+
+  const loadAuthorities = async () => {
+    try {
+      setAuthoritiesLoading(true)
+      const response = await contractAPI.getAllAuthorities()
+      setAuthorities(response.data.authorities || [])
+    } catch (error) {
+      console.error('Error loading authorities:', error)
+    } finally {
+      setAuthoritiesLoading(false)
+    }
+  }
 
   const loadData = async () => {
     try {
@@ -474,6 +498,172 @@ export default function DashboardPage() {
           </Grid>
         </Grid>
       )}
+
+      <Divider sx={{ my: 4 }} />
+
+      {/* Authority Management Section */}
+      <Box sx={{ mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h5" sx={{ fontWeight: 600 }}>
+            📝 Authority Management
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel>Type</InputLabel>
+              <Select
+                value={authorityFilter.type}
+                onChange={(e) => setAuthorityFilter({ ...authorityFilter, type: e.target.value })}
+                label="Type"
+              >
+                <MenuItem value="all">All Types</MenuItem>
+                <MenuItem value="amendment">Amendments</MenuItem>
+                <MenuItem value="topup">Top-Ups</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              placeholder="Filter by product..."
+              variant="outlined"
+              size="small"
+              value={authorityFilter.product}
+              onChange={(e) => setAuthorityFilter({ ...authorityFilter, product: e.target.value })}
+              sx={{ minWidth: 150 }}
+            />
+            <TextField
+              placeholder="Search authorities..."
+              variant="outlined"
+              size="small"
+              value={authorityFilter.search}
+              onChange={(e) => setAuthorityFilter({ ...authorityFilter, search: e.target.value })}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ minWidth: 250 }}
+            />
+          </Box>
+        </Box>
+
+        {authoritiesLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+            <CircularProgress size={32} />
+          </Box>
+        ) : (
+          (() => {
+            // Filter authorities
+            let filtered = authorities.filter((auth) => {
+              // Type filter
+              if (authorityFilter.type === 'amendment' && auth.type !== 'Amendment') return false
+              if (authorityFilter.type === 'topup' && !auth.type.includes('Top-Up')) return false
+              
+              // Product filter
+              if (authorityFilter.product && !auth.product_name?.toLowerCase().includes(authorityFilter.product.toLowerCase())) return false
+              
+              // Search filter
+              if (authorityFilter.search) {
+                const searchLower = authorityFilter.search.toLowerCase()
+                return (
+                  auth.contract_number?.toLowerCase().includes(searchLower) ||
+                  auth.customer_name?.toLowerCase().includes(searchLower) ||
+                  auth.product_name?.toLowerCase().includes(searchLower) ||
+                  auth.authority_reference?.toLowerCase().includes(searchLower) ||
+                  auth.reason?.toLowerCase().includes(searchLower)
+                )
+              }
+              
+              return true
+            })
+
+            return filtered.length === 0 ? (
+              <Paper sx={{ p: 4, textAlign: 'center' }}>
+                <Typography variant="body1" color="text.secondary">
+                  No authorities found. {authorityFilter.search || authorityFilter.product || authorityFilter.type !== 'all' ? 'Try adjusting your filters.' : 'Create authority amendments or top-ups in contracts.'}
+                </Typography>
+              </Paper>
+            ) : (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Contract</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Customer</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Product</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }} align="right">Quantity</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Details</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filtered.map((auth, idx) => (
+                      <TableRow key={idx} hover>
+                        <TableCell>
+                          <Chip
+                            label={auth.type}
+                            size="small"
+                            color={auth.type === 'Amendment' ? 'primary' : 'success'}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="small"
+                            onClick={() => navigate(`/contracts/${auth.contract_id}`)}
+                            sx={{ textTransform: 'none' }}
+                          >
+                            {auth.contract_number}
+                          </Button>
+                        </TableCell>
+                        <TableCell>{auth.customer_name}</TableCell>
+                        <TableCell>
+                          <Chip label={auth.product_name} size="small" variant="outlined" />
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                          {auth.authority_reference || '-'}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 500 }}>
+                          {auth.type === 'Amendment' 
+                            ? `${auth.quantity_change > 0 ? '+' : ''}${auth.quantity_change?.toLocaleString() || 0} KT`
+                            : `${auth.quantity?.toLocaleString() || 0} KT`
+                          }
+                        </TableCell>
+                        <TableCell>
+                          {auth.authorization_date 
+                            ? new Date(auth.authorization_date).toLocaleDateString()
+                            : auth.effective_date
+                            ? new Date(auth.effective_date).toLocaleDateString()
+                            : auth.created_at
+                            ? new Date(auth.created_at).toLocaleDateString()
+                            : '-'
+                          }
+                        </TableCell>
+                        <TableCell>
+                          <Tooltip title={auth.reason || auth.amendment_type || 'No details'}>
+                            <Typography variant="body2" sx={{ 
+                              maxWidth: 200, 
+                              overflow: 'hidden', 
+                              textOverflow: 'ellipsis', 
+                              whiteSpace: 'nowrap' 
+                            }}>
+                              {auth.type === 'Amendment' 
+                                ? `${auth.amendment_type?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || ''}${auth.year ? ` (Year ${auth.year})` : ''}`
+                                : auth.reason || '-'
+                              }
+                            </Typography>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )
+          })()
+        )}
+      </Box>
 
       <Divider sx={{ my: 4 }} />
 

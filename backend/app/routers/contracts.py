@@ -710,3 +710,122 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db)):
         print(f"[ERROR] Error deleting contract: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error deleting contract: {str(e)}")
 
+@router.get("/authorities/all")
+def get_all_authorities(
+    contract_id: int | None = Query(None, description="Filter by contract ID"),
+    product_name: str | None = Query(None, description="Filter by product name"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all authority amendments and top-ups across all contracts.
+    Returns both contract-level and monthly plan-level authorities.
+    """
+    import json
+    from datetime import datetime
+    
+    authorities = []
+    
+    # Get all contracts
+    query = db.query(models.Contract)
+    if contract_id:
+        query = query.filter(models.Contract.id == contract_id)
+    contracts = query.all()
+    
+    # Get customer names for display
+    customer_map = {c.id: c.name for c in db.query(models.Customer).all()}
+    
+    for contract in contracts:
+        customer_name = customer_map.get(contract.customer_id, "Unknown")
+        
+        # Process Authority Amendments
+        if contract.authority_amendments:
+            try:
+                amendments = json.loads(contract.authority_amendments)
+                for amendment in amendments:
+                    if product_name and amendment.get('product_name') != product_name:
+                        continue
+                    authorities.append({
+                        "type": "Amendment",
+                        "contract_id": contract.id,
+                        "contract_number": contract.contract_number,
+                        "customer_name": customer_name,
+                        "product_name": amendment.get('product_name', ''),
+                        "amendment_type": amendment.get('amendment_type', ''),
+                        "quantity_change": amendment.get('quantity_change', 0),
+                        "authority_reference": amendment.get('authority_reference', ''),
+                        "effective_date": amendment.get('effective_date'),
+                        "year": amendment.get('year'),
+                        "reason": amendment.get('reason', ''),
+                        "created_at": contract.updated_at.isoformat() if contract.updated_at else None
+                    })
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning(f"Error parsing authority_amendments for contract {contract.id}: {e}")
+        
+        # Process Contract-Level Authority Top-Ups
+        if contract.authority_topups:
+            try:
+                topups = json.loads(contract.authority_topups)
+                for topup in topups:
+                    if product_name and topup.get('product_name') != product_name:
+                        continue
+                    authorities.append({
+                        "type": "Top-Up (Contract)",
+                        "contract_id": contract.id,
+                        "contract_number": contract.contract_number,
+                        "customer_name": customer_name,
+                        "product_name": topup.get('product_name', ''),
+                        "quantity": topup.get('quantity', 0),
+                        "authority_reference": topup.get('authority_reference', ''),
+                        "authorization_date": topup.get('authorization_date') or topup.get('date'),
+                        "reason": topup.get('reason', ''),
+                        "month": topup.get('month'),
+                        "year": topup.get('year'),
+                        "monthly_plan_id": topup.get('monthly_plan_id'),
+                        "created_at": contract.updated_at.isoformat() if contract.updated_at else None
+                    })
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning(f"Error parsing authority_topups for contract {contract.id}: {e}")
+    
+    # Process Monthly Plan-Level Authority Top-Ups
+    monthly_plan_query = db.query(models.MonthlyPlan).filter(
+        models.MonthlyPlan.authority_topup_quantity > 0
+    )
+    if contract_id:
+        monthly_plan_query = monthly_plan_query.filter(models.MonthlyPlan.contract_id == contract_id)
+    if product_name:
+        monthly_plan_query = monthly_plan_query.filter(models.MonthlyPlan.product_name == product_name)
+    
+    monthly_plans = monthly_plan_query.all()
+    
+    for mp in monthly_plans:
+        # Get contract info
+        contract = db.query(models.Contract).filter(models.Contract.id == mp.contract_id).first()
+        if not contract:
+            continue
+        
+        customer_name = customer_map.get(contract.customer_id, "Unknown")
+        
+        authorities.append({
+            "type": "Top-Up (Monthly Plan)",
+            "contract_id": contract.id,
+            "contract_number": contract.contract_number,
+            "customer_name": customer_name,
+            "product_name": mp.product_name or '',
+            "quantity": mp.authority_topup_quantity or 0,
+            "authority_reference": mp.authority_topup_reference or '',
+            "authorization_date": mp.authority_topup_date.isoformat() if mp.authority_topup_date else None,
+            "reason": mp.authority_topup_reason or '',
+            "month": mp.month,
+            "year": mp.year,
+            "monthly_plan_id": mp.id,
+            "created_at": mp.updated_at.isoformat() if mp.updated_at else None
+        })
+    
+    # Sort by date (most recent first)
+    authorities.sort(key=lambda x: x.get('created_at') or x.get('authorization_date') or x.get('effective_date') or '', reverse=True)
+    
+    return {
+        "authorities": authorities,
+        "total_count": len(authorities)
+    }
+
