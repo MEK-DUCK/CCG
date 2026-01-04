@@ -583,8 +583,8 @@ export default function DashboardPage() {
                 </Typography>
               </Paper>
             ) : (
-              <TableContainer component={Paper}>
-                <Table>
+              <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <Table sx={{ minWidth: 900 }}>
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
@@ -696,8 +696,8 @@ export default function DashboardPage() {
           </Typography>
         </Paper>
       ) : (
-        <TableContainer component={Paper}>
-          <Table>
+        <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <Table sx={{ minWidth: 800 }}>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Contract Number</TableCell>

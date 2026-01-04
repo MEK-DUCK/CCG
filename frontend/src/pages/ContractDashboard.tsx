@@ -440,8 +440,8 @@ export default function ContractDashboard() {
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
-          <TableContainer>
-            <Table size={isMobile ? 'small' : 'medium'}>
+          <TableContainer sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <Table size={isMobile ? 'small' : 'medium'} sx={{ minWidth: 600 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Vessel Name</TableCell>
@@ -489,8 +489,8 @@ export default function ContractDashboard() {
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
-          <TableContainer>
-            <Table size={isMobile ? 'small' : 'medium'}>
+          <TableContainer sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <Table size={isMobile ? 'small' : 'medium'} sx={{ minWidth: 600 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Month/Year</TableCell>
@@ -601,8 +601,8 @@ export default function ContractDashboard() {
         </TabPanel>
 
         <TabPanel value={tabValue} index={2}>
-          <TableContainer>
-            <Table size={isMobile ? 'small' : 'medium'}>
+          <TableContainer sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <Table size={isMobile ? 'small' : 'medium'} sx={{ minWidth: 700 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Product</TableCell>

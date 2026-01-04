@@ -861,8 +861,8 @@ export default function ContractManagement() {
         {!selectedContract?.id && (
           <Grid item xs={12}>
           <Paper sx={{ overflow: 'hidden' }}>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <Table sx={{ minWidth: 900 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Contract Number</TableCell>

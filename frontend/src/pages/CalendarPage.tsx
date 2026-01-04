@@ -458,10 +458,10 @@ export default function CalendarPage() {
       </Typography>
 
       {/* Filters */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+      <Paper sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 }, alignItems: 'center' }}>
           {/* Customer Filter */}
-          <FormControl size="small" sx={{ minWidth: 200 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 140, sm: 200 }, flexGrow: { xs: 1, sm: 0 } }}>
             <InputLabel>Customers</InputLabel>
             <Select
               multiple
@@ -484,7 +484,7 @@ export default function CalendarPage() {
           </FormControl>
 
           {/* Contract Type Filter */}
-          <FormControl size="small" sx={{ minWidth: 150 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 100, sm: 150 }, flexGrow: { xs: 1, sm: 0 } }}>
             <InputLabel>Type</InputLabel>
             <Select
               multiple
@@ -505,7 +505,7 @@ export default function CalendarPage() {
           </FormControl>
 
           {/* Event Type Filter */}
-          <FormControl size="small" sx={{ minWidth: 200 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 140, sm: 200 }, flexGrow: { xs: 1, sm: 0 } }}>
             <InputLabel>Events</InputLabel>
             <Select
               multiple
@@ -562,7 +562,7 @@ export default function CalendarPage() {
           </Box>
 
           {/* Legend */}
-          <Box sx={{ display: 'flex', gap: 1, ml: 'auto', flexWrap: 'wrap' }}>
+          <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 1, ml: 'auto', flexWrap: 'wrap' }}>
             <span style={{ 
               display: 'inline-flex', 
               alignItems: 'center', 
@@ -616,7 +616,7 @@ export default function CalendarPage() {
       </Paper>
 
       {/* Calendar */}
-      <Paper sx={{ p: 2 }}>
+      <Paper sx={{ p: { xs: 1, sm: 2 }, overflow: 'hidden' }}>
         <style>
           {`
             .fc {
@@ -690,6 +690,37 @@ export default function CalendarPage() {
             }
             .fc-day-today {
               background-color: rgba(59, 130, 246, 0.1) !important;
+            }
+            /* Mobile responsive styles */
+            @media (max-width: 600px) {
+              .fc-toolbar {
+                flex-direction: column;
+                gap: 8px;
+              }
+              .fc-toolbar-title {
+                font-size: 1rem !important;
+              }
+              .fc-button {
+                padding: 4px 8px !important;
+                font-size: 0.75rem !important;
+              }
+              .fc-event {
+                font-size: 0.65rem;
+                padding: 1px 2px;
+              }
+              .fc-daygrid-day-number {
+                font-size: 0.75rem;
+              }
+              .fc-col-header-cell-cushion {
+                font-size: 0.7rem;
+              }
+            }
+            @media (max-width: 900px) {
+              .fc-toolbar-chunk {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+              }
             }
           `}
         </style>

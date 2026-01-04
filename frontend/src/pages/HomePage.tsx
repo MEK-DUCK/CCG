@@ -2480,26 +2480,27 @@ export default function HomePage() {
         sx={{
           maxWidth: '100%',
           overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
           '& .MuiTable-root': {
-            minWidth: isMobile ? 900 : 'auto',
+            minWidth: 1200,
           },
         }}
       >
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Vessel Name</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Customer</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>ND Due Date</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>ND Del Window</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Original DW</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>ETA Discharge</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Payment Status</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Remark</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Vessel Name</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Customer</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Contract</TableCell>
+              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Product</TableCell>
+              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Quantity</TableCell>
+              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>ND Due Date</TableCell>
+              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>ND Del Window</TableCell>
+              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Original DW</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>ETA Discharge</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Discharge Port</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Payment Status</TableCell>
+              <TableCell sx={{ minWidth: 150, fontWeight: 'bold' }}>Remark</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -3010,8 +3011,9 @@ export default function HomePage() {
         sx={{
           maxWidth: '100%',
           overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
           '& .MuiTable-root': {
-            minWidth: isMobile ? 900 : 'auto',
+            minWidth: 1400,
           },
         }}
       >
@@ -3277,26 +3279,27 @@ export default function HomePage() {
         sx={{
           maxWidth: '100%',
           overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
           '& .MuiTable-root': {
-            minWidth: isMobile ? 900 : 'auto',
+            minWidth: 1200,
           },
         }}
       >
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Vessel Name</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Customer</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Contract</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Product</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Quantity</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>ND Due Date</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>ND Del Window</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 100 : 'auto', fontWeight: 'bold' }}>Original DW</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>ETA Discharge</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Discharge Port</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 120 : 'auto', fontWeight: 'bold' }}>Payment Status</TableCell>
-              <TableCell sx={{ minWidth: isMobile ? 150 : 'auto', fontWeight: 'bold' }}>Remark</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Vessel Name</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Customer</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Contract</TableCell>
+              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Product</TableCell>
+              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Quantity</TableCell>
+              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>ND Due Date</TableCell>
+              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>ND Del Window</TableCell>
+              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Original DW</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>ETA Discharge</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Discharge Port</TableCell>
+              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Payment Status</TableCell>
+              <TableCell sx={{ minWidth: 150, fontWeight: 'bold' }}>Remark</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -4356,15 +4359,16 @@ export default function HomePage() {
           sx={{
             maxWidth: '100%',
             overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch',
             '& .MuiTable-root': {
-              minWidth: isMobile ? 1200 : 'auto',
+              minWidth: 1600,
             },
             '& .MuiTableHead-root': {
               '& .MuiTableCell-root': {
                 whiteSpace: 'normal',
                 wordWrap: 'break-word',
                 overflowWrap: 'break-word',
-                wordBreak: 'normal', // Only wrap at spaces, don't break single words
+                wordBreak: 'normal',
               }
             },
             '& .MuiTableBody-root': {
@@ -4372,7 +4376,7 @@ export default function HomePage() {
                 whiteSpace: 'normal',
                 wordWrap: 'break-word',
                 overflowWrap: 'break-word',
-                wordBreak: 'normal', // Only wrap at spaces, don't break single words
+                wordBreak: 'normal',
               }
             }
           }}
@@ -4380,20 +4384,20 @@ export default function HomePage() {
           <Table stickyHeader sx={{ tableLayout: 'auto' }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Vessel Name</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Customer Name</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Contract Number</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 80 : 90, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>FOB/CIF</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Payment Method</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 110, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>LC Status</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 80 : 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Product</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Laycan</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 80 : 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Quantity</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Load Port</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 110, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Inspector</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 80 : 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Status</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 130, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Delivery Window</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 80 : 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>TNG</TableCell>
+                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Vessel Name</TableCell>
+                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Customer Name</TableCell>
+                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Contract Number</TableCell>
+                <TableCell sx={{ minWidth: 90, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>FOB/CIF</TableCell>
+                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Payment Method</TableCell>
+                <TableCell sx={{ minWidth: 110, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>LC Status</TableCell>
+                <TableCell sx={{ minWidth: 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Product</TableCell>
+                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Laycan</TableCell>
+                <TableCell sx={{ minWidth: 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Quantity</TableCell>
+                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Load Port</TableCell>
+                <TableCell sx={{ minWidth: 110, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Inspector</TableCell>
+                <TableCell sx={{ minWidth: 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Status</TableCell>
+                <TableCell sx={{ minWidth: 130, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Delivery Window</TableCell>
+                <TableCell sx={{ minWidth: 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>TNG</TableCell>
                 <TableCell sx={{ minWidth: isMobile ? 100 : 150, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Remark</TableCell>
                 <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Actions</TableCell>
               </TableRow>

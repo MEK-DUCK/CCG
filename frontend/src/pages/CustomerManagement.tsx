@@ -191,8 +191,8 @@ export default function CustomerManagement() {
 
       {/* Table */}
       <Paper sx={{ overflow: 'hidden' }}>
-        <TableContainer>
-          <Table>
+        <TableContainer sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <Table sx={{ minWidth: 500 }}>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ width: 200 }}>Customer ID</TableCell>

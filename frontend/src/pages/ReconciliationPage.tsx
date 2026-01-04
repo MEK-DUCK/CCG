@@ -424,7 +424,7 @@ export default function ReconciliationPage() {
             </Typography>
           </Box>
         ) : (
-          <TableContainer sx={{ borderRadius: 2, border: '1px solid rgba(148, 163, 184, 0.12)', mt: 2, overflowX: 'auto' }}>
+          <TableContainer sx={{ borderRadius: 2, border: '1px solid rgba(148, 163, 184, 0.12)', mt: 2, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <Table size="small" sx={{ minWidth: 1100 }}>
               <TableHead>
                 <TableRow>
@@ -501,7 +501,7 @@ export default function ReconciliationPage() {
           </Paper>
         ) : (
           <Paper>
-            <TableContainer sx={{ overflowX: 'auto' }}>
+            <TableContainer sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <Table sx={{ minWidth: 900 }}>
                 <TableHead>
                   <TableRow>

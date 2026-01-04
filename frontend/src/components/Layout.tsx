@@ -21,8 +21,9 @@ import {
   Divider,
   Chip,
 } from '@mui/material'
-import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize, AdminPanelSettings, Logout, KeyboardArrowDown, Event } from '@mui/icons-material'
+import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize, AdminPanelSettings, Logout, KeyboardArrowDown, Event, DarkMode, LightMode } from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
+import { useThemeMode } from '../contexts/ThemeContext'
 
 interface LayoutProps {
   children: ReactNode
@@ -36,6 +37,25 @@ export default function Layout({ children }: LayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null)
   const { user, logout, isAdmin } = useAuth()
+  const { isDark, toggleTheme } = useThemeMode()
+
+  // Theme-aware colors
+  const colors = {
+    text: {
+      primary: theme.palette.text.primary,
+      secondary: theme.palette.text.secondary,
+    },
+    background: {
+      default: theme.palette.background.default,
+      paper: theme.palette.background.paper,
+    },
+    border: isDark ? 'rgba(148, 163, 184, 0.15)' : 'rgba(148, 163, 184, 0.12)',
+    hover: isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(71, 85, 105, 0.08)',
+    selected: isDark ? 'rgba(148, 163, 184, 0.15)' : 'rgba(71, 85, 105, 0.1)',
+    selectedHover: isDark ? 'rgba(148, 163, 184, 0.2)' : 'rgba(71, 85, 105, 0.15)',
+    iconBg: isDark ? 'rgba(148, 163, 184, 0.15)' : 'rgba(71, 85, 105, 0.1)',
+    icon: isDark ? '#94A3B8' : '#475569',
+  }
 
   // Filter nav items based on user role
   const navItems = [
@@ -65,9 +85,14 @@ export default function Layout({ children }: LayoutProps) {
     setMobileOpen(false)
   }
 
+  const handleToggleTheme = () => {
+    toggleTheme()
+    setUserMenuAnchor(null)
+  }
+
   const drawer = (
-    <Box sx={{ width: 280, bgcolor: '#FFFFFF', height: '100%' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2.5, borderBottom: '1px solid rgba(148, 163, 184, 0.12)' }}>
+    <Box sx={{ width: 280, bgcolor: colors.background.paper, height: '100%' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2.5, borderBottom: `1px solid ${colors.border}` }}>
         <Box 
           sx={{ 
             display: 'flex', 
@@ -88,22 +113,22 @@ export default function Layout({ children }: LayoutProps) {
             width: 32, 
             height: 32, 
             borderRadius: 2, 
-            bgcolor: 'rgba(71, 85, 105, 0.1)', 
+            bgcolor: colors.iconBg, 
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center' 
           }}>
-            <Storage sx={{ fontSize: 20, color: '#475569' }} />
+            <Storage sx={{ fontSize: 20, color: colors.icon }} />
           </Box>
-          <Typography variant="h6" component="div" sx={{ fontWeight: 600, color: '#1E293B', fontSize: '1rem' }}>
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600, color: colors.text.primary, fontSize: '1rem' }}>
             CCG-3 Program
           </Typography>
         </Box>
         <IconButton 
           onClick={handleDrawerToggle} 
           sx={{ 
-            color: '#64748B',
-            '&:hover': { backgroundColor: 'rgba(71, 85, 105, 0.08)' }
+            color: colors.text.secondary,
+            '&:hover': { backgroundColor: colors.hover }
           }}
         >
           <Close fontSize="small" />
@@ -121,21 +146,21 @@ export default function Layout({ children }: LayoutProps) {
                 px: 1.5,
                 transition: 'all 0.15s ease',
                 '&.Mui-selected': {
-                  backgroundColor: 'rgba(71, 85, 105, 0.1)',
-                  color: '#475569',
+                  backgroundColor: colors.selected,
+                  color: colors.icon,
                   '& .MuiListItemIcon-root': {
-                    color: '#475569',
+                    color: colors.icon,
                   },
                   '&:hover': {
-                    backgroundColor: 'rgba(71, 85, 105, 0.15)',
+                    backgroundColor: colors.selectedHover,
                   },
                 },
                 '&:hover': {
-                  backgroundColor: '#F1F5F9',
+                  backgroundColor: colors.hover,
                 },
               }}
             >
-              <ListItemIcon sx={{ color: '#64748B', minWidth: 36 }}>
+              <ListItemIcon sx={{ color: colors.text.secondary, minWidth: 36 }}>
                 {item.icon}
               </ListItemIcon>
               <ListItemText 
@@ -143,7 +168,7 @@ export default function Layout({ children }: LayoutProps) {
                 primaryTypographyProps={{ 
                   fontSize: '0.875rem', 
                   fontWeight: location.pathname === item.path ? 600 : 500,
-                  color: location.pathname === item.path ? '#475569' : '#334155'
+                  color: location.pathname === item.path ? colors.icon : colors.text.primary
                 }} 
               />
             </ListItemButton>
@@ -152,7 +177,7 @@ export default function Layout({ children }: LayoutProps) {
       </List>
       {/* User info in mobile drawer */}
       {user && (
-        <Box sx={{ mt: 'auto', p: 2, borderTop: '1px solid rgba(148, 163, 184, 0.12)' }}>
+        <Box sx={{ mt: 'auto', p: 2, borderTop: `1px solid ${colors.border}` }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
             <Box sx={{
               width: 40,
@@ -168,10 +193,28 @@ export default function Layout({ children }: LayoutProps) {
               </Typography>
             </Box>
             <Box>
-              <Typography sx={{ fontWeight: 600, fontSize: '0.875rem', color: '#1E293B' }}>{user.full_name}</Typography>
-              <Typography sx={{ fontSize: '0.75rem', color: '#64748B' }}>{user.email}</Typography>
+              <Typography sx={{ fontWeight: 600, fontSize: '0.875rem', color: colors.text.primary }}>{user.full_name}</Typography>
+              <Typography sx={{ fontSize: '0.75rem', color: colors.text.secondary }}>{user.email}</Typography>
             </Box>
           </Box>
+          {/* Dark mode toggle for mobile */}
+          <Button
+            fullWidth
+            variant="outlined"
+            startIcon={isDark ? <LightMode /> : <DarkMode />}
+            onClick={toggleTheme}
+            sx={{
+              mb: 1.5,
+              color: colors.text.primary,
+              borderColor: colors.border,
+              '&:hover': {
+                bgcolor: colors.hover,
+                borderColor: colors.text.secondary,
+              },
+            }}
+          >
+            {isDark ? 'Light Mode' : 'Dark Mode'}
+          </Button>
           <Button
             fullWidth
             variant="outlined"
@@ -184,7 +227,7 @@ export default function Layout({ children }: LayoutProps) {
               color: '#DC2626',
               borderColor: '#FCA5A5',
               '&:hover': {
-                bgcolor: '#FEE2E2',
+                bgcolor: isDark ? 'rgba(220, 38, 38, 0.15)' : '#FEE2E2',
                 borderColor: '#DC2626',
               },
             }}
@@ -197,15 +240,15 @@ export default function Layout({ children }: LayoutProps) {
   )
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: '#F8FAFC' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: colors.background.default }}>
       <AppBar 
         position="sticky"
         elevation={0}
         sx={{
-          backgroundColor: 'rgba(255, 255, 255, 0.85)',
+          backgroundColor: isDark ? 'rgba(30, 41, 59, 0.85)' : 'rgba(255, 255, 255, 0.85)',
           backdropFilter: 'blur(16px) saturate(180%)',
           WebkitBackdropFilter: 'blur(16px) saturate(180%)',
-          borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
+          borderBottom: `1px solid ${colors.border}`,
         }}
       >
         <Toolbar
@@ -225,8 +268,8 @@ export default function Layout({ children }: LayoutProps) {
                 sx={{ 
                   position: 'absolute',
                   left: 8,
-                  color: '#475569',
-                  '&:hover': { backgroundColor: 'rgba(71, 85, 105, 0.08)' }
+                  color: colors.icon,
+                  '&:hover': { backgroundColor: colors.hover }
                 }}
               >
                 <Menu />
@@ -248,12 +291,12 @@ export default function Layout({ children }: LayoutProps) {
                   width: 28, 
                   height: 28, 
                   borderRadius: 1.5, 
-                  bgcolor: 'rgba(71, 85, 105, 0.1)', 
+                  bgcolor: colors.iconBg, 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center' 
                 }}>
-                  <Storage sx={{ fontSize: 18, color: '#475569' }} />
+                  <Storage sx={{ fontSize: 18, color: colors.icon }} />
                 </Box>
                 <Typography 
                   variant="h6" 
@@ -261,7 +304,7 @@ export default function Layout({ children }: LayoutProps) {
                   sx={{ 
                     fontWeight: 600,
                     fontSize: '1rem',
-                    color: '#1E293B',
+                    color: colors.text.primary,
                   }}
                 >
                   CCG-3 Program
@@ -289,12 +332,12 @@ export default function Layout({ children }: LayoutProps) {
                   width: 32, 
                   height: 32, 
                   borderRadius: 2, 
-                  bgcolor: 'rgba(71, 85, 105, 0.1)', 
+                  bgcolor: colors.iconBg, 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center' 
                 }}>
-                  <Storage sx={{ fontSize: 20, color: '#475569' }} />
+                  <Storage sx={{ fontSize: 20, color: colors.icon }} />
                 </Box>
                 <Typography 
                   variant="h6" 
@@ -302,7 +345,7 @@ export default function Layout({ children }: LayoutProps) {
                   sx={{ 
                     fontWeight: 600,
                     fontSize: '1rem',
-                    color: '#1E293B',
+                    color: colors.text.primary,
                   }}
                 >
                   CCG-3 Program
@@ -320,11 +363,11 @@ export default function Layout({ children }: LayoutProps) {
                       px: 1.5,
                       borderRadius: 2,
                       fontSize: '0.8125rem',
-                      color: location.pathname === item.path ? '#475569' : '#475569',
-                      backgroundColor: location.pathname === item.path ? 'rgba(71, 85, 105, 0.1)' : 'transparent',
+                      color: colors.icon,
+                      backgroundColor: location.pathname === item.path ? colors.selected : 'transparent',
                       fontWeight: location.pathname === item.path ? 600 : 500,
                       '&:hover': {
-                        backgroundColor: location.pathname === item.path ? 'rgba(71, 85, 105, 0.15)' : '#F1F5F9',
+                        backgroundColor: location.pathname === item.path ? colors.selectedHover : colors.hover,
                       },
                       transition: 'all 0.15s ease',
                       '& .MuiButton-startIcon': {
@@ -345,10 +388,10 @@ export default function Layout({ children }: LayoutProps) {
                     endIcon={<KeyboardArrowDown />}
                     sx={{
                       textTransform: 'none',
-                      color: '#475569',
+                      color: colors.icon,
                       borderRadius: 2,
                       px: 1.5,
-                      '&:hover': { bgcolor: '#F1F5F9' },
+                      '&:hover': { bgcolor: colors.hover },
                     }}
                   >
                     <Box sx={{
@@ -387,13 +430,15 @@ export default function Layout({ children }: LayoutProps) {
             mt: 1,
             minWidth: 200,
             borderRadius: 2,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            bgcolor: colors.background.paper,
+            border: `1px solid ${colors.border}`,
           }
         }}
       >
         <Box sx={{ px: 2, py: 1.5 }}>
-          <Typography sx={{ fontWeight: 600, color: '#1E293B' }}>{user?.full_name}</Typography>
-          <Typography sx={{ fontSize: '0.75rem', color: '#64748B' }}>{user?.email}</Typography>
+          <Typography sx={{ fontWeight: 600, color: colors.text.primary }}>{user?.full_name}</Typography>
+          <Typography sx={{ fontSize: '0.75rem', color: colors.text.secondary }}>{user?.email}</Typography>
           <Chip
             label={isAdmin ? 'Admin' : 'User'}
             size="small"
@@ -406,7 +451,22 @@ export default function Layout({ children }: LayoutProps) {
             }}
           />
         </Box>
-        <Divider />
+        <Divider sx={{ borderColor: colors.border }} />
+        {/* Dark Mode Toggle */}
+        <MenuItem onClick={handleToggleTheme} sx={{ py: 1.5, color: colors.text.primary }}>
+          {isDark ? (
+            <>
+              <LightMode sx={{ mr: 1.5, fontSize: 18, color: '#F59E0B' }} />
+              Light Mode
+            </>
+          ) : (
+            <>
+              <DarkMode sx={{ mr: 1.5, fontSize: 18, color: '#6366F1' }} />
+              Dark Mode
+            </>
+          )}
+        </MenuItem>
+        <Divider sx={{ borderColor: colors.border }} />
         <MenuItem onClick={handleLogout} sx={{ color: '#DC2626', py: 1.5 }}>
           <Logout sx={{ mr: 1.5, fontSize: 18 }} />
           Sign Out
@@ -427,6 +487,7 @@ export default function Layout({ children }: LayoutProps) {
               width: 280,
               boxShadow: '0px 25px 50px -12px rgba(15, 23, 42, 0.25)',
               border: 'none',
+              bgcolor: colors.background.paper,
             },
           }}
         >
@@ -449,4 +510,3 @@ export default function Layout({ children }: LayoutProps) {
     </Box>
   )
 }
-

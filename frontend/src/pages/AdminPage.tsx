@@ -798,8 +798,8 @@ export default function AdminPage() {
   )
 
   const renderCustomersTable = () => (
-    <TableContainer component={Paper}>
-      <Table size="small">
+    <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <Table size="small" sx={{ minWidth: 700 }}>
         <TableHead>
           <TableRow>
             <TableCell>ID</TableCell>
@@ -848,8 +848,8 @@ export default function AdminPage() {
   )
 
   const renderContractsTable = () => (
-    <TableContainer component={Paper}>
-      <Table size="small">
+    <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <Table size="small" sx={{ minWidth: 1000 }}>
         <TableHead>
           <TableRow>
             <TableCell>ID</TableCell>
@@ -931,8 +931,8 @@ export default function AdminPage() {
   )
 
   const renderQuarterlyPlansTable = () => (
-    <TableContainer component={Paper}>
-      <Table size="small">
+    <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <Table size="small" sx={{ minWidth: 900 }}>
         <TableHead>
           <TableRow>
             <TableCell>ID</TableCell>
@@ -1004,8 +1004,8 @@ export default function AdminPage() {
   )
 
   const renderMonthlyPlansTable = () => (
-    <TableContainer component={Paper}>
-      <Table size="small">
+    <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <Table size="small" sx={{ minWidth: 900 }}>
         <TableHead>
           <TableRow>
             <TableCell>ID</TableCell>
@@ -1076,8 +1076,8 @@ export default function AdminPage() {
   )
 
   const renderCargosTable = () => (
-    <TableContainer component={Paper}>
-      <Table size="small">
+    <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <Table size="small" sx={{ minWidth: 900 }}>
         <TableHead>
           <TableRow>
             <TableCell>ID</TableCell>
@@ -1162,8 +1162,8 @@ export default function AdminPage() {
         </Typography>
       </Box>
       
-      <TableContainer component={Paper}>
-        <Table size="small">
+      <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <Table size="small" sx={{ minWidth: 1100 }}>
           <TableHead>
             <TableRow>
               <TableCell>Time</TableCell>
@@ -1285,8 +1285,8 @@ export default function AdminPage() {
           No data integrity issues detected. All records are properly linked.
         </Alert>
       ) : (
-        <TableContainer component={Paper}>
-          <Table size="small">
+        <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <Table size="small" sx={{ minWidth: 700 }}>
             <TableHead>
               <TableRow>
                 <TableCell></TableCell>
@@ -1362,8 +1362,8 @@ export default function AdminPage() {
         </Typography>
       </Alert>
 
-      <TableContainer component={Paper}>
-        <Table size="small">
+      <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <Table size="small" sx={{ minWidth: 700 }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
               <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
@@ -1545,8 +1545,8 @@ export default function AdminPage() {
         </Typography>
       </Alert>
 
-      <TableContainer component={Paper}>
-        <Table size="small">
+      <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <Table size="small" sx={{ minWidth: 800 }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
               <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
@@ -1739,8 +1739,8 @@ export default function AdminPage() {
         </Typography>
       </Alert>
 
-      <TableContainer component={Paper}>
-        <Table size="small">
+      <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <Table size="small" sx={{ minWidth: 700 }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
               <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
