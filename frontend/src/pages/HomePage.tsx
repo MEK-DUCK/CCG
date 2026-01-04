@@ -1816,13 +1816,37 @@ export default function HomePage() {
     const originalStatus = cargo.status
     const originalCargo = { ...cargo }
     
+    // Get all load ports for this cargo
+    const loadPorts = parseLoadPorts(cargo.load_ports)
+    
+    // Update existing port operations or create new ones with Loading status
+    const existingOps = Array.isArray(cargo.port_operations) ? cargo.port_operations : []
+    const loadingPortOps: CargoPortOperation[] = loadPorts.map(port => {
+      const existing = existingOps.find(op => op.port_code === port)
+      if (existing) {
+        return { ...existing, status: 'Loading' as PortOperationStatus }
+      }
+      // Create a minimal port op for optimistic UI (will be replaced by API response)
+      return {
+        id: 0,
+        cargo_id: cargo.id,
+        port_code: port,
+        status: 'Loading' as PortOperationStatus,
+        created_at: new Date().toISOString()
+      } as CargoPortOperation
+    })
+    
     // Optimistic update
-    const updatedCargo = { ...cargo, status: 'Loading' as CargoStatus }
+    const updatedCargo: Cargo = { 
+      ...cargo, 
+      status: 'Loading' as CargoStatus,
+      port_operations: loadingPortOps
+    }
     
     // Update Port Movement
     setPortMovement(prev => prev.map(c => 
       c.id === cargo.id ? updatedCargo : 
-      (cargo.combi_group_id && c.combi_group_id === cargo.combi_group_id) ? { ...c, status: 'Loading' as CargoStatus } : c
+      (cargo.combi_group_id && c.combi_group_id === cargo.combi_group_id) ? { ...c, status: 'Loading' as CargoStatus, port_operations: loadingPortOps } : c
     ))
     
     // Add to Active Loadings
@@ -1833,20 +1857,34 @@ export default function HomePage() {
       // For combi cargos, add all in group
       if (cargo.combi_group_id) {
         const combiCargos = portMovement.filter(c => c.combi_group_id === cargo.combi_group_id)
-        return [...prev, ...combiCargos.map(c => ({ ...c, status: 'Loading' as CargoStatus }))]
+        return [...prev, ...combiCargos.map(c => ({ ...c, status: 'Loading' as CargoStatus, port_operations: loadingPortOps }))]
       }
       return [...prev, updatedCargo]
     })
     
     try {
-      // API call
-      await cargoAPI.update(cargo.id, { status: 'Loading', version: cargo.version })
+      // Get all cargo IDs to update (including combi group)
+      const allCargoIds = cargo.combi_group_id
+        ? [cargo.id, ...portMovement.filter(c => c.combi_group_id === cargo.combi_group_id && c.id !== cargo.id).map(c => c.id)]
+        : [cargo.id]
       
-      // For combi cargos, update all in group
-      if (cargo.combi_group_id) {
-        const combiCargos = portMovement.filter(c => c.combi_group_id === cargo.combi_group_id && c.id !== cargo.id)
-        await Promise.all(combiCargos.map(c => cargoAPI.update(c.id, { status: 'Loading', version: c.version })))
+      // Update port operations for ALL ports to "Loading" for all cargos
+      const portOpPromises: Promise<any>[] = []
+      for (const cargoId of allCargoIds) {
+        for (const port of loadPorts) {
+          portOpPromises.push(
+            cargoAPI.upsertPortOperation(cargoId, port, { status: 'Loading' as PortOperationStatus })
+          )
+        }
       }
+      await Promise.all(portOpPromises)
+      
+      // Update cargo status for all cargos
+      const cargoUpdatePromises = allCargoIds.map(id => {
+        const c = portMovement.find(cargo => cargo.id === id)
+        return cargoAPI.update(id, { status: 'Loading', version: c?.version })
+      })
+      await Promise.all(cargoUpdatePromises)
       
       setQuickActionSnackbar({
         open: true,
@@ -1879,8 +1917,40 @@ export default function HomePage() {
     const originalCargo = { ...cargo }
     const isCIF = cargo.contract_type === 'CIF'
     
-    // Optimistic update
-    const updatedCargo = { ...cargo, status: 'Completed Loading' as CargoStatus }
+    // Get all load ports for this cargo
+    const loadPorts = parseLoadPorts(cargo.load_ports)
+    if (loadPorts.length === 0) {
+      setQuickActionSnackbar({
+        open: true,
+        message: 'No load ports found for this cargo',
+        severity: 'error'
+      })
+      return
+    }
+    
+    // Update existing port operations or create new ones with Completed Loading status
+    const existingOps = Array.isArray(cargo.port_operations) ? cargo.port_operations : []
+    const updatedPortOps: CargoPortOperation[] = loadPorts.map(port => {
+      const existing = existingOps.find(op => op.port_code === port)
+      if (existing) {
+        return { ...existing, status: 'Completed Loading' as PortOperationStatus }
+      }
+      // Create a minimal port op for optimistic UI (will be replaced by API response)
+      return {
+        id: 0,
+        cargo_id: cargo.id,
+        port_code: port,
+        status: 'Completed Loading' as PortOperationStatus,
+        created_at: new Date().toISOString()
+      } as CargoPortOperation
+    })
+    
+    // Optimistic update - cargo with updated port ops
+    const updatedCargo: Cargo = { 
+      ...cargo, 
+      status: 'Completed Loading' as CargoStatus,
+      port_operations: updatedPortOps
+    }
     
     // Remove from Active Loadings
     setActiveLoadings(prev => {
@@ -1893,7 +1963,7 @@ export default function HomePage() {
     // Update Port Movement
     setPortMovement(prev => prev.map(c => 
       c.id === cargo.id ? updatedCargo : 
-      (cargo.combi_group_id && c.combi_group_id === cargo.combi_group_id) ? { ...c, status: 'Completed Loading' as CargoStatus } : c
+      (cargo.combi_group_id && c.combi_group_id === cargo.combi_group_id) ? { ...c, status: 'Completed Loading' as CargoStatus, port_operations: updatedPortOps } : c
     ))
     
     // Add to Completed Cargos (FOB) or In-Road CIF (CIF)
@@ -1901,7 +1971,7 @@ export default function HomePage() {
       setInRoadCIF(prev => {
         if (cargo.combi_group_id) {
           const combiCargos = portMovement.filter(c => c.combi_group_id === cargo.combi_group_id)
-          return [...prev, ...combiCargos.map(c => ({ ...c, status: 'Completed Loading' as CargoStatus }))]
+          return [...prev, ...combiCargos.map(c => ({ ...c, status: 'Completed Loading' as CargoStatus, port_operations: updatedPortOps }))]
         }
         return [...prev, updatedCargo]
       })
@@ -1909,21 +1979,35 @@ export default function HomePage() {
       setCompletedCargos(prev => {
         if (cargo.combi_group_id) {
           const combiCargos = portMovement.filter(c => c.combi_group_id === cargo.combi_group_id)
-          return [...prev, ...combiCargos.map(c => ({ ...c, status: 'Completed Loading' as CargoStatus }))]
+          return [...prev, ...combiCargos.map(c => ({ ...c, status: 'Completed Loading' as CargoStatus, port_operations: updatedPortOps }))]
         }
         return [...prev, updatedCargo]
       })
     }
     
     try {
-      // API call
-      await cargoAPI.update(cargo.id, { status: 'Completed Loading', version: cargo.version })
+      // Get all cargo IDs to update (including combi group)
+      const allCargoIds = cargo.combi_group_id
+        ? [cargo.id, ...portMovement.filter(c => c.combi_group_id === cargo.combi_group_id && c.id !== cargo.id).map(c => c.id)]
+        : [cargo.id]
       
-      // For combi cargos, update all in group
-      if (cargo.combi_group_id) {
-        const combiCargos = portMovement.filter(c => c.combi_group_id === cargo.combi_group_id && c.id !== cargo.id)
-        await Promise.all(combiCargos.map(c => cargoAPI.update(c.id, { status: 'Completed Loading', version: c.version })))
+      // Update port operations for ALL ports to "Completed Loading" for all cargos
+      const portOpPromises: Promise<any>[] = []
+      for (const cargoId of allCargoIds) {
+        for (const port of loadPorts) {
+          portOpPromises.push(
+            cargoAPI.upsertPortOperation(cargoId, port, { status: 'Completed Loading' as PortOperationStatus })
+          )
+        }
       }
+      await Promise.all(portOpPromises)
+      
+      // Update cargo status for all cargos
+      const cargoUpdatePromises = allCargoIds.map(id => {
+        const c = [...portMovement, ...activeLoadings].find(cargo => cargo.id === id)
+        return cargoAPI.update(id, { status: 'Completed Loading', version: c?.version })
+      })
+      await Promise.all(cargoUpdatePromises)
       
       setQuickActionSnackbar({
         open: true,
