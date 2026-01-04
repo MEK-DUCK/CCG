@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import SQLAlchemyError
-from typing import List, Dict
+from typing import List, Dict, Optional
 from calendar import month_name
 import logging
 import json
@@ -18,10 +18,9 @@ from app.errors import (
     plan_has_cargos,
     invalid_move_direction,
     to_http_exception,
-    ValidationError,
-    ErrorCode,
 )
-from app.config import MIN_YEAR, MAX_YEAR
+from app.config import MIN_YEAR, MAX_YEAR, get_fiscal_quarter_field
+from app.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -354,7 +353,12 @@ def read_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{plan_id}", response_model=schemas.MonthlyPlan)
-def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Session = Depends(get_db)):
+async def update_monthly_plan(
+    plan_id: int, 
+    plan: schemas.MonthlyPlanUpdate, 
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user)
+):
     """
     Update a monthly plan with optimistic locking.
     
@@ -524,9 +528,10 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
     if changed_fields:
         from app.version_history import version_service
         change_summary = f"Updated: {', '.join(changed_fields)}"
+        user_initials = current_user.initials if current_user else "SYS"
         version_service.save_version(
             db, "monthly_plan", db_plan.id, db_plan,
-            user_initials="SYS",
+            user_initials=user_initials,
             change_summary=change_summary
         )
     
@@ -537,7 +542,12 @@ def update_monthly_plan(plan_id: int, plan: schemas.MonthlyPlanUpdate, db: Sessi
 
 
 @router.put("/{plan_id}/move", response_model=schemas.MonthlyPlan)
-def move_monthly_plan(plan_id: int, move_request: schemas.MonthlyPlanMoveRequest, db: Session = Depends(get_db)):
+async def move_monthly_plan(
+    plan_id: int, 
+    move_request: schemas.MonthlyPlanMoveRequest, 
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user)
+):
     """
     Move a monthly plan to a different month (defer or advance).
     If the plan has cargos, they will be moved along with it (with version history).
@@ -545,7 +555,13 @@ def move_monthly_plan(plan_id: int, move_request: schemas.MonthlyPlanMoveRequest
     """
     from app.version_history import version_service
     
-    db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
+    # Get user initials for version history
+    user_initials = current_user.initials if current_user else "SYS"
+    
+    # Lock the row to prevent concurrent modifications
+    db_plan = db.query(models.MonthlyPlan).filter(
+        models.MonthlyPlan.id == plan_id
+    ).with_for_update().first()
     if db_plan is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
     
@@ -577,7 +593,7 @@ def move_monthly_plan(plan_id: int, move_request: schemas.MonthlyPlanMoveRequest
     # Save version history for the monthly plan before moving
     version_service.save_version(
         db, "monthly_plan", db_plan.id, db_plan,
-        user_initials="SYS",
+        user_initials=user_initials,
         change_summary=f"{action_verb} from {old_month_name} {old_year} to {new_month_name} {move_request.target_year}"
     )
     
@@ -589,7 +605,7 @@ def move_monthly_plan(plan_id: int, move_request: schemas.MonthlyPlanMoveRequest
         # Save version history for each cargo before the move
         version_service.save_version(
             db, "cargo", cargo.id, cargo,
-            user_initials="SYS",
+            user_initials=user_initials,
             change_summary=f"{action_verb} with monthly plan from {old_month_name} {old_year} to {new_month_name} {move_request.target_year}"
         )
         
@@ -821,24 +837,10 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
         models.Customer.id == contract.customer_id
     ).first()
     
-    # Determine which quarter this month belongs to
-    month = db_plan.month
-    if month in [1, 2, 3]:
-        quarter = 'Q1'
-        quarter_field = 'q1_quantity'
-        topup_field = 'q1_topup'
-    elif month in [4, 5, 6]:
-        quarter = 'Q2'
-        quarter_field = 'q2_quantity'
-        topup_field = 'q2_topup'
-    elif month in [7, 8, 9]:
-        quarter = 'Q3'
-        quarter_field = 'q3_quantity'
-        topup_field = 'q3_topup'
-    else:
-        quarter = 'Q4'
-        quarter_field = 'q4_quantity'
-        topup_field = 'q4_topup'
+    # Determine which fiscal quarter this month belongs to
+    # Use contract's fiscal_start_month (defaults to 1 = January)
+    fiscal_start_month = contract.fiscal_start_month or 1
+    quarter, quarter_field, topup_field = get_fiscal_quarter_field(db_plan.month, fiscal_start_month)
     
     # ========================
     # 1. UPDATE MONTHLY PLAN

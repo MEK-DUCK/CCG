@@ -236,7 +236,7 @@ def _recompute_cargo_status_from_port_ops(db: Session, cargo: models.Cargo):
         if not statuses:
             return
 
-        if all(s == PortOperationStatus.COMPLETED.value for s in statuses):
+        if all(s == PortOperationStatus.COMPLETED_LOADING.value for s in statuses):
             cargo.status = CargoStatus.COMPLETED_LOADING
         elif any(s == PortOperationStatus.LOADING.value for s in statuses):
             cargo.status = CargoStatus.LOADING
@@ -548,7 +548,7 @@ def read_active_loadings(db: Session = Depends(get_db)):
         query = db.query(models.Cargo).join(models.CargoPortOperation).filter(
             models.CargoPortOperation.status.in_([
                 PortOperationStatus.LOADING.value,
-                PortOperationStatus.COMPLETED.value
+                PortOperationStatus.COMPLETED_LOADING.value
             ])
         ).filter(
             # Exclude completed cargos (both Completed Loading and Discharge Complete)
@@ -908,7 +908,7 @@ async def update_cargo(
     try:
         if 'status' in update_data and db_cargo.status == CargoStatus.PLANNED:
             for op in getattr(db_cargo, "port_operations", []) or []:
-                if op.port_code in SUPPORTED_LOAD_PORTS and op.status in [PortOperationStatus.LOADING.value, PortOperationStatus.COMPLETED.value]:
+                if op.port_code in SUPPORTED_LOAD_PORTS and op.status in [PortOperationStatus.LOADING.value, PortOperationStatus.COMPLETED_LOADING.value]:
                     op.status = PortOperationStatus.PLANNED.value
     except Exception:
         pass
@@ -1059,7 +1059,7 @@ def sync_combi_cargo_group(
                 ops = getattr(cargo, "port_operations", None)
                 if ops:
                     for op in ops:
-                        if op.status in [PortOperationStatus.LOADING.value, PortOperationStatus.COMPLETED.value]:
+                        if op.status in [PortOperationStatus.LOADING.value, PortOperationStatus.COMPLETED_LOADING.value]:
                             op.status = PortOperationStatus.PLANNED.value
             
             # If status changed to Loading, update all port operations to Loading
@@ -1076,7 +1076,7 @@ def sync_combi_cargo_group(
                 if ops:
                     for op in ops:
                         if op.status in [PortOperationStatus.PLANNED.value, PortOperationStatus.LOADING.value]:
-                            op.status = PortOperationStatus.COMPLETED.value
+                            op.status = PortOperationStatus.COMPLETED_LOADING.value
             
             # Increment version for optimistic locking
             cargo.version = (cargo.version or 1) + 1

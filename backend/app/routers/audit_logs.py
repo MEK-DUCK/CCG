@@ -2,12 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional, Union, Dict, Tuple
 from datetime import datetime, date, timedelta, timezone, time
+import json
+import logging
+import traceback
+
 from app.database import get_db
 from app import models, schemas
 from sqlalchemy import desc, union_all
 from sqlalchemy.sql import select
 from sqlalchemy import func
-import json
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -498,7 +503,7 @@ def get_weekly_quantity_comparison(
                                 remark_new = f"{contract_num}: {qty_str} KT {action_verb} from {from_month_str}"
                                 move_remarks.setdefault(key_new, []).append(remark_new)
                 except Exception as e:
-                    print(f"[WARN] Failed to parse DEFER/ADVANCE log {log.id}: {e}")
+                    logger.warning(f"Failed to parse DEFER/ADVANCE log {log.id}: {e}")
                 continue  # Skip normal delta processing for DEFER/ADVANCE
             
             m = int(log.month) if log.month else None
@@ -602,6 +607,6 @@ def get_weekly_quantity_comparison(
         )
     except Exception as e:
         import traceback
-        print(f"[ERROR] weekly-quantity-comparison failed: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"weekly-quantity-comparison failed: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error building weekly quantity comparison: {str(e)}")
 

@@ -359,12 +359,16 @@ class MonthlyPlanBase(BaseModel):
     tng_remarks: Optional[str] = Field(None, max_length=1000)  # Notes about the TNG
 
 class MonthlyPlanCreate(MonthlyPlanBase):
-    quarterly_plan_id: Optional[int] = None  # Optional for SPOT contracts
-    contract_id: Optional[int] = None  # Direct link for SPOT contracts
+    quarterly_plan_id: Optional[int] = None  # Optional - only for TERM contracts
+    contract_id: Optional[int] = None  # Required for SPOT/RANGE, set from quarterly_plan for TERM
     
     @model_validator(mode="after")
     def _validate_plan_link(self):
-        """Either quarterly_plan_id OR contract_id must be provided."""
+        """Either quarterly_plan_id OR contract_id must be provided.
+        
+        For TERM contracts: quarterly_plan_id is provided, contract_id is set by backend
+        For SPOT/RANGE contracts: contract_id is provided directly
+        """
         if self.quarterly_plan_id is None and self.contract_id is None:
             raise ValueError("Either quarterly_plan_id or contract_id must be provided")
         return self
@@ -403,8 +407,8 @@ class MonthlyPlanUpdate(BaseModel):
 
 class MonthlyPlan(MonthlyPlanBase):
     id: int
-    quarterly_plan_id: Optional[int] = None  # Optional for SPOT contracts
-    contract_id: Optional[int] = None  # Direct link for SPOT contracts
+    quarterly_plan_id: Optional[int] = None  # Optional - only set for TERM contracts
+    contract_id: int  # Required - ALL monthly plans must have a contract
     version: int = 1  # Optimistic locking version
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -514,14 +518,14 @@ class QuarterlyPlanEmbedded(BaseModel):
 class MonthlyPlanEnriched(MonthlyPlanBase):
     """Monthly plan with embedded quarterly plan and contract info for bulk queries"""
     id: int
-    quarterly_plan_id: Optional[int] = None  # Optional for SPOT contracts
-    contract_id: Optional[int] = None  # Direct link for SPOT contracts
+    quarterly_plan_id: Optional[int] = None  # Optional - only set for TERM contracts
+    contract_id: int  # Required - ALL monthly plans must have a contract
     product_name: Optional[str] = None  # Product name for SPOT contracts
     version: int = 1  # Optimistic locking version
     created_at: datetime
     updated_at: Optional[datetime] = None
     quarterly_plan: Optional[QuarterlyPlanEmbedded] = None
-    contract: Optional[ContractEmbedded] = None  # Direct contract for SPOT contracts
+    contract: Optional[ContractEmbedded] = None  # Embedded contract info
     
     class Config:
         from_attributes = True

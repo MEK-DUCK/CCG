@@ -56,7 +56,7 @@ import {
 import client from '../api/client'
 import UserManagement from '../components/UserManagement'
 import { RecycleBin } from '../components/RecycleBin'
-import { getContractTypeColor, getProductColor, ADMIN_COLORS } from '../utils/chipColors'
+import { getContractTypeColor } from '../utils/chipColors'
 
 // Types
 interface DatabaseStats {

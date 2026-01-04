@@ -28,7 +28,7 @@ import {
 import { Visibility, Search } from '@mui/icons-material'
 import client, { contractAPI, customerAPI } from '../api/client'
 import type { Contract, Customer } from '../types'
-import { getContractTypeColor, getPaymentColor } from '../utils/chipColors'
+import { getContractTypeColor } from '../utils/chipColors'
 
 // Analytics types
 interface AnalyticsData {

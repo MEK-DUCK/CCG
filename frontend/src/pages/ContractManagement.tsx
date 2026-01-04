@@ -37,7 +37,7 @@ import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-ma
 import client, { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity, AuthorityAmendment } from '../types'
 import { CIF_DESTINATIONS } from '../utils/voyageDuration'
-import { getContractTypeColor, getPaymentColor, PRODUCT_COLORS } from '../utils/chipColors'
+import { getContractTypeColor, getPaymentColor } from '../utils/chipColors'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
 import { useConflictHandler } from '../components/Presence'
@@ -293,8 +293,8 @@ export default function ContractManagement() {
       ...formData,
       products: [...formData.products, { 
         name: '', 
-        total_quantity: 0, 
-        optional_quantity: 0,
+        total_quantity: undefined,  // Start empty so user can type freely
+        optional_quantity: undefined,
         min_quantity: undefined,
         max_quantity: undefined,
         year_quantities: yearQuantities.length > 0 ? yearQuantities : undefined
@@ -357,7 +357,7 @@ export default function ContractManagement() {
     })
   }
 
-  const handleProductChange = (index: number, field: keyof ContractProduct, value: string | number) => {
+  const handleProductChange = (index: number, field: keyof ContractProduct, value: string | number | undefined) => {
     const updatedProducts = [...formData.products]
     updatedProducts[index] = { ...updatedProducts[index], [field]: value }
     setFormData({ ...formData, products: updatedProducts })
@@ -1526,32 +1526,35 @@ export default function ContractManagement() {
                               <TextField
                                 label="Minimum Quantity (KT)"
                                 type="number"
-                                value={product.min_quantity || 0}
-                                onChange={(e) => handleProductChange(index, 'min_quantity', parseFloat(e.target.value) || 0)}
+                                value={product.min_quantity ?? ''}
+                                onChange={(e) => handleProductChange(index, 'min_quantity', e.target.value === '' ? undefined : parseFloat(e.target.value))}
                                 fullWidth
                                 inputProps={{ min: 0, step: 0.01 }}
+                                placeholder="0"
                               />
                             </Grid>
                             <Grid item xs={12} md={2}>
                               <TextField
                                 label="Maximum Quantity (KT)"
                                 type="number"
-                                value={product.max_quantity || 0}
-                                onChange={(e) => handleProductChange(index, 'max_quantity', parseFloat(e.target.value) || 0)}
+                                value={product.max_quantity ?? ''}
+                                onChange={(e) => handleProductChange(index, 'max_quantity', e.target.value === '' ? undefined : parseFloat(e.target.value))}
                                 required
                                 fullWidth
                                 inputProps={{ min: 0, step: 0.01 }}
+                                placeholder="0"
                               />
                             </Grid>
                             <Grid item xs={12} md={2}>
                               <TextField
                                 label="Optional Quantity (KT)"
                                 type="number"
-                                value={product.optional_quantity || 0}
-                                onChange={(e) => handleProductChange(index, 'optional_quantity', parseFloat(e.target.value) || 0)}
+                                value={product.optional_quantity ?? ''}
+                                onChange={(e) => handleProductChange(index, 'optional_quantity', e.target.value === '' ? undefined : parseFloat(e.target.value))}
                                 fullWidth
                                 inputProps={{ min: 0, step: 0.01 }}
                                 helperText="Beyond max"
+                                placeholder="0"
                               />
                             </Grid>
                           </>
@@ -1561,21 +1564,23 @@ export default function ContractManagement() {
                               <TextField
                                 label="Total Quantity (KT)"
                                 type="number"
-                                value={product.total_quantity || 0}
-                                onChange={(e) => handleProductChange(index, 'total_quantity', parseFloat(e.target.value) || 0)}
+                                value={product.total_quantity ?? ''}
+                                onChange={(e) => handleProductChange(index, 'total_quantity', e.target.value === '' ? undefined : parseFloat(e.target.value))}
                                 required
                                 fullWidth
                                 inputProps={{ min: 0, step: 0.01 }}
+                                placeholder="0"
                               />
                             </Grid>
                             <Grid item xs={12} md={3}>
                               <TextField
                                 label="Optional Quantity (KT)"
                                 type="number"
-                                value={product.optional_quantity || 0}
-                                onChange={(e) => handleProductChange(index, 'optional_quantity', parseFloat(e.target.value) || 0)}
+                                value={product.optional_quantity ?? ''}
+                                onChange={(e) => handleProductChange(index, 'optional_quantity', e.target.value === '' ? undefined : parseFloat(e.target.value))}
                                 fullWidth
                                 inputProps={{ min: 0, step: 0.01 }}
+                                placeholder="0"
                               />
                             </Grid>
                           </>
@@ -1643,30 +1648,33 @@ export default function ContractManagement() {
                                       label="Min Qty (KT)"
                                       type="number"
                                       size="small"
-                                      value={yearQty?.min_quantity || 0}
-                                      onChange={(e) => handleYearQuantityChange(index, year, 'min_quantity', parseFloat(e.target.value) || 0)}
+                                      value={yearQty?.min_quantity ?? ''}
+                                      onChange={(e) => handleYearQuantityChange(index, year, 'min_quantity', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                                       fullWidth
                                       inputProps={{ min: 0, step: 0.01 }}
+                                      placeholder="0"
                                       sx={{ mb: 1 }}
                                     />
                                     <TextField
                                       label="Max Qty (KT)"
                                       type="number"
                                       size="small"
-                                      value={yearQty?.max_quantity || 0}
-                                      onChange={(e) => handleYearQuantityChange(index, year, 'max_quantity', parseFloat(e.target.value) || 0)}
+                                      value={yearQty?.max_quantity ?? ''}
+                                      onChange={(e) => handleYearQuantityChange(index, year, 'max_quantity', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                                       fullWidth
                                       inputProps={{ min: 0, step: 0.01 }}
+                                      placeholder="0"
                                       sx={{ mb: 1 }}
                                     />
                                     <TextField
                                       label="Optional (KT)"
                                       type="number"
                                       size="small"
-                                      value={yearQty?.optional_quantity || 0}
-                                      onChange={(e) => handleYearQuantityChange(index, year, 'optional_quantity', parseFloat(e.target.value) || 0)}
+                                      value={yearQty?.optional_quantity ?? ''}
+                                      onChange={(e) => handleYearQuantityChange(index, year, 'optional_quantity', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                                       fullWidth
                                       inputProps={{ min: 0, step: 0.01 }}
+                                      placeholder="0"
                                     />
                                   </>
                                 ) : (
@@ -1675,20 +1683,22 @@ export default function ContractManagement() {
                                       label="Quantity (KT)"
                                       type="number"
                                       size="small"
-                                      value={yearQty?.quantity || 0}
-                                      onChange={(e) => handleYearQuantityChange(index, year, 'quantity', parseFloat(e.target.value) || 0)}
+                                      value={yearQty?.quantity ?? ''}
+                                      onChange={(e) => handleYearQuantityChange(index, year, 'quantity', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                                       fullWidth
                                       inputProps={{ min: 0, step: 0.01 }}
+                                      placeholder="0"
                                       sx={{ mb: 1 }}
                                     />
                                     <TextField
                                       label="Optional (KT)"
                                       type="number"
                                       size="small"
-                                      value={yearQty?.optional_quantity || 0}
-                                      onChange={(e) => handleYearQuantityChange(index, year, 'optional_quantity', parseFloat(e.target.value) || 0)}
+                                      value={yearQty?.optional_quantity ?? ''}
+                                      onChange={(e) => handleYearQuantityChange(index, year, 'optional_quantity', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                                       fullWidth
                                       inputProps={{ min: 0, step: 0.01 }}
+                                      placeholder="0"
                                     />
                                   </>
                                 )}

@@ -59,10 +59,15 @@ LOAD_PORT_INFO: Dict[str, dict] = {
 # =============================================================================
 
 class PortOperationStatus(str, Enum):
-    """Status of loading operations at a specific port."""
+    """Status of loading operations at a specific port.
+    
+    Note: These match the first 3 states of CargoStatus for consistency.
+    Per-port operations only track up to "Completed Loading" - discharge
+    tracking is at the cargo level, not per-port.
+    """
     PLANNED = "Planned"
     LOADING = "Loading"
-    COMPLETED = "Completed Loading"
+    COMPLETED_LOADING = "Completed Loading"  # Renamed from COMPLETED for consistency with CargoStatus
 
 
 PORT_OP_ALLOWED_STATUSES: Set[str] = {s.value for s in PortOperationStatus}
@@ -126,4 +131,67 @@ def get_product_category(product_name: str) -> Optional[ProductCategory]:
 def is_quantity_equal(qty1: float, qty2: float, tolerance: float = QUANTITY_TOLERANCE) -> bool:
     """Compare two quantities with tolerance."""
     return abs(qty1 - qty2) <= tolerance
+
+
+# =============================================================================
+# FISCAL QUARTER UTILITIES
+# =============================================================================
+
+def get_fiscal_quarter(month: int, fiscal_start_month: int = 1) -> int:
+    """
+    Calculate fiscal quarter (1-4) for a given month based on fiscal year start.
+    
+    Args:
+        month: Calendar month (1-12)
+        fiscal_start_month: First month of fiscal year (1-12), default 1 (January)
+        
+    Returns:
+        Fiscal quarter number (1-4)
+        
+    Examples:
+        - fiscal_start_month=1 (Jan): Jan/Feb/Mar=Q1, Apr/May/Jun=Q2, etc.
+        - fiscal_start_month=7 (Jul): Jul/Aug/Sep=Q1, Oct/Nov/Dec=Q2, Jan/Feb/Mar=Q3, Apr/May/Jun=Q4
+    """
+    # Adjust month relative to fiscal year start (0-indexed)
+    adjusted_month = (month - fiscal_start_month) % 12
+    # Calculate quarter (1-4)
+    return (adjusted_month // 3) + 1
+
+
+def get_fiscal_quarter_field(month: int, fiscal_start_month: int = 1) -> tuple:
+    """
+    Get the quarter label and database field names for a given month.
+    
+    Args:
+        month: Calendar month (1-12)
+        fiscal_start_month: First month of fiscal year (1-12)
+        
+    Returns:
+        Tuple of (quarter_label, quantity_field, topup_field)
+        e.g., ('Q1', 'q1_quantity', 'q1_topup')
+    """
+    quarter = get_fiscal_quarter(month, fiscal_start_month)
+    return (f'Q{quarter}', f'q{quarter}_quantity', f'q{quarter}_topup')
+
+
+def get_fiscal_quarter_months(quarter: int, fiscal_start_month: int = 1) -> List[int]:
+    """
+    Get the calendar months (1-12) that belong to a fiscal quarter.
+    
+    Args:
+        quarter: Fiscal quarter (1-4)
+        fiscal_start_month: First month of fiscal year (1-12)
+        
+    Returns:
+        List of 3 calendar months belonging to this quarter
+        
+    Examples:
+        - quarter=1, fiscal_start_month=1: [1, 2, 3] (Jan, Feb, Mar)
+        - quarter=1, fiscal_start_month=7: [7, 8, 9] (Jul, Aug, Sep)
+        - quarter=3, fiscal_start_month=7: [1, 2, 3] (Jan, Feb, Mar)
+    """
+    # First month of the requested quarter
+    first_month_of_quarter = ((quarter - 1) * 3 + fiscal_start_month - 1) % 12 + 1
+    # Return 3 consecutive months (wrapping around December)
+    return [((first_month_of_quarter - 1 + i) % 12) + 1 for i in range(3)]
 

@@ -114,9 +114,9 @@ export interface MonthlyPlan {
   delivery_window_remark?: string
   combi_group_id?: string  // UUID to link combi monthly plans (multiple products, same vessel/laycan)
   product_name?: string  // Product name for SPOT contracts
-  quarterly_plan_id?: number  // Optional for SPOT contracts
-  contract_id?: number  // Direct link for SPOT contracts
-  contract?: Contract  // Direct contract object for SPOT contracts (from bulk endpoint)
+  quarterly_plan_id?: number  // Optional - only set for TERM contracts
+  contract_id: number  // Required - ALL monthly plans must have a contract
+  contract?: Contract  // Embedded contract object (from bulk endpoint)
   // Tonnage Memo (TNG) tracking for CIF contracts
   tng_issued?: boolean  // Whether TNG has been issued
   tng_issued_date?: string  // Date TNG was issued

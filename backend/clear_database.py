@@ -11,11 +11,20 @@ from app.models import (
     CargoAuditLog,
     MonthlyPlanAuditLog,
     QuarterlyPlanAuditLog,
+    ContractAuditLog,
+    GeneralAuditLog,
+    EntityVersion,
+    DeletedEntity,
+    CargoPortOperation,
     Cargo,
     MonthlyPlan,
     QuarterlyPlan,
     Contract,
     Customer,
+    Product,
+    LoadPort,
+    Inspector,
+    User,
     Base
 )
 
@@ -33,14 +42,29 @@ def clear_database():
             print("📊 Detected PostgreSQL database")
             # Use TRUNCATE CASCADE for PostgreSQL (faster and handles foreign keys)
             tables = [
+                # Audit logs first
                 "cargo_audit_logs",
                 "monthly_plan_audit_logs",
                 "quarterly_plan_audit_logs",
+                "contract_audit_logs",
+                "general_audit_logs",
+                # Version history
+                "entity_versions",
+                "deleted_entities",
+                # Port operations (FK to cargos)
+                "cargo_port_operations",
+                # Main entities in dependency order
                 "cargos",
                 "monthly_plans",
                 "quarterly_plans",
                 "contracts",
-                "customers"
+                "customers",
+                # Reference data (usually keep these, but include for completeness)
+                "products",
+                "load_ports",
+                "inspectors",
+                # Users (usually keep admin, but include for completeness)
+                # "users"  # Commented out - don't delete users by default
             ]
             
             # Disable foreign key checks temporarily
@@ -59,6 +83,7 @@ def clear_database():
         else:
             print("📊 Detected SQLite database")
             # For SQLite, delete in order respecting foreign keys
+            
             # Delete audit logs first
             db.query(CargoAuditLog).delete()
             print("  ✓ Cleared cargo_audit_logs")
@@ -69,11 +94,28 @@ def clear_database():
             db.query(QuarterlyPlanAuditLog).delete()
             print("  ✓ Cleared quarterly_plan_audit_logs")
             
+            db.query(ContractAuditLog).delete()
+            print("  ✓ Cleared contract_audit_logs")
+            
+            db.query(GeneralAuditLog).delete()
+            print("  ✓ Cleared general_audit_logs")
+            
+            # Delete version history
+            db.query(EntityVersion).delete()
+            print("  ✓ Cleared entity_versions")
+            
+            db.query(DeletedEntity).delete()
+            print("  ✓ Cleared deleted_entities")
+            
+            # Delete port operations (has foreign keys to cargos)
+            db.query(CargoPortOperation).delete()
+            print("  ✓ Cleared cargo_port_operations")
+            
             # Delete cargos (has foreign keys to monthly_plans)
             db.query(Cargo).delete()
             print("  ✓ Cleared cargos")
             
-            # Delete monthly plans (has foreign keys to quarterly_plans)
+            # Delete monthly plans (has foreign keys to quarterly_plans and contracts)
             db.query(MonthlyPlan).delete()
             print("  ✓ Cleared monthly_plans")
             
@@ -88,6 +130,21 @@ def clear_database():
             # Delete customers (no dependencies)
             db.query(Customer).delete()
             print("  ✓ Cleared customers")
+            
+            # Delete reference data (optional - usually keep these)
+            db.query(Product).delete()
+            print("  ✓ Cleared products")
+            
+            db.query(LoadPort).delete()
+            print("  ✓ Cleared load_ports")
+            
+            db.query(Inspector).delete()
+            print("  ✓ Cleared inspectors")
+            
+            # Note: Users are NOT deleted by default to preserve admin account
+            # Uncomment below to also clear users:
+            # db.query(User).delete()
+            # print("  ✓ Cleared users")
         
         # Commit all changes
         db.commit()

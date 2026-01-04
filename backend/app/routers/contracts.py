@@ -207,7 +207,7 @@ def read_contracts(
             try:
                 products = json.loads(contract.products) if contract.products else []
             except json.JSONDecodeError:
-                print(f"[WARNING] Failed to parse products JSON for contract {contract.id}")
+                logger.warning(f"Failed to parse products JSON for contract {contract.id}")
                 products = []
             
             # Parse authority topups
@@ -279,8 +279,8 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
             try:
                 products_list = json.loads(contract.products)
             except json.JSONDecodeError as e:
-                print(f"[ERROR] Failed to parse products JSON for contract {contract_id}: {e}")
-                print(f"[ERROR] Products value: {contract.products}")
+                logger.error(f"Failed to parse products JSON for contract {contract_id}: {e}")
+                logger.error(f"Products value: {contract.products}")
                 products_list = []
         
         # Parse authority topups
@@ -698,7 +698,7 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         import traceback
-        print(f"[ERROR] Error deleting contract: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error deleting contract: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error deleting contract: {str(e)}")
 
 @router.get("/authorities/all")

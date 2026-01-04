@@ -1,10 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
+import uuid
+import logging
+import traceback
+
 from app.database import get_db
 from app import models, schemas
 from app.general_audit_utils import log_general_action
-import uuid
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -36,7 +41,7 @@ def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(get_
         return db_customer
     except Exception as e:
         db.rollback()
-        print(f"Error creating customer: {str(e)}")
+        logger.error(f"Error creating customer: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.get("/", response_model=List[schemas.Customer])
@@ -50,7 +55,7 @@ def read_customers(
         return customers
     except Exception as e:
         import traceback
-        print(f"[ERROR] Error reading customers: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error reading customers: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error loading customers: {str(e)}")
 
 @router.get("/{customer_id}", response_model=schemas.Customer)
@@ -94,7 +99,7 @@ def update_customer(customer_id: int, customer: schemas.CustomerUpdate, db: Sess
     except Exception as e:
         db.rollback()
         import traceback
-        print(f"[ERROR] Error updating customer: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error updating customer: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error updating customer: {str(e)}")
 
 @router.delete("/{customer_id}")
@@ -154,6 +159,6 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         import traceback
-        print(f"[ERROR] Error deleting customer: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error deleting customer: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error deleting customer: {str(e)}")
 

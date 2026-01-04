@@ -8,6 +8,9 @@ from sqlalchemy import func, text
 from typing import List, Optional, Any
 from datetime import datetime
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models import (
@@ -119,7 +122,7 @@ def get_analytics(db: Session = Depends(get_db)):
                 "cargo_count": row.cargo_count
             })
     except Exception as e:
-        print(f"Error getting inspector stats: {e}")
+        logger.error(f"Error getting inspector stats: {e}")
     
     # Port usage statistics
     port_stats = []
@@ -139,7 +142,7 @@ def get_analytics(db: Session = Depends(get_db)):
                 if ports_str.startswith('['):
                     try:
                         ports = json.loads(ports_str)
-                    except:
+                    except (json.JSONDecodeError, TypeError):
                         ports = [p.strip() for p in ports_str.split(',') if p.strip()]
                 else:
                     ports = [p.strip() for p in ports_str.split(',') if p.strip()]
@@ -154,7 +157,7 @@ def get_analytics(db: Session = Depends(get_db)):
                 "cargo_count": count
             })
     except Exception as e:
-        print(f"Error getting port stats: {e}")
+        logger.error(f"Error getting port stats: {e}")
     
     # Monthly cargo trends (last 12 months)
     monthly_trends = []
@@ -181,7 +184,7 @@ def get_analytics(db: Session = Depends(get_db)):
                 "cargo_count": cargo_count
             })
     except Exception as e:
-        print(f"Error getting monthly trends: {e}")
+        logger.error(f"Error getting monthly trends: {e}")
     
     # Customer cargo distribution
     customer_stats = []
@@ -206,7 +209,7 @@ def get_analytics(db: Session = Depends(get_db)):
                 "cargo_count": row[1]
             })
     except Exception as e:
-        print(f"Error getting customer stats: {e}")
+        logger.error(f"Error getting customer stats: {e}")
     
     # Cargo status distribution
     status_stats = []
@@ -222,7 +225,7 @@ def get_analytics(db: Session = Depends(get_db)):
                 "count": row.count
             })
     except Exception as e:
-        print(f"Error getting status stats: {e}")
+        logger.error(f"Error getting status stats: {e}")
     
     # Product volume analytics - COMPLETED cargos only
     # Status enum names: COMPLETED_LOADING, DISCHARGE_COMPLETE are considered completed
@@ -253,7 +256,7 @@ def get_analytics(db: Session = Depends(get_db)):
             })
         
     except Exception as e:
-        print(f"Error getting product stats: {e}")
+        logger.error(f"Error getting product stats: {e}")
     
     return {
         "inspector_stats": inspector_stats,

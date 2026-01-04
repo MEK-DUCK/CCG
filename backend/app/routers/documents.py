@@ -7,10 +7,14 @@ import tempfile
 import os
 from datetime import datetime
 from typing import Optional
-from app.database import get_db
-from app import models
 import json
 import copy
+import logging
+
+from app.database import get_db
+from app import models
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -377,8 +381,8 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
         try:
             if temp_file_path and os.path.exists(temp_file_path):
                 os.unlink(temp_file_path)
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to clean up temp file {temp_file_path}: {e}")
         
         # Return file as response
         # Use filename* for proper UTF-8 encoding support
@@ -394,14 +398,14 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
         # Ensure workbook is closed even on error
         try:
             wb.close()
-        except:
-            pass
+        except Exception as close_err:
+            logger.warning(f"Failed to close workbook: {close_err}")
         # Clean up temporary file on error
         try:
             if temp_file_path and os.path.exists(temp_file_path):
                 os.unlink(temp_file_path)
-        except:
-            pass
+        except Exception as cleanup_err:
+            logger.warning(f"Failed to clean up temp file {temp_file_path}: {cleanup_err}")
         raise HTTPException(status_code=500, detail=f"Error generating Excel file: {str(e)}")
 
 
@@ -578,8 +582,8 @@ BL WILL NOT BE AVAILABLE AT DISPORT."""
         # Clean up temp file
         try:
             os.unlink(temp_file_path)
-        except:
-            pass
+        except Exception as cleanup_err:
+            logger.warning(f"Failed to clean up temp file {temp_file_path}: {cleanup_err}")
         
         return Response(
             content=file_content,
@@ -595,7 +599,7 @@ BL WILL NOT BE AVAILABLE AT DISPORT."""
         try:
             if temp_file_path and os.path.exists(temp_file_path):
                 os.unlink(temp_file_path)
-        except:
-            pass
+        except Exception as cleanup_err:
+            logger.warning(f"Failed to clean up temp file {temp_file_path}: {cleanup_err}")
         raise HTTPException(status_code=500, detail=f"Error generating TNG document: {str(e)}")
 

@@ -47,7 +47,6 @@ import {
   getContractTypeColor, 
   getPaymentColor, 
   getLCStatusColor, 
-  getCargoStatusColor,
   BADGE_COLORS,
   TNG_STATUS_COLORS 
 } from '../utils/chipColors'
@@ -670,7 +669,7 @@ export default function HomePage() {
               return [...prev, updatedCargo]
             })
           } else if (updatedCargo.status === 'Discharge Complete') {
-            // CIF: Completed Discharge -> Completed In-Road CIF
+            // CIF: Discharge Complete -> Completed In-Road CIF
             setInRoadCIF(prev => prev.filter(c => c.id !== updatedCargo.id))
             setActiveLoadings(prev => prev.filter(c => c.id !== updatedCargo.id))
             setCompletedCargos(prev => prev.filter(c => c.id !== updatedCargo.id))

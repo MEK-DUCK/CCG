@@ -24,7 +24,7 @@ import {
 import { ArrowBack } from '@mui/icons-material'
 import { contractAPI, cargoAPI, quarterlyPlanAPI, monthlyPlanAPI, customerAPI } from '../api/client'
 import type { Contract, Cargo, QuarterlyPlan, MonthlyPlan, Customer, CargoStatus } from '../types'
-import { getContractTypeColor, getPaymentColor, getCargoStatusColor, getProductColor } from '../utils/chipColors'
+import { getContractTypeColor } from '../utils/chipColors'
 
 interface TabPanelProps {
   children?: React.ReactNode

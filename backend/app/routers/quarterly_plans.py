@@ -16,16 +16,13 @@ from app.errors import (
     to_http_exception,
 )
 
+from app.config import get_fiscal_quarter_months
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _get_quarter_months(quarter: int) -> List[int]:
-    """Get the months (1-12) that belong to a quarter (1-4)."""
-    return [(quarter - 1) * 3 + i for i in range(1, 4)]
-
-
-def _validate_monthly_plans_fit_quarterly(db: Session, plan_id: int, new_quantities: dict):
+def _validate_monthly_plans_fit_quarterly(db: Session, plan_id: int, new_quantities: dict, fiscal_start_month: int = 1):
     """
     Validate that existing monthly plans don't exceed new quarterly allocations.
     Raises HTTPException if validation fails.
@@ -34,13 +31,15 @@ def _validate_monthly_plans_fit_quarterly(db: Session, plan_id: int, new_quantit
         db: Database session
         plan_id: Quarterly plan ID
         new_quantities: Dict with q1_quantity, q2_quantity, q3_quantity, q4_quantity
+        fiscal_start_month: First month of fiscal year (1-12), default 1 (January)
     """
     for quarter in [1, 2, 3, 4]:
         new_qty = new_quantities.get(f'q{quarter}_quantity')
         if new_qty is None:
             continue
             
-        quarter_months = _get_quarter_months(quarter)
+        # Get months for this fiscal quarter
+        quarter_months = get_fiscal_quarter_months(quarter, fiscal_start_month)
         
         # Sum monthly plans in this quarter
         monthly_total = db.query(
@@ -256,12 +255,14 @@ def update_quarterly_plan(plan_id: int, plan: schemas.QuarterlyPlanUpdate, db: S
     
     # CRITICAL: Validate that existing monthly plans fit within new quarterly allocations
     # This prevents reducing a quarter below what's already allocated in monthly plans
+    # Use contract's fiscal_start_month for proper quarter calculation
+    fiscal_start_month = contract.fiscal_start_month or 1
     _validate_monthly_plans_fit_quarterly(db, plan_id, {
         'q1_quantity': q1,
         'q2_quantity': q2,
         'q3_quantity': q3,
         'q4_quantity': q4,
-    })
+    }, fiscal_start_month)
     
     # Parse contract products
     contract_products = json.loads(contract.products) if contract.products else []

@@ -34,7 +34,7 @@ import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 import { VersionHistoryDialog } from './VersionHistory'
 import { CIF_ROUTES, calculateDeliveryWindow, calculateETA } from '../utils/voyageDuration'
-import { BADGE_COLORS, getProductColor } from '../utils/chipColors'
+import { BADGE_COLORS } from '../utils/chipColors'
 
 // Simple UUID generator
 const generateUUID = (): string => {

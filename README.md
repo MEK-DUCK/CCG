@@ -280,7 +280,7 @@ On the HomePage tabs (Port Movement, Active Loadings, Completed Cargos, In-Road 
 - **Planned** → **Loading** → **Completed Loading** → **Completed Cargos** tab
 
 ### CIF Cargo Status Flow
-- **Planned** → **Loading** → **Completed Loading** → **In-Road CIF** tab → **Completed Discharge** → **Completed Cargos** tab
+- **Planned** → **Loading** → **Completed Loading** → **In-Road CIF** tab → **Discharge Complete** → **Completed Cargos** tab
 
 ### CIF Delivery Month Tracking
 - CIF contracts track quantities by **delivery month** (when cargo arrives), not loading month
