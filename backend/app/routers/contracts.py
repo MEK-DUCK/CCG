@@ -50,13 +50,6 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         # Store products as JSON string
         products_json = json.dumps([p.dict() for p in contract.products])
         
-        # Calculate total quantity from products for backward compatibility with old schema
-        # Support both fixed mode (total_quantity) and min/max mode (max_quantity)
-        total_quantity = sum(
-            (p.total_quantity or 0) if p.total_quantity is not None else (p.max_quantity or 0)
-            for p in contract.products
-        )
-        
         has_remarks = _contracts_has_column(db, "remarks")
         has_additives_required = _contracts_has_column(db, "additives_required")
 
@@ -103,8 +96,6 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             cif_destination=getattr(contract, "cif_destination", None),  # CIF base destination
             **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
             customer_id=contract.customer_id,
-            total_quantity=total_quantity,  # Set for backward compatibility
-            product_id=0  # Legacy field, set to 0 for backward compatibility
         )
         db.add(db_contract)
         db.commit()

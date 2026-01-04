@@ -347,7 +347,6 @@ async def create_cargo(
         monthly_plan_id=cargo.monthly_plan_id,
         combi_group_id=combi_group_id,
         status=CargoStatus.PLANNED,
-        product_id=0  # Legacy field
     )
     
     try:

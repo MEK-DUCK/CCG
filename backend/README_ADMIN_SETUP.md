@@ -1,27 +1,14 @@
 # Admin User Setup for Render Deployment
 
-## Option 1: Using Render Shell (Recommended)
+## Automatic Setup
 
-1. Go to your Render dashboard
-2. Click on your backend service
-3. Click on "Shell" tab
-4. Run these commands:
+Admin and test users are **automatically created** when the backend starts via `startup.py`.
 
-```bash
-cd /opt/render/project/src/backend
-source venv/bin/activate  # or python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python create_admin.py
-```
+The following users are created automatically:
+- **Admin:** admin@admin.com / admin (Initials: ADM)
+- **Test Users:** mek@test.com, azn@test.com, mfo@test.com, na@test.com (Password: password)
 
-If admin already exists, run:
-```bash
-python update_admin_password.py
-```
-
-## Option 2: Using Render Environment Variables
-
-You can also create the admin user by setting these environment variables and adding a startup script, but Option 1 is simpler.
+No manual setup is required!
 
 ## CORS Configuration
 
@@ -40,4 +27,3 @@ Make sure to set the `ALLOWED_ORIGINS` environment variable in Render to include
 - **Password:** admin
 - **Initials:** ADM
 - **Role:** Admin
-

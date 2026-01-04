@@ -227,9 +227,6 @@ class Contract(Base):
     
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     
-    # Legacy fields - kept for backward compatibility, will be removed in future
-    total_quantity = Column(Float, nullable=True, default=0)
-    product_id = Column(Integer, nullable=True)  # Deprecated
     
     # Optimistic locking - prevents lost updates in concurrent edits
     version = Column(Integer, nullable=False, default=1)
@@ -327,9 +324,10 @@ class MonthlyPlan(Base):
     # Nullable for SPOT contracts that skip quarterly planning
     quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=True)
     
-    # Direct contract link for SPOT contracts (when quarterly_plan_id is null)
-    # Also useful for quick lookups without joining through quarterly_plan
-    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True)
+    # Direct contract link - ALL monthly plans must have a contract
+    # For TERM contracts: set from quarterly_plan.contract_id
+    # For SPOT/RANGE contracts: set directly
+    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
     
     # Product name for SPOT contracts (when no quarterly plan to get it from)
     product_name = Column(String, nullable=True)
@@ -410,8 +408,6 @@ class Cargo(Base):
     
     monthly_plan_id = Column(Integer, ForeignKey("monthly_plans.id"), nullable=False, unique=True)
     
-    # Legacy field - deprecated
-    product_id = Column(Integer, nullable=True, default=0)
     
     # Optimistic locking - prevents lost updates in concurrent edits
     version = Column(Integer, nullable=False, default=1)
