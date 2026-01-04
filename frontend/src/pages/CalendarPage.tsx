@@ -65,15 +65,15 @@ interface CalendarEvent {
 
 // Color scheme
 const EVENT_COLORS = {
-  fob_laycan: { bg: '#3B82F6', border: '#2563EB', text: '#FFFFFF' },
-  cif_loading: { bg: '#8B5CF6', border: '#7C3AED', text: '#FFFFFF' },
-  tng_due: { bg: '#F59E0B', border: '#D97706', text: '#FFFFFF' },
-  nd_due: { bg: '#EF4444', border: '#DC2626', text: '#FFFFFF' },
+  fob_laycan: { bg: '#3B82F6', border: '#2563EB', text: '#000000' },
+  cif_loading: { bg: '#8B5CF6', border: '#7C3AED', text: '#000000' },
+  tng_due: { bg: '#F59E0B', border: '#D97706', text: '#000000' },
+  nd_due: { bg: '#EF4444', border: '#DC2626', text: '#000000' },
 }
 
 const TBA_COLORS = {
-  fob_laycan: { bg: '#93C5FD', border: '#3B82F6', text: '#1E40AF' },
-  cif_loading: { bg: '#C4B5FD', border: '#8B5CF6', text: '#5B21B6' },
+  fob_laycan: { bg: '#93C5FD', border: '#3B82F6', text: '#000000' },
+  cif_loading: { bg: '#C4B5FD', border: '#8B5CF6', text: '#000000' },
 }
 
 export default function CalendarPage() {
@@ -118,13 +118,6 @@ export default function CalendarPage() {
       setCustomers(customersRes.data || [])
       setCargos(cargosRes.data || [])
       setMonthlyPlans(monthlyPlansRes.data || [])
-      
-      console.log('Calendar data loaded:', {
-        contracts: contractsRes.data?.length || 0,
-        customers: customersRes.data?.length || 0,
-        cargos: cargosRes.data?.length || 0,
-        monthlyPlans: monthlyPlansRes.data?.length || 0,
-      })
     } catch (error) {
       console.error('Error loading calendar data:', error)
     } finally {
@@ -215,7 +208,7 @@ export default function CalendarPage() {
         backgroundColor: isOverdue ? '#FEE2E2' : colors.bg,
         borderColor: isOverdue ? '#EF4444' : colors.border,
         textColor: isOverdue ? '#DC2626' : colors.text,
-        classNames: isOverdue ? ['overdue-event'] : [],
+        classNames: isOverdue ? ['overdue-event', `event-${eventType}`] : [`event-${eventType}`],
       })
 
       // Add TNG Due date for CIF contracts
@@ -251,7 +244,7 @@ export default function CalendarPage() {
             backgroundColor: tngOverdue ? '#FEE2E2' : EVENT_COLORS.tng_due.bg,
             borderColor: tngOverdue ? '#EF4444' : EVENT_COLORS.tng_due.border,
             textColor: tngOverdue ? '#DC2626' : EVENT_COLORS.tng_due.text,
-            classNames: tngOverdue ? ['overdue-event'] : [],
+            classNames: tngOverdue ? ['overdue-event', 'event-tng_due'] : ['event-tng_due'],
           })
         }
       }
@@ -287,7 +280,7 @@ export default function CalendarPage() {
             backgroundColor: ndOverdue ? '#FEE2E2' : EVENT_COLORS.nd_due.bg,
             borderColor: ndOverdue ? '#EF4444' : EVENT_COLORS.nd_due.border,
             textColor: ndOverdue ? '#DC2626' : EVENT_COLORS.nd_due.text,
-            classNames: ndOverdue ? ['overdue-event'] : [],
+            classNames: ndOverdue ? ['overdue-event', 'event-nd_due'] : ['event-nd_due'],
           })
         }
       }
@@ -295,21 +288,16 @@ export default function CalendarPage() {
 
     // Process monthly plans without cargos (TBA) - only if they have dates set
     if (showTBA) {
-      console.log('Processing TBA plans, total monthly plans:', monthlyPlans.length)
-      
       monthlyPlans.forEach(plan => {
         // Skip if this plan already has a cargo
         const hasCargo = cargos.some(c => c.monthly_plan_id === plan.id)
-        if (hasCargo) {
-          console.log(`Plan ${plan.id} skipped - has cargo`)
-          return
-        }
+        if (hasCargo) return
 
-        const contract = getContract(plan.contract_id!)
-        if (!contract) {
-          console.log(`Plan ${plan.id} skipped - no contract found for contract_id:`, plan.contract_id)
-          return
-        }
+        // All monthly plans should have contract_id set
+        if (!plan.contract_id) return
+
+        const contract = getContract(plan.contract_id)
+        if (!contract) return
 
         // Filter by contract type
         if (!selectedContractTypes.includes(contract.contract_type)) return
@@ -325,17 +313,11 @@ export default function CalendarPage() {
           : plan.laycan_2_days
 
         // Only show TBA if they have actual dates set
-        if (!laycanStr) {
-          console.log(`Plan ${plan.id} (${contract.contract_number}) skipped - no laycan. laycan_2_days:`, plan.laycan_2_days, 'loading_window:', plan.loading_window)
-          return
-        }
+        if (!laycanStr) return
 
         // Parse laycan date
         const parsed = parseLaycanDate(laycanStr, plan.month, plan.year)
-        if (!parsed.isValid || !parsed.startDate || !parsed.endDate) {
-          console.log(`Plan ${plan.id} skipped - invalid laycan parse:`, laycanStr, parsed)
-          return
-        }
+        if (!parsed.isValid || !parsed.startDate || !parsed.endDate) return
 
         const isOverdue = parsed.endDate < today
 
@@ -353,8 +335,6 @@ export default function CalendarPage() {
         // Use only the first day of the laycan/loading window
         const eventStart = parsed.startDate
         const eventEnd = new Date(eventStart.getTime() + 24 * 60 * 60 * 1000) // Single day event
-
-        console.log(`Adding TBA event for plan ${plan.id}:`, contract.contract_number, productName, laycanStr)
 
         events.push({
           id: `plan-${plan.id}`,
@@ -381,7 +361,7 @@ export default function CalendarPage() {
           backgroundColor: isOverdue ? '#FEE2E2' : colors.bg,
           borderColor: isOverdue ? '#EF4444' : colors.border,
           textColor: isOverdue ? '#DC2626' : colors.text,
-          classNames: isOverdue ? ['overdue-event', 'tba-event'] : ['tba-event'],
+          classNames: isOverdue ? ['overdue-event', 'tba-event', `event-${eventType}`] : ['tba-event', `event-${eventType}`],
         })
       })
     }
@@ -440,23 +420,8 @@ export default function CalendarPage() {
             fontSize: isSmall ? '0.65rem' : '0.75rem',
           }}
         >
-          {props.vesselName || 'TBA'}
+          {props.vesselName || 'TBA'} - {props.customerName} - {props.contractNumber}
         </Typography>
-        {!isSmall && (
-          <Typography 
-            variant="caption" 
-            sx={{ 
-              display: 'block',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              opacity: 0.9,
-              fontSize: '0.65rem',
-            }}
-          >
-            {props.customerName} - {props.productName}
-          </Typography>
-        )}
       </Box>
     )
   }
@@ -664,15 +629,55 @@ export default function CalendarPage() {
               border-radius: 4px;
               font-size: 0.75rem;
             }
+            .fc-event,
+            .fc-event *,
+            .fc-event-title,
+            .fc-event-main,
+            .fc-daygrid-event-dot,
+            .fc-event .fc-event-title,
+            .fc-event .fc-event-main {
+              color: #000000 !important;
+            }
             .fc-event:hover {
               opacity: 0.9;
             }
+            /* FOB Laycan - Blue */
+            .event-fob_laycan {
+              background-color: #3B82F6 !important;
+              border-color: #2563EB !important;
+            }
+            .tba-event.event-fob_laycan {
+              background-color: #93C5FD !important;
+              border-color: #3B82F6 !important;
+            }
+            /* CIF Loading - Purple */
+            .event-cif_loading {
+              background-color: #8B5CF6 !important;
+              border-color: #7C3AED !important;
+            }
+            .tba-event.event-cif_loading {
+              background-color: #C4B5FD !important;
+              border-color: #8B5CF6 !important;
+            }
+            /* TNG Due - Amber */
+            .event-tng_due {
+              background-color: #F59E0B !important;
+              border-color: #D97706 !important;
+            }
+            /* ND Due - Red */
+            .event-nd_due {
+              background-color: #EF4444 !important;
+              border-color: #DC2626 !important;
+            }
+            /* Overdue - Light red background */
             .overdue-event {
+              background-color: #FEE2E2 !important;
+              border-color: #EF4444 !important;
               animation: pulse 2s infinite;
             }
             .tba-event {
               border-style: dashed !important;
-              opacity: 0.85;
+              border-width: 2px !important;
             }
             @keyframes pulse {
               0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
