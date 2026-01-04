@@ -21,7 +21,7 @@ import {
   Divider,
   Chip,
 } from '@mui/material'
-import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize, AdminPanelSettings, Logout, KeyboardArrowDown } from '@mui/icons-material'
+import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize, AdminPanelSettings, Logout, KeyboardArrowDown, Event } from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
 
 interface LayoutProps {
@@ -44,6 +44,7 @@ export default function Layout({ children }: LayoutProps) {
     { label: 'Contracts', path: '/contracts', icon: <Description /> },
     { label: 'Lifting Plan', path: '/lifting-plan', icon: <CalendarMonth /> },
     { label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
+    { label: 'Calendar', path: '/calendar', icon: <Event /> },
     { label: 'Reconciliation', path: '/reconciliation', icon: <History /> },
     { label: 'Contract Summary', path: '/contract-summary', icon: <Summarize /> },
     ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: <AdminPanelSettings /> }] : []),

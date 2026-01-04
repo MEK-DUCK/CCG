@@ -10,6 +10,7 @@ import ReconciliationPage from './pages/ReconciliationPage'
 import DashboardPage from './pages/DashboardPage'
 import ContractSummaryPage from './pages/ContractSummaryPage'
 import AdminPage from './pages/AdminPage'
+import CalendarPage from './pages/CalendarPage'
 import LoginPage from './pages/LoginPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import SetPasswordPage from './pages/SetPasswordPage'
@@ -626,6 +627,13 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <DashboardPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/calendar" element={
+              <ProtectedRoute>
+                <Layout>
+                  <CalendarPage />
                 </Layout>
               </ProtectedRoute>
             } />
