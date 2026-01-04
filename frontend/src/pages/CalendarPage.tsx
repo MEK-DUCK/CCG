@@ -107,30 +107,24 @@ export default function CalendarPage() {
   const loadData = async () => {
     try {
       setLoading(true)
-      const [contractsRes, customersRes, cargosRes] = await Promise.all([
+      const [contractsRes, customersRes, cargosRes, monthlyPlansRes] = await Promise.all([
         contractAPI.getAll(),
         customerAPI.getAll(),
         cargoAPI.getAll(),
+        monthlyPlanAPI.getAll(),
       ])
 
       setContracts(contractsRes.data || [])
       setCustomers(customersRes.data || [])
       setCargos(cargosRes.data || [])
-
-      // Load monthly plans for all contracts
-      const allMonthlyPlans: MonthlyPlan[] = []
-      for (const contract of contractsRes.data || []) {
-        try {
-          // Try to get monthly plans directly by contract_id (for SPOT/Range contracts)
-          const directPlansRes = await monthlyPlanAPI.getByContractId(contract.id)
-          if (directPlansRes.data && directPlansRes.data.length > 0) {
-            allMonthlyPlans.push(...directPlansRes.data)
-          }
-        } catch (e) {
-          // Ignore errors for contracts without direct monthly plans
-        }
-      }
-      setMonthlyPlans(allMonthlyPlans)
+      setMonthlyPlans(monthlyPlansRes.data || [])
+      
+      console.log('Calendar data loaded:', {
+        contracts: contractsRes.data?.length || 0,
+        customers: customersRes.data?.length || 0,
+        cargos: cargosRes.data?.length || 0,
+        monthlyPlans: monthlyPlansRes.data?.length || 0,
+      })
     } catch (error) {
       console.error('Error loading calendar data:', error)
     } finally {
@@ -590,42 +584,58 @@ export default function CalendarPage() {
 
           {/* Legend */}
           <Box sx={{ display: 'flex', gap: 1, ml: 'auto', flexWrap: 'wrap' }}>
-            <Chip 
-              size="small" 
-              label="FOB Laycan" 
-              sx={{ 
-                bgcolor: `${EVENT_COLORS.fob_laycan.bg} !important`, 
-                color: 'white !important',
-                '& .MuiChip-label': { color: 'white' }
-              }} 
-            />
-            <Chip 
-              size="small" 
-              label="CIF Loading" 
-              sx={{ 
-                bgcolor: `${EVENT_COLORS.cif_loading.bg} !important`, 
-                color: 'white !important',
-                '& .MuiChip-label': { color: 'white' }
-              }} 
-            />
-            <Chip 
-              size="small" 
-              label="TNG Due" 
-              sx={{ 
-                bgcolor: `${EVENT_COLORS.tng_due.bg} !important`, 
-                color: 'white !important',
-                '& .MuiChip-label': { color: 'white' }
-              }} 
-            />
-            <Chip 
-              size="small" 
-              label="ND Due" 
-              sx={{ 
-                bgcolor: `${EVENT_COLORS.nd_due.bg} !important`, 
-                color: 'white !important',
-                '& .MuiChip-label': { color: 'white' }
-              }} 
-            />
+            <Box sx={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              px: 1.5, 
+              py: 0.5, 
+              borderRadius: 1, 
+              bgcolor: '#3B82F6', 
+              color: '#fff',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+            }}>
+              FOB Laycan
+            </Box>
+            <Box sx={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              px: 1.5, 
+              py: 0.5, 
+              borderRadius: 1, 
+              bgcolor: '#8B5CF6', 
+              color: '#fff',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+            }}>
+              CIF Loading
+            </Box>
+            <Box sx={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              px: 1.5, 
+              py: 0.5, 
+              borderRadius: 1, 
+              bgcolor: '#F59E0B', 
+              color: '#fff',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+            }}>
+              TNG Due
+            </Box>
+            <Box sx={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              px: 1.5, 
+              py: 0.5, 
+              borderRadius: 1, 
+              bgcolor: '#EF4444', 
+              color: '#fff',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+            }}>
+              ND Due
+            </Box>
           </Box>
         </Box>
       </Paper>
