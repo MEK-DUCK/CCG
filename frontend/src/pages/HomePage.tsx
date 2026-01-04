@@ -42,6 +42,15 @@ import type { Cargo, Customer, Contract, MonthlyPlan, CargoStatus, ContractProdu
 import { parseLaycanDate } from '../utils/laycanParser'
 import { calculateETADate } from '../utils/voyageDuration'
 import { getLaycanAlertSeverity, getAlertColor, getAlertMessage } from '../utils/alertUtils'
+import { 
+  getProductColor, 
+  getContractTypeColor, 
+  getPaymentColor, 
+  getLCStatusColor, 
+  getCargoStatusColor,
+  BADGE_COLORS,
+  TNG_STATUS_COLORS 
+} from '../utils/chipColors'
 import { Tooltip, Badge } from '@mui/material'
 import NotificationBadge from '../components/Notifications/NotificationBadge'
 import { useLaycanAlerts } from '../hooks/useLaycanAlerts'
@@ -2085,38 +2094,8 @@ export default function HomePage() {
     return productName || '-'
   }
 
-  // Product color mapping - matching Recon tab pastel colors
-  const getProductColor = (productName: string): { bgcolor: string; color: string } => {
-    const name = (productName || '').toUpperCase()
-    
-    // Pastel color palette matching Recon tab style
-    if (name.includes('GO') || name.includes('GASOIL') || name.includes('DIESEL')) {
-      return { bgcolor: '#FEF3C7', color: '#92400E' } // Amber pastel (same as Recon)
-    }
-    if (name.includes('JET') || name.includes('KERO') || name.includes('PARAFFIN')) {
-      return { bgcolor: '#DBEAFE', color: '#1E40AF' } // Blue pastel (same as Recon)
-    }
-    if (name.includes('FUEL') || name.includes('FO') || name.includes('HFO')) {
-      return { bgcolor: '#F3E8FF', color: '#6B21A8' } // Purple pastel (same as Recon)
-    }
-    if (name.includes('MOGAS') || name.includes('PETROL') || name.includes('ULP')) {
-      return { bgcolor: '#FCE7F3', color: '#9D174D' } // Pink pastel
-    }
-    if (name.includes('LPG') || name.includes('PROPANE') || name.includes('BUTANE')) {
-      return { bgcolor: '#CCFBF1', color: '#115E59' } // Teal pastel
-    }
-    if (name.includes('NAPHTHA') || name.includes('CONDENSATE')) {
-      return { bgcolor: '#FEF9C3', color: '#854D0E' } // Yellow pastel
-    }
-    if (name.includes('BITUMEN') || name.includes('ASPHALT')) {
-      return { bgcolor: '#E7E5E4', color: '#44403C' } // Stone pastel
-    }
-    if (name.includes('LUBRICANT') || name.includes('LUBE') || name.includes('BASE OIL')) {
-      return { bgcolor: '#D1FAE5', color: '#065F46' } // Emerald pastel
-    }
-    // Default for unknown products
-    return { bgcolor: '#F1F5F9', color: '#475569' } // Slate pastel (same as Recon default)
-  }
+  // Product color mapping - imported from centralized chip colors
+  // Using getProductColor from chipColors.ts
 
   const getLaycanDisplay = (monthlyPlan: MonthlyPlan, contract: Contract | null) => {
     if (!contract) {
@@ -2244,54 +2223,11 @@ export default function HomePage() {
     return {}
   }
 
-  // Helper function to get custom styling for LC status chips (pastel/light colors)
+  // Helper function to get custom styling for LC status chips - uses centralized colors
   const getLCStatusChipProps = (status: LCStatus | undefined) => {
     if (!status) return {}
-
-    switch (status) {
-      case 'LC in Order':
-        return {
-          sx: {
-            backgroundColor: '#c8e6c9', // Light green
-            color: '#1b5e20',
-            '&:hover': { backgroundColor: '#a5d6a7' }
-          }
-        }
-      case 'LC Not in Order':
-        return {
-          sx: {
-            backgroundColor: '#ffcdd2', // Light red
-            color: '#b71c1c',
-            '&:hover': { backgroundColor: '#ef9a9a' }
-          }
-        }
-      case 'Pending LC':
-        return {
-          sx: {
-            backgroundColor: '#ffe0b2', // Light orange
-            color: '#e65100',
-            '&:hover': { backgroundColor: '#ffcc80' }
-          }
-        }
-      case 'LC Memo Issued':
-        return {
-          sx: {
-            backgroundColor: '#fff9c4', // Light yellow
-            color: '#7a5d00',
-            '&:hover': { backgroundColor: '#fff59d' }
-          }
-        }
-      case 'Financial Hold':
-        return {
-          sx: {
-            backgroundColor: '#e1bee7', // Light purple
-            color: '#6a1b9a',
-            '&:hover': { backgroundColor: '#ce93d8' }
-          }
-        }
-      default:
-        return {}
-    }
+    const colors = getLCStatusColor(status)
+    return { sx: { backgroundColor: colors.bgcolor, color: colors.color } }
   }
 
   // Render In-Road CIF table with ND Due Date column
@@ -2535,8 +2471,8 @@ export default function HomePage() {
                           label="Combie" 
                           size="small" 
                           sx={{ 
-                            bgcolor: '#F59E0B', 
-                            color: 'white', 
+                            bgcolor: BADGE_COLORS.COMBI.bgcolor, 
+                            color: BADGE_COLORS.COMBI.color, 
                             fontWeight: 600,
                             fontSize: '0.7rem',
                             height: 20,
@@ -3092,8 +3028,8 @@ export default function HomePage() {
                         size="small" 
                         sx={{ 
                           mr: 0.5, 
-                          bgcolor: '#8B5CF6', 
-                          color: 'white',
+                          bgcolor: BADGE_COLORS.COMBI.bgcolor, 
+                          color: BADGE_COLORS.COMBI.color,
                           fontSize: '0.65rem',
                           height: 18
                         }} 
@@ -3108,7 +3044,7 @@ export default function HomePage() {
                   <TableCell>{primaryPlan.loading_window || '-'}</TableCell>
                   <TableCell>
                     {contract?.tng_lead_days ? (
-                      <Chip label={`${contract.tng_lead_days} Days`} size="small" sx={{ bgcolor: '#E0E7FF', color: '#3730A3' }} />
+                      <Chip label={`${contract.tng_lead_days} Days`} size="small" sx={{ bgcolor: TNG_STATUS_COLORS.LEAD_DAYS.bgcolor, color: TNG_STATUS_COLORS.LEAD_DAYS.color }} />
                     ) : '-'}
                   </TableCell>
                   <TableCell>
@@ -3119,13 +3055,19 @@ export default function HomePage() {
                           size="small"
                           sx={{
                             bgcolor: tngIssued 
-                              ? '#E0F2FE'  // Light blue when issued
+                              ? TNG_STATUS_COLORS.ISSUED.bgcolor
                               : isOverdue 
-                                ? '#EF4444'  // Red when overdue
+                                ? TNG_STATUS_COLORS.OVERDUE.bgcolor
                                 : isDueSoon 
-                                  ? '#F59E0B'  // Yellow when due soon
-                                  : '#10B981',  // Green when OK
-                            color: tngIssued ? '#0369A1' : 'white',
+                                  ? TNG_STATUS_COLORS.DUE_SOON.bgcolor
+                                  : TNG_STATUS_COLORS.NORMAL.bgcolor,
+                            color: tngIssued 
+                              ? TNG_STATUS_COLORS.ISSUED.color 
+                              : isOverdue 
+                                ? TNG_STATUS_COLORS.OVERDUE.color 
+                                : isDueSoon 
+                                  ? TNG_STATUS_COLORS.DUE_SOON.color 
+                                  : TNG_STATUS_COLORS.NORMAL.color,
                             fontWeight: 500
                           }}
                         />
@@ -3334,8 +3276,8 @@ export default function HomePage() {
                           label="Combie" 
                           size="small" 
                           sx={{ 
-                            bgcolor: '#F59E0B', 
-                            color: 'white', 
+                            bgcolor: BADGE_COLORS.COMBI.bgcolor, 
+                            color: BADGE_COLORS.COMBI.color, 
                             fontWeight: 600,
                             fontSize: '0.7rem',
                             height: 20,
@@ -3346,8 +3288,8 @@ export default function HomePage() {
                         label="Completed" 
                         size="small" 
                         sx={{ 
-                          bgcolor: '#10B981', 
-                          color: 'white', 
+                          bgcolor: BADGE_COLORS.COMPLETED.bgcolor, 
+                          color: BADGE_COLORS.COMPLETED.color, 
                           fontWeight: 600,
                           fontSize: '0.7rem',
                           height: 20,
@@ -3696,8 +3638,8 @@ export default function HomePage() {
                           label="Combie" 
                           size="small" 
                           sx={{ 
-                            bgcolor: '#F59E0B', 
-                            color: 'white', 
+                            bgcolor: BADGE_COLORS.COMBI.bgcolor, 
+                            color: BADGE_COLORS.COMBI.color, 
                             fontWeight: 600,
                             fontSize: '0.7rem',
                             height: 20,
@@ -3731,16 +3673,16 @@ export default function HomePage() {
                   <TableCell>
                     <Chip
                       label={cargo.contract_type || '-'}
-                      color={cargo.contract_type === 'FOB' ? 'primary' : 'secondary'}
                       size="small"
+                      sx={getContractTypeColor(cargo.contract_type || 'FOB')}
                     />
                   </TableCell>
                   <TableCell>
                     {contract && contract.payment_method ? (
                       <Chip
                         label={contract.payment_method}
-                        color={contract.payment_method === 'T/T' ? 'success' : 'warning'}
                         size="small"
+                        sx={getPaymentColor(contract.payment_method)}
                       />
                     ) : (
                       '-'
@@ -4444,8 +4386,8 @@ export default function HomePage() {
                           sx={{ 
                             height: 18, 
                             fontSize: '0.65rem', 
-                            bgcolor: '#F59E0B', 
-                            color: 'white',
+                            bgcolor: BADGE_COLORS.COMBI.bgcolor, 
+                            color: BADGE_COLORS.COMBI.color,
                             fontWeight: 600,
                           }}
                         />
@@ -4460,10 +4402,10 @@ export default function HomePage() {
                           sx={{ 
                             height: 18, 
                             fontSize: '0.65rem', 
-                            bgcolor: '#FCE7F3', 
-                            color: '#9D174D',
+                            bgcolor: BADGE_COLORS.SPOT.bgcolor, 
+                            color: BADGE_COLORS.SPOT.color,
                             fontWeight: 600,
-                            border: '1px solid #F9A8D4',
+                            border: `1px solid ${BADGE_COLORS.SPOT.color}`,
                           }}
                         />
                       )}
@@ -4497,8 +4439,8 @@ export default function HomePage() {
                           {contract ? (
                             <Chip
                               label={contract.contract_type}
-                              color={contract.contract_type === 'FOB' ? 'primary' : 'secondary'}
                               size="small"
+                              sx={getContractTypeColor(contract.contract_type)}
                             />
                           ) : '-'}
                         </TableCell>
@@ -4512,8 +4454,8 @@ export default function HomePage() {
                           {contract && contract.payment_method ? (
                             <Chip
                               label={contract.payment_method}
-                              color={contract.payment_method === 'T/T' ? 'success' : 'warning'}
                               size="small"
+                              sx={getPaymentColor(contract.payment_method)}
                             />
                           ) : '-'}
                       </TableCell>
@@ -5275,8 +5217,8 @@ export default function HomePage() {
                                         label="Combie" 
                                         size="small" 
                                         sx={{ 
-                                          bgcolor: '#F59E0B', 
-                                          color: 'white', 
+                                          bgcolor: BADGE_COLORS.COMBI.bgcolor, 
+                                          color: BADGE_COLORS.COMBI.color, 
                                           fontWeight: 600,
                                           fontSize: '0.7rem',
                                           height: 20,
@@ -5291,8 +5233,8 @@ export default function HomePage() {
                                   {contract ? (
                                     <Chip
                                       label={contract.contract_type}
-                                      color={contract.contract_type === 'FOB' ? 'primary' : 'secondary'}
                                       size="small"
+                                      sx={getContractTypeColor(contract.contract_type)}
                                     />
                                   ) : (
                                     '-'
@@ -5302,8 +5244,8 @@ export default function HomePage() {
                                   {contract && contract.payment_method ? (
                                     <Chip
                                       label={contract.payment_method}
-                                      color={contract.payment_method === 'T/T' ? 'success' : 'warning'}
                                       size="small"
+                                      sx={getPaymentColor(contract.payment_method)}
                                     />
                                   ) : (
                                     '-'

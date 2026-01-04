@@ -24,6 +24,7 @@ import {
 import { FileDownload, PictureAsPdf } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan } from '../types'
+import { BADGE_COLORS, getContractTypeColor, getPaymentColor } from '../utils/chipColors'
 
 const formatDateRange = (start?: string, end?: string) => {
   if (!start || !end) return '-'
@@ -34,28 +35,6 @@ const formatDateOnly = (value?: string) => {
   if (!value) return '-'
   // backend returns ISO date strings like "2025-12-01"
   return value
-}
-
-type ChipColor = 'warning' | 'info' | 'error' | 'default' | 'primary' | 'secondary' | 'success'
-type ChipVariant = 'filled' | 'outlined'
-
-// FOB = light blue (primary), CIF = light orange (secondary)
-const getContractTypeChipProps = (contractType: Contract['contract_type']): { color: ChipColor; variant: ChipVariant } => {
-  return {
-    color: contractType === 'FOB' ? 'primary' : 'secondary',
-    variant: 'filled',
-  }
-}
-
-// T/T = light green (success), LC = light purple (warning)
-const getPaymentMethodChipProps = (paymentMethod?: Contract['payment_method']): { color: ChipColor; variant: ChipVariant } => {
-  if (paymentMethod === 'T/T') {
-    return { color: 'success', variant: 'filled' }
-  }
-  if (paymentMethod === 'LC') {
-    return { color: 'warning', variant: 'filled' }
-  }
-  return { color: 'default', variant: 'outlined' }
 }
 
 export default function ContractSummaryPage() {
@@ -507,17 +486,17 @@ export default function ContractSummaryPage() {
                           label={`${minTotalFor(c)} - ${firmTotalFor(c)}`} 
                           size="small" 
                           variant="outlined"
-                          sx={{ bgcolor: '#FAF5FF', borderColor: '#7C3AED' }}
+                          sx={{ bgcolor: BADGE_COLORS.COMBI.bgcolor, borderColor: BADGE_COLORS.COMBI.color }}
                         />
                       ) : (
                         <Chip label={`${firmTotalFor(c)}`} size="small" variant="outlined" />
                       )}
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Chip label={c.contract_type} size="small" {...getContractTypeChipProps(c.contract_type)} />
+                      <Chip label={c.contract_type} size="small" sx={getContractTypeColor(c.contract_type)} />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Chip label={c.payment_method || '-'} size="small" {...getPaymentMethodChipProps(c.payment_method)} />
+                      <Chip label={c.payment_method || '-'} size="small" sx={getPaymentColor(c.payment_method || 'T/T')} />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -557,10 +536,10 @@ export default function ContractSummaryPage() {
                           label={`+${optionalTotalFor(c).toLocaleString()} KT`} 
                           size="small" 
                           sx={{ 
-                            bgcolor: '#F0FDF4', 
-                            color: '#16A34A',
+                            bgcolor: BADGE_COLORS.COMPLETED.bgcolor, 
+                            color: BADGE_COLORS.COMPLETED.color,
                             fontWeight: 500,
-                            border: '1px solid #BBF7D0'
+                            border: `1px solid ${BADGE_COLORS.COMPLETED.color}`
                           }} 
                         />
                       ) : (

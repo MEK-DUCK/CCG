@@ -28,6 +28,7 @@ import {
 import { Visibility, Search } from '@mui/icons-material'
 import client, { contractAPI, customerAPI } from '../api/client'
 import type { Contract, Customer } from '../types'
+import { getContractTypeColor, getPaymentColor } from '../utils/chipColors'
 
 // Analytics types
 interface AnalyticsData {
@@ -725,8 +726,8 @@ export default function DashboardPage() {
                   <TableCell>
                     <Chip
                       label={contract.contract_type}
-                      color={contract.contract_type === 'FOB' ? 'primary' : 'secondary'}
                       size="small"
+                      sx={getContractTypeColor(contract.contract_type)}
                     />
                   </TableCell>
                   <TableCell>

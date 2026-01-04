@@ -27,6 +27,7 @@ import {
 import { FileDownload, PictureAsPdf } from '@mui/icons-material'
 import { customerAPI, contractAPI, quarterlyPlanAPI, monthlyPlanAPI, cargoAPI } from '../api/client'
 import type { Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo } from '../types'
+import { getContractTypeColor, BADGE_COLORS } from '../utils/chipColors'
 
 // Column configuration for resizable columns
 const COLUMN_CONFIG = [
@@ -750,8 +751,8 @@ export default function LiftingPlanPage() {
                 <TableCell sx={{ width: columnWidths['type'] }}>
                   <Chip 
                     label={data.contractType} 
-                    color={data.contractType === 'FOB' ? 'primary' : 'secondary'} 
                     size="small"
+                    sx={getContractTypeColor(data.contractType)}
                   />
                 </TableCell>
                 <TableCell sx={{ width: columnWidths['month1'] }}>
@@ -772,8 +773,8 @@ export default function LiftingPlanPage() {
                                 sx={{ 
                                   height: 18, 
                                   fontSize: '0.65rem', 
-                                  bgcolor: '#F3E8FF', 
-                                  color: '#7C3AED',
+                                  bgcolor: BADGE_COLORS.COMBI.bgcolor, 
+                                  color: BADGE_COLORS.COMBI.color,
                                   fontWeight: 600,
                                 }}
                               />
@@ -858,8 +859,8 @@ export default function LiftingPlanPage() {
                                 sx={{ 
                                   height: 18, 
                                   fontSize: '0.65rem', 
-                                  bgcolor: '#F3E8FF', 
-                                  color: '#7C3AED',
+                                  bgcolor: BADGE_COLORS.COMBI.bgcolor, 
+                                  color: BADGE_COLORS.COMBI.color,
                                   fontWeight: 600,
                                 }}
                               />
@@ -944,8 +945,8 @@ export default function LiftingPlanPage() {
                                 sx={{ 
                                   height: 18, 
                                   fontSize: '0.65rem', 
-                                  bgcolor: '#F3E8FF', 
-                                  color: '#7C3AED',
+                                  bgcolor: BADGE_COLORS.COMBI.bgcolor, 
+                                  color: BADGE_COLORS.COMBI.color,
                                   fontWeight: 600,
                                 }}
                               />

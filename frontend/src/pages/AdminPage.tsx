@@ -56,6 +56,7 @@ import {
 import client from '../api/client'
 import UserManagement from '../components/UserManagement'
 import { RecycleBin } from '../components/RecycleBin'
+import { getContractTypeColor, getProductColor, ADMIN_COLORS } from '../utils/chipColors'
 
 // Types
 interface DatabaseStats {
@@ -873,7 +874,7 @@ export default function AdminPage() {
                 <Chip 
                   label={contract.contract_type} 
                   size="small" 
-                  color={contract.contract_type === 'FOB' ? 'primary' : 'secondary'}
+                  sx={getContractTypeColor(contract.contract_type)}
                 />
               </TableCell>
               <TableCell>

@@ -32,6 +32,7 @@ import type {
   WeeklyQuantityComparisonResponse,
   Contract,
 } from '../types'
+import { PLAN_TYPE_COLORS } from '../utils/chipColors'
 
 const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -548,9 +549,11 @@ export default function ReconciliationPage() {
                       <TableCell>
                         <Chip
                           label={isMonthlyPlanLog(log) ? 'Monthly' : 'Quarterly'}
-                          color={isMonthlyPlanLog(log) ? 'primary' : 'secondary'}
                           size="small"
-                          sx={{ fontWeight: 500 }}
+                          sx={{ 
+                            fontWeight: 500,
+                            ...(isMonthlyPlanLog(log) ? PLAN_TYPE_COLORS.MONTHLY : PLAN_TYPE_COLORS.QUARTERLY)
+                          }}
                         />
                       </TableCell>
                       <TableCell>

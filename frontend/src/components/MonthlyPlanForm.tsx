@@ -34,6 +34,7 @@ import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 import { VersionHistoryDialog } from './VersionHistory'
 import { CIF_ROUTES, calculateDeliveryWindow, calculateETA } from '../utils/voyageDuration'
+import { BADGE_COLORS, getProductColor } from '../utils/chipColors'
 
 // Simple UUID generator
 const generateUUID = (): string => {
@@ -2047,7 +2048,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           <Chip 
                             label="Combi Cargo"
                             size="small" 
-                            sx={{ mb: 1, bgcolor: '#F59E0B', color: 'white' }} 
+                            sx={{ mb: 1, bgcolor: BADGE_COLORS.COMBI.bgcolor, color: BADGE_COLORS.COMBI.color }} 
                           />
                         )}
                         
@@ -2459,7 +2460,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           {getMonthName(month)} {year}
                         </Typography>
                         {entry.is_combi && (
-                          <Chip label="Combi" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: '#FEF3C7', color: '#92400E', mt: 0.5 }} />
+                          <Chip label="Combi" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: BADGE_COLORS.COMBI.bgcolor, color: BADGE_COLORS.COMBI.color, mt: 0.5 }} />
                         )}
                         {!entry.is_combi && isMultiProduct && (
                           <Typography variant="caption" sx={{ color: '#64748B' }}>{entry.product_name}</Typography>
@@ -2680,7 +2681,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                 <Chip 
                                   label="Combie Cargo"
                                   size="small" 
-                                  sx={{ mb: 1, bgcolor: '#F59E0B', color: 'white' }} 
+                                  sx={{ mb: 1, bgcolor: BADGE_COLORS.COMBI.bgcolor, color: BADGE_COLORS.COMBI.color }} 
                                 />
                               )}
                               

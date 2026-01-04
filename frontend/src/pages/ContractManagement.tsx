@@ -37,6 +37,7 @@ import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-ma
 import client, { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity, AuthorityAmendment } from '../types'
 import { CIF_DESTINATIONS } from '../utils/voyageDuration'
+import { getContractTypeColor, getPaymentColor, PRODUCT_COLORS } from '../utils/chipColors'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
 import { useConflictHandler } from '../components/Presence'
@@ -964,18 +965,16 @@ export default function ContractManagement() {
                     <TableCell>
                       <Chip
                         label={contract.contract_type}
-                        color={contract.contract_type === 'FOB' ? 'primary' : 'secondary'}
                         size="small"
-                        sx={{ fontWeight: 500 }}
+                        sx={{ fontWeight: 500, ...getContractTypeColor(contract.contract_type) }}
                       />
                     </TableCell>
                     <TableCell>
                       {contract.payment_method ? (
                         <Chip
                           label={contract.payment_method}
-                          color={contract.payment_method === 'T/T' ? 'success' : 'warning'}
                           size="small"
-                          sx={{ fontWeight: 500 }}
+                          sx={{ fontWeight: 500, ...getPaymentColor(contract.payment_method) }}
                         />
                       ) : (
                         <Typography variant="body2" sx={{ color: '#94A3B8' }}>—</Typography>

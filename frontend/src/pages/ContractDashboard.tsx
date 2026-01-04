@@ -24,6 +24,7 @@ import {
 import { ArrowBack } from '@mui/icons-material'
 import { contractAPI, cargoAPI, quarterlyPlanAPI, monthlyPlanAPI, customerAPI } from '../api/client'
 import type { Contract, Cargo, QuarterlyPlan, MonthlyPlan, Customer, CargoStatus } from '../types'
+import { getContractTypeColor, getPaymentColor, getCargoStatusColor, getProductColor } from '../utils/chipColors'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -220,8 +221,8 @@ export default function ContractDashboard() {
               </Typography>
               <Chip
                 label={contract.contract_type}
-                color={contract.contract_type === 'FOB' ? 'primary' : 'secondary'}
                 size="small"
+                sx={getContractTypeColor(contract.contract_type)}
               />
             </CardContent>
           </Card>

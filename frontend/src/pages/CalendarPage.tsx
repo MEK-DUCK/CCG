@@ -31,6 +31,7 @@ import { useNavigate } from 'react-router-dom'
 import { contractAPI, customerAPI, monthlyPlanAPI, cargoAPI } from '../api/client'
 import type { Contract, Customer, MonthlyPlan, Cargo } from '../types'
 import { parseLaycanDate } from '../utils/laycanParser'
+import { CALENDAR_COLORS, BADGE_COLORS, getContractTypeColor } from '../utils/chipColors'
 
 // Event types for the calendar
 type EventType = 'fob_laycan' | 'cif_loading' | 'tng_due' | 'nd_due'
@@ -63,17 +64,17 @@ interface CalendarEvent {
   classNames: string[]
 }
 
-// Color scheme
+// Color scheme - using centralized calendar colors
 const EVENT_COLORS = {
-  fob_laycan: { bg: '#3B82F6', border: '#2563EB', text: '#000000' },
-  cif_loading: { bg: '#8B5CF6', border: '#7C3AED', text: '#000000' },
-  tng_due: { bg: '#F59E0B', border: '#D97706', text: '#000000' },
-  nd_due: { bg: '#EF4444', border: '#DC2626', text: '#000000' },
+  fob_laycan: CALENDAR_COLORS.FOB_LAYCAN,
+  cif_loading: CALENDAR_COLORS.CIF_LOADING,
+  tng_due: CALENDAR_COLORS.TNG_DUE,
+  nd_due: CALENDAR_COLORS.ND_DUE,
 }
 
 const TBA_COLORS = {
-  fob_laycan: { bg: '#93C5FD', border: '#3B82F6', text: '#000000' },
-  cif_loading: { bg: '#C4B5FD', border: '#8B5CF6', text: '#000000' },
+  fob_laycan: CALENDAR_COLORS.TBA_FOB,
+  cif_loading: CALENDAR_COLORS.TBA_CIF,
 }
 
 export default function CalendarPage() {
@@ -568,8 +569,8 @@ export default function CalendarPage() {
               alignItems: 'center', 
               padding: '4px 12px', 
               borderRadius: '4px', 
-              backgroundColor: '#3B82F6', 
-              color: '#ffffff',
+              backgroundColor: CALENDAR_COLORS.FOB_LAYCAN.bg, 
+              color: CALENDAR_COLORS.FOB_LAYCAN.text,
               fontSize: '0.75rem',
               fontWeight: 500,
             }}>
@@ -580,8 +581,8 @@ export default function CalendarPage() {
               alignItems: 'center', 
               padding: '4px 12px', 
               borderRadius: '4px', 
-              backgroundColor: '#8B5CF6', 
-              color: '#ffffff',
+              backgroundColor: CALENDAR_COLORS.CIF_LOADING.bg, 
+              color: CALENDAR_COLORS.CIF_LOADING.text,
               fontSize: '0.75rem',
               fontWeight: 500,
             }}>
@@ -592,8 +593,8 @@ export default function CalendarPage() {
               alignItems: 'center', 
               padding: '4px 12px', 
               borderRadius: '4px', 
-              backgroundColor: '#F59E0B', 
-              color: '#ffffff',
+              backgroundColor: CALENDAR_COLORS.TNG_DUE.bg, 
+              color: CALENDAR_COLORS.TNG_DUE.text,
               fontSize: '0.75rem',
               fontWeight: 500,
             }}>
@@ -604,8 +605,8 @@ export default function CalendarPage() {
               alignItems: 'center', 
               padding: '4px 12px', 
               borderRadius: '4px', 
-              backgroundColor: '#EF4444', 
-              color: '#ffffff',
+              backgroundColor: CALENDAR_COLORS.ND_DUE.bg, 
+              color: CALENDAR_COLORS.ND_DUE.text,
               fontSize: '0.75rem',
               fontWeight: 500,
             }}>
@@ -639,38 +640,38 @@ export default function CalendarPage() {
             .fc-event:hover {
               opacity: 0.9;
             }
-            /* FOB Laycan - Blue */
+            /* FOB Laycan - Sky Blue (light) */
             .event-fob_laycan {
-              background-color: #3B82F6 !important;
-              border-color: #2563EB !important;
+              background-color: ${CALENDAR_COLORS.FOB_LAYCAN.bg} !important;
+              border-color: ${CALENDAR_COLORS.FOB_LAYCAN.border} !important;
             }
             .tba-event.event-fob_laycan {
-              background-color: #93C5FD !important;
-              border-color: #3B82F6 !important;
+              background-color: ${CALENDAR_COLORS.TBA_FOB.bg} !important;
+              border-color: ${CALENDAR_COLORS.TBA_FOB.border} !important;
             }
-            /* CIF Loading - Purple */
+            /* CIF Loading - Orange (light) */
             .event-cif_loading {
-              background-color: #8B5CF6 !important;
-              border-color: #7C3AED !important;
+              background-color: ${CALENDAR_COLORS.CIF_LOADING.bg} !important;
+              border-color: ${CALENDAR_COLORS.CIF_LOADING.border} !important;
             }
             .tba-event.event-cif_loading {
-              background-color: #C4B5FD !important;
-              border-color: #8B5CF6 !important;
+              background-color: ${CALENDAR_COLORS.TBA_CIF.bg} !important;
+              border-color: ${CALENDAR_COLORS.TBA_CIF.border} !important;
             }
-            /* TNG Due - Amber */
+            /* TNG Due - Yellow (light) */
             .event-tng_due {
-              background-color: #F59E0B !important;
-              border-color: #D97706 !important;
+              background-color: ${CALENDAR_COLORS.TNG_DUE.bg} !important;
+              border-color: ${CALENDAR_COLORS.TNG_DUE.border} !important;
             }
-            /* ND Due - Red */
+            /* ND Due - Rose (light) */
             .event-nd_due {
-              background-color: #EF4444 !important;
-              border-color: #DC2626 !important;
+              background-color: ${CALENDAR_COLORS.ND_DUE.bg} !important;
+              border-color: ${CALENDAR_COLORS.ND_DUE.border} !important;
             }
             /* Overdue - Light red background */
             .overdue-event {
-              background-color: #FEE2E2 !important;
-              border-color: #EF4444 !important;
+              background-color: ${BADGE_COLORS.OVERDUE.bgcolor} !important;
+              border-color: ${BADGE_COLORS.OVERDUE.color} !important;
               animation: pulse 2s infinite;
             }
             .tba-event {
@@ -822,7 +823,7 @@ export default function CalendarPage() {
                     <Chip 
                       label={selectedEvent.extendedProps.contractType}
                       size="small"
-                      color={selectedEvent.extendedProps.contractType === 'FOB' ? 'primary' : 'secondary'}
+                      sx={getContractTypeColor(selectedEvent.extendedProps.contractType)}
                     />
                   </Box>
                 </Box>
