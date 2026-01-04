@@ -25,7 +25,7 @@ import {
   FormControl,
   InputLabel,
 } from '@mui/material'
-import { Visibility, Search, FilterList } from '@mui/icons-material'
+import { Visibility, Search } from '@mui/icons-material'
 import client, { contractAPI, customerAPI } from '../api/client'
 import type { Contract, Customer } from '../types'
 
@@ -649,7 +649,7 @@ export default function DashboardPage() {
                               whiteSpace: 'nowrap' 
                             }}>
                               {auth.type === 'Amendment' 
-                                ? `${auth.amendment_type?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || ''}${auth.year ? ` (Year ${auth.year})` : ''}`
+                                ? `${auth.amendment_type?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || ''}${auth.year ? ` (Year ${auth.year})` : ''}`
                                 : auth.reason || '-'
                               }
                             </Typography>

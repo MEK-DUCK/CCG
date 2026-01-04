@@ -121,10 +121,6 @@ export default function ContractDashboard() {
     return counts
   }
 
-  const getTotalPlannedQuantity = () => {
-    return monthlyPlans.reduce((sum, plan) => sum + (plan.month_quantity || 0), 0)
-  }
-
   const getTotalCargoQuantity = () => {
     return cargos.reduce((sum, cargo) => sum + (cargo.cargo_quantity || 0), 0)
   }
@@ -170,7 +166,6 @@ export default function ContractDashboard() {
   }
 
   const statusCounts = getStatusCounts()
-  const totalPlanned = getTotalPlannedQuantity()
   const totalCargo = getTotalCargoQuantity()
   const contractProgress = getContractProgress()
 
