@@ -192,11 +192,15 @@ export default function CalendarPage() {
 
       const colors = EVENT_COLORS[eventType]
 
+      // Use only the first day of the laycan/loading window
+      const eventStart = parsed.startDate
+      const eventEnd = new Date(eventStart.getTime() + 24 * 60 * 60 * 1000) // Single day event
+
       events.push({
         id: `cargo-${cargo.id}`,
         title: `${customerName} - ${contract.contract_number} - ${cargo.product_name}`,
-        start: parsed.startDate,
-        end: new Date(parsed.endDate.getTime() + 24 * 60 * 60 * 1000), // Add 1 day for inclusive end
+        start: eventStart,
+        end: eventEnd,
         extendedProps: {
           type: eventType,
           customerName,
@@ -337,11 +341,15 @@ export default function CalendarPage() {
         const colors = TBA_COLORS[eventType] || EVENT_COLORS[eventType]
         const productName = plan.product_name || 'Unknown Product'
 
+        // Use only the first day of the laycan/loading window
+        const eventStart = parsed.startDate
+        const eventEnd = new Date(eventStart.getTime() + 24 * 60 * 60 * 1000) // Single day event
+
         events.push({
           id: `plan-${plan.id}`,
           title: `${customerName} - ${contract.contract_number} - ${productName}`,
-          start: parsed.startDate,
-          end: new Date(parsed.endDate.getTime() + 24 * 60 * 60 * 1000),
+          start: eventStart,
+          end: eventEnd,
           extendedProps: {
             type: eventType,
             customerName,
