@@ -299,7 +299,7 @@ export default function CalendarPage() {
       }
     })
 
-    // Process monthly plans without cargos (TBA)
+    // Process monthly plans without cargos (TBA) - only if they have dates set
     if (showTBA) {
       monthlyPlans.forEach(plan => {
         // Skip if this plan already has a cargo
@@ -317,28 +317,19 @@ export default function CalendarPage() {
 
         const customerName = getCustomerName(contract.customer_id)
         
-        // Get laycan from plan
+        // Get laycan from plan - only use laycan_2_days for FOB, loading_window for CIF
         const laycanStr = contract.contract_type === 'CIF' 
           ? plan.loading_window 
-          : (plan.laycan_5_days || plan.laycan_2_days)
+          : plan.laycan_2_days
 
-        let eventStart: Date
-        let rawLaycan: string
-        let isOverdue: boolean
+        // Only show TBA if they have actual dates set
+        if (!laycanStr) return
 
-        if (laycanStr) {
-          // Parse laycan date if available
-          const parsed = parseLaycanDate(laycanStr, plan.month, plan.year)
-          if (!parsed.isValid || !parsed.startDate || !parsed.endDate) return
-          eventStart = parsed.startDate
-          rawLaycan = laycanStr
-          isOverdue = parsed.endDate < today
-        } else {
-          // No laycan set - use first day of the month
-          eventStart = new Date(plan.year, plan.month - 1, 1)
-          rawLaycan = `${plan.month}/${plan.year} (TBD)`
-          isOverdue = false
-        }
+        // Parse laycan date
+        const parsed = parseLaycanDate(laycanStr, plan.month, plan.year)
+        if (!parsed.isValid || !parsed.startDate || !parsed.endDate) return
+
+        const isOverdue = parsed.endDate < today
 
         // Filter by overdue
         if (showOverdueOnly && !isOverdue) return
@@ -351,8 +342,9 @@ export default function CalendarPage() {
         const colors = TBA_COLORS[eventType] || EVENT_COLORS[eventType]
         const productName = plan.product_name || 'Unknown Product'
 
-        // Single day event
-        const eventEnd = new Date(eventStart.getTime() + 24 * 60 * 60 * 1000)
+        // Use only the first day of the laycan/loading window
+        const eventStart = parsed.startDate
+        const eventEnd = new Date(eventStart.getTime() + 24 * 60 * 60 * 1000) // Single day event
 
         events.push({
           id: `plan-${plan.id}`,
@@ -374,7 +366,7 @@ export default function CalendarPage() {
             isOverdue,
             isTBA: true,
             contractType: contract.contract_type as 'FOB' | 'CIF',
-            rawLaycan,
+            rawLaycan: laycanStr,
           },
           backgroundColor: isOverdue ? '#FEE2E2' : colors.bg,
           borderColor: isOverdue ? '#EF4444' : colors.border,
