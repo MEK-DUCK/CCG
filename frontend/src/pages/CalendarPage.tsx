@@ -295,13 +295,21 @@ export default function CalendarPage() {
 
     // Process monthly plans without cargos (TBA) - only if they have dates set
     if (showTBA) {
+      console.log('Processing TBA plans, total monthly plans:', monthlyPlans.length)
+      
       monthlyPlans.forEach(plan => {
         // Skip if this plan already has a cargo
         const hasCargo = cargos.some(c => c.monthly_plan_id === plan.id)
-        if (hasCargo) return
+        if (hasCargo) {
+          console.log(`Plan ${plan.id} skipped - has cargo`)
+          return
+        }
 
         const contract = getContract(plan.contract_id!)
-        if (!contract) return
+        if (!contract) {
+          console.log(`Plan ${plan.id} skipped - no contract found for contract_id:`, plan.contract_id)
+          return
+        }
 
         // Filter by contract type
         if (!selectedContractTypes.includes(contract.contract_type)) return
@@ -317,11 +325,17 @@ export default function CalendarPage() {
           : plan.laycan_2_days
 
         // Only show TBA if they have actual dates set
-        if (!laycanStr) return
+        if (!laycanStr) {
+          console.log(`Plan ${plan.id} (${contract.contract_number}) skipped - no laycan. laycan_2_days:`, plan.laycan_2_days, 'loading_window:', plan.loading_window)
+          return
+        }
 
         // Parse laycan date
         const parsed = parseLaycanDate(laycanStr, plan.month, plan.year)
-        if (!parsed.isValid || !parsed.startDate || !parsed.endDate) return
+        if (!parsed.isValid || !parsed.startDate || !parsed.endDate) {
+          console.log(`Plan ${plan.id} skipped - invalid laycan parse:`, laycanStr, parsed)
+          return
+        }
 
         const isOverdue = parsed.endDate < today
 
@@ -339,6 +353,8 @@ export default function CalendarPage() {
         // Use only the first day of the laycan/loading window
         const eventStart = parsed.startDate
         const eventEnd = new Date(eventStart.getTime() + 24 * 60 * 60 * 1000) // Single day event
+
+        console.log(`Adding TBA event for plan ${plan.id}:`, contract.contract_number, productName, laycanStr)
 
         events.push({
           id: `plan-${plan.id}`,
@@ -584,58 +600,54 @@ export default function CalendarPage() {
 
           {/* Legend */}
           <Box sx={{ display: 'flex', gap: 1, ml: 'auto', flexWrap: 'wrap' }}>
-            <Box sx={{ 
+            <span style={{ 
               display: 'inline-flex', 
               alignItems: 'center', 
-              px: 1.5, 
-              py: 0.5, 
-              borderRadius: 1, 
-              bgcolor: '#3B82F6', 
-              color: '#fff',
+              padding: '4px 12px', 
+              borderRadius: '4px', 
+              backgroundColor: '#3B82F6', 
+              color: '#ffffff',
               fontSize: '0.75rem',
               fontWeight: 500,
             }}>
               FOB Laycan
-            </Box>
-            <Box sx={{ 
+            </span>
+            <span style={{ 
               display: 'inline-flex', 
               alignItems: 'center', 
-              px: 1.5, 
-              py: 0.5, 
-              borderRadius: 1, 
-              bgcolor: '#8B5CF6', 
-              color: '#fff',
+              padding: '4px 12px', 
+              borderRadius: '4px', 
+              backgroundColor: '#8B5CF6', 
+              color: '#ffffff',
               fontSize: '0.75rem',
               fontWeight: 500,
             }}>
               CIF Loading
-            </Box>
-            <Box sx={{ 
+            </span>
+            <span style={{ 
               display: 'inline-flex', 
               alignItems: 'center', 
-              px: 1.5, 
-              py: 0.5, 
-              borderRadius: 1, 
-              bgcolor: '#F59E0B', 
-              color: '#fff',
+              padding: '4px 12px', 
+              borderRadius: '4px', 
+              backgroundColor: '#F59E0B', 
+              color: '#ffffff',
               fontSize: '0.75rem',
               fontWeight: 500,
             }}>
               TNG Due
-            </Box>
-            <Box sx={{ 
+            </span>
+            <span style={{ 
               display: 'inline-flex', 
               alignItems: 'center', 
-              px: 1.5, 
-              py: 0.5, 
-              borderRadius: 1, 
-              bgcolor: '#EF4444', 
-              color: '#fff',
+              padding: '4px 12px', 
+              borderRadius: '4px', 
+              backgroundColor: '#EF4444', 
+              color: '#ffffff',
               fontSize: '0.75rem',
               fontWeight: 500,
             }}>
               ND Due
-            </Box>
+            </span>
           </Box>
         </Box>
       </Paper>
