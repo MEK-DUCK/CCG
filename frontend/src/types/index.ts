@@ -297,3 +297,59 @@ export interface WeeklyQuantityComparisonResponse {
   contracts: WeeklyQuantityContract[]
 }
 
+// Cross-Contract Combi Types
+export interface CrossContractCombiCargoItem {
+  contract_id: number
+  monthly_plan_id: number
+  product_name: string
+  cargo_quantity: number
+}
+
+export interface CrossContractCombiCreate {
+  customer_id: number
+  vessel_name: string
+  load_ports: string
+  inspector_name?: string
+  laycan_window?: string
+  notes?: string
+  cargo_items: CrossContractCombiCargoItem[]
+}
+
+export interface CrossContractCombiResponse {
+  combi_group_id: string
+  cargos: Cargo[]
+  message: string
+}
+
+export interface EligibleContractMonthlyPlan {
+  id: number
+  product_name: string
+  month_quantity: number
+  has_cargo: boolean
+  combi_group_id?: string
+  laycan_5_days?: string
+  laycan_2_days?: string
+  loading_window?: string
+}
+
+export interface EligibleContract {
+  id: number
+  contract_id: string
+  contract_number: string
+  contract_type: ContractType
+  products: ContractProduct[]
+  monthly_plans: EligibleContractMonthlyPlan[]
+}
+
+export interface EligibleContractsResponse {
+  source_contract: {
+    id: number
+    contract_number: string
+    contract_type: ContractType
+    customer_id: number
+  }
+  eligible_contracts: EligibleContract[]
+  month: number
+  year: number
+}
+

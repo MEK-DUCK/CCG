@@ -1193,3 +1193,240 @@ async def delete_cargo(
     
     message = "Cargo permanently deleted" if permanent else "Cargo moved to recycle bin (can be restored within 90 days)"
     return {"message": message}
+
+
+# =============================================================================
+# CROSS-CONTRACT COMBI ENDPOINTS
+# =============================================================================
+
+@router.post("/cross-contract-combi", response_model=schemas.CrossContractCombiResponse)
+async def create_cross_contract_combi(
+    combi_data: schemas.CrossContractCombiCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Create a cross-contract combi cargo - multiple products from different contracts
+    sharing the same vessel, load ports, and timing.
+    
+    Validates:
+    - All contracts belong to the same customer
+    - All contracts are the same type (FOB or CIF)
+    - All monthly plans are for the same month/year
+    """
+    try:
+        # Collect all contract IDs and monthly plan IDs
+        contract_ids = set(item.contract_id for item in combi_data.cargo_items)
+        monthly_plan_ids = [item.monthly_plan_id for item in combi_data.cargo_items]
+        
+        # Fetch all contracts
+        contracts = db.query(models.Contract).filter(
+            models.Contract.id.in_(contract_ids)
+        ).all()
+        
+        if len(contracts) != len(contract_ids):
+            found_ids = {c.id for c in contracts}
+            missing = contract_ids - found_ids
+            raise HTTPException(status_code=404, detail=f"Contracts not found: {missing}")
+        
+        # Validate all contracts belong to the same customer
+        customer_ids = set(c.customer_id for c in contracts)
+        if len(customer_ids) > 1:
+            raise HTTPException(
+                status_code=400, 
+                detail="Cross-contract combi requires all contracts to belong to the same customer"
+            )
+        
+        # Validate customer_id matches
+        actual_customer_id = list(customer_ids)[0]
+        if actual_customer_id != combi_data.customer_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Customer ID mismatch. Contracts belong to customer {actual_customer_id}"
+            )
+        
+        # Validate all contracts are the same type
+        contract_types = set(c.contract_type for c in contracts)
+        if len(contract_types) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Cross-contract combi requires all contracts to be the same type (all FOB or all CIF)"
+            )
+        
+        contract_type = list(contract_types)[0]
+        
+        # Fetch all monthly plans
+        monthly_plans = db.query(models.MonthlyPlan).filter(
+            models.MonthlyPlan.id.in_(monthly_plan_ids)
+        ).all()
+        
+        if len(monthly_plans) != len(monthly_plan_ids):
+            found_ids = {mp.id for mp in monthly_plans}
+            missing = set(monthly_plan_ids) - found_ids
+            raise HTTPException(status_code=404, detail=f"Monthly plans not found: {missing}")
+        
+        # Validate all monthly plans are for the same month/year
+        month_years = set((mp.month, mp.year) for mp in monthly_plans)
+        if len(month_years) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Cross-contract combi requires all monthly plans to be for the same month/year"
+            )
+        
+        # Create a map of monthly_plan_id to contract_id for validation
+        mp_to_contract = {mp.id: mp.contract_id for mp in monthly_plans}
+        
+        # Validate each cargo item's monthly plan belongs to its specified contract
+        for item in combi_data.cargo_items:
+            if mp_to_contract.get(item.monthly_plan_id) != item.contract_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Monthly plan {item.monthly_plan_id} does not belong to contract {item.contract_id}"
+                )
+        
+        # Generate a shared combi_group_id
+        combi_group_id = str(uuid.uuid4())
+        
+        # Create cargos for each item
+        created_cargos = []
+        contracts_map = {c.id: c for c in contracts}
+        monthly_plans_map = {mp.id: mp for mp in monthly_plans}
+        
+        for item in combi_data.cargo_items:
+            contract = contracts_map[item.contract_id]
+            monthly_plan = monthly_plans_map[item.monthly_plan_id]
+            
+            # Generate cargo_id
+            cargo_id = f"CARGO-{uuid.uuid4().hex[:8].upper()}"
+            
+            db_cargo = models.Cargo(
+                cargo_id=cargo_id,
+                vessel_name=combi_data.vessel_name,
+                customer_id=combi_data.customer_id,
+                product_name=item.product_name,
+                contract_id=item.contract_id,
+                contract_type=contract_type,
+                load_ports=combi_data.load_ports,
+                inspector_name=combi_data.inspector_name,
+                cargo_quantity=item.cargo_quantity,
+                laycan_window=combi_data.laycan_window,
+                notes=combi_data.notes,
+                monthly_plan_id=item.monthly_plan_id,
+                combi_group_id=combi_group_id,
+                status=CargoStatus.PLANNED,
+            )
+            
+            db.add(db_cargo)
+            db.flush()
+            
+            # Create per-port operation rows
+            _sync_port_operations(db, db_cargo, _parse_load_ports(db_cargo.load_ports))
+            
+            # Log the creation
+            log_cargo_action(db=db, action='CREATE', cargo=db_cargo)
+            
+            created_cargos.append(db_cargo)
+        
+        db.commit()
+        
+        # Refresh all cargos to get port_operations
+        for cargo in created_cargos:
+            db.refresh(cargo)
+        
+        logger.info(f"Created cross-contract combi with {len(created_cargos)} cargos, combi_group_id={combi_group_id}")
+        
+        return schemas.CrossContractCombiResponse(
+            combi_group_id=combi_group_id,
+            cargos=[schemas.Cargo.model_validate(c) for c in created_cargos],
+            message=f"Cross-contract combi created successfully with {len(created_cargos)} cargos"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating cross-contract combi: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error creating cross-contract combi: {str(e)}")
+
+
+@router.delete("/combi-group/{combi_group_id}")
+async def delete_combi_group(
+    combi_group_id: str,
+    permanent: bool = Query(False, description="If true, permanently delete. Otherwise, move to recycle bin."),
+    reason: Optional[str] = Query(None, description="Optional reason for deletion"),
+    user_id: Optional[int] = Query(None, description="User ID for audit logging"),
+    user_initials: Optional[str] = Query(None, description="User initials for audit logging"),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete an entire combi group (all cargos sharing the same combi_group_id).
+    This is used for both same-contract and cross-contract combis.
+    
+    Returns information about what was deleted.
+    """
+    try:
+        # Find all cargos in the combi group
+        cargos = db.query(models.Cargo).filter(
+            models.Cargo.combi_group_id == combi_group_id
+        ).all()
+        
+        if not cargos:
+            raise to_http_exception(combi_group_not_found(combi_group_id))
+        
+        # Collect info for response
+        deleted_cargo_ids = []
+        contract_ids = set()
+        
+        for cargo in cargos:
+            deleted_cargo_ids.append(cargo.cargo_id)
+            contract_ids.add(cargo.contract_id)
+            
+            # Log the deletion
+            log_cargo_action(
+                db=db,
+                action='DELETE',
+                cargo=cargo,
+                old_monthly_plan_id=cargo.monthly_plan_id
+            )
+            db.flush()
+            
+            # Preserve audit log history
+            db.query(models.CargoAuditLog).filter(
+                models.CargoAuditLog.cargo_id == cargo.id
+            ).update(
+                {models.CargoAuditLog.cargo_id: None, models.CargoAuditLog.cargo_db_id: cargo.id},
+                synchronize_session=False
+            )
+            
+            if permanent:
+                db.delete(cargo)
+            else:
+                version_service.soft_delete(
+                    db, "cargo", cargo,
+                    user_id=user_id,
+                    user_initials=user_initials,
+                    reason=reason
+                )
+        
+        db.commit()
+        
+        is_cross_contract = len(contract_ids) > 1
+        combi_type = "cross-contract" if is_cross_contract else "same-contract"
+        action = "permanently deleted" if permanent else "moved to recycle bin"
+        
+        logger.info(f"Deleted {combi_type} combi group {combi_group_id}: {len(cargos)} cargos {action}")
+        
+        return {
+            "message": f"{combi_type.title()} combi group {action}",
+            "combi_group_id": combi_group_id,
+            "deleted_cargo_ids": deleted_cargo_ids,
+            "affected_contracts": list(contract_ids),
+            "is_cross_contract": is_cross_contract,
+            "cargo_count": len(cargos)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting combi group {combi_group_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error deleting combi group: {str(e)}")

@@ -11,6 +11,7 @@ A full-stack web application for managing oil contract planning, lifting schedul
 - **Range Contracts**: Support for min/max quantity ranges with optional quantities
 - **Cargo Tracking**: Track vessel operations with automatic status updates
 - **Combi Cargo**: Load multiple products in a single vessel with unified tracking
+- **Cross-Contract Combi**: Combine products from different contracts (same customer, same type) into a single vessel
 - **Dashboard**: Multi-tab interface for Port Movement, Active Loadings, Completed Cargos, In-Road CIF, and Completed In-Road CIF
 
 ### Contract Types & Quantity Modes
@@ -26,6 +27,32 @@ A full-stack web application for managing oil contract planning, lifting schedul
 - **Auto-Calculated Delivery Windows**: Based on loading window, destination, and route (Via SUEZ/CAPE)
 - **Voyage Duration Lookup**: Built-in voyage times for Rotterdam, Le Havre, Shell Haven, Naples, Milford Haven
 - **TNG (Tonnage Memo) Tracking**: Track issuance and revision of tonnage memos with due date alerts
+
+### Combi Cargo Features
+Combi cargos allow multiple products to be loaded on a single vessel, sharing the same timing and vessel details.
+
+#### Same-Contract Combi
+- Available for contracts with multiple products (e.g., Gasoil + Jet A-1)
+- Check "Combi Cargo" when creating a new monthly plan entry
+- Enter quantities for each product separately
+- All products share the same laycan/loading window
+
+#### Cross-Contract Combi
+- Combine products from **different contracts** belonging to the **same customer**
+- Requirements:
+  - All contracts must belong to the same customer
+  - All contracts must be the same type (all FOB or all CIF)
+  - Monthly plans must be for the same month/year
+- Click "Add from Another Contract" button in the monthly plan
+- Select products from eligible contracts and enter quantities
+- All selected products share the same vessel, load ports, and timing
+- Each product's quantity counts against its respective contract
+
+#### Combi Cargo Behavior
+- **Unified Display**: Combi cargos appear as a single row in Port Movement and Active Loadings
+- **Synchronized Updates**: Vessel name, load ports, and status changes apply to all products
+- **Individual Quantities**: Each product maintains its own quantity for contract tracking
+- **Deletion**: Deleting a combi cargo removes all associated products (with confirmation for cross-contract)
 
 ### Monthly Plan Views
 - **Grid View**: Detailed editing layout organized by quarter with full field access

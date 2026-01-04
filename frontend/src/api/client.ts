@@ -201,6 +201,9 @@ export const contractAPI = {
     if (productName) params.product_name = productName
     return client.get('/api/contracts/authorities/all', { params })
   },
+  // Get contracts eligible for cross-contract combi with the specified contract
+  getEligibleForCrossCombi: (contractId: number, month: number, year: number) =>
+    client.get(`/api/contracts/eligible-for-cross-combi/${contractId}`, { params: { month, year } }),
 }
 
 // Quarterly Plan API
@@ -292,6 +295,11 @@ export const cargoAPI = {
   // Sync all cargos in a combi group with shared fields (status, vessel, load ports, etc.)
   syncCombiGroup: (combiGroupId: string, data: any) =>
     client.put(`/api/cargos/combi-group/${combiGroupId}/sync`, data),
+  // Cross-contract combi operations
+  createCrossContractCombi: (data: any) => 
+    client.post('/api/cargos/cross-contract-combi', data),
+  deleteCombiGroup: (combiGroupId: string, params?: { permanent?: boolean; reason?: string; user_id?: number; user_initials?: string }) =>
+    client.delete(`/api/cargos/combi-group/${combiGroupId}`, { params }),
 }
 
 // Audit Log API

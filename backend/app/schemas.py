@@ -576,6 +576,51 @@ class CargoCreate(CargoBase):
     monthly_plan_id: int
     combi_group_id: Optional[str] = None  # UUID to link combi cargos together
 
+
+# Cross-Contract Combi Cargo Schemas
+class CrossContractCombiCargoItem(BaseModel):
+    """Individual cargo item within a cross-contract combi"""
+    contract_id: int
+    monthly_plan_id: int
+    product_name: str
+    cargo_quantity: float = Field(..., gt=0)
+
+
+class CrossContractCombiCreate(BaseModel):
+    """
+    Create a cross-contract combi cargo - multiple products from different contracts
+    sharing the same vessel, load ports, and timing.
+    
+    Requirements:
+    - All contracts must belong to the same customer
+    - All contracts must be the same type (FOB or CIF)
+    - All monthly plans must be for the same month/year
+    """
+    customer_id: int
+    vessel_name: str
+    load_ports: str
+    inspector_name: Optional[str] = None
+    laycan_window: Optional[str] = None
+    notes: Optional[str] = None
+    # Individual cargo items (one per contract/product)
+    cargo_items: List[CrossContractCombiCargoItem] = Field(..., min_length=2)
+    
+    @model_validator(mode="after")
+    def _validate_multiple_contracts(self):
+        """Ensure at least 2 different contracts are involved"""
+        if self.cargo_items:
+            contract_ids = set(item.contract_id for item in self.cargo_items)
+            if len(contract_ids) < 2:
+                raise ValueError("Cross-contract combi must include products from at least 2 different contracts")
+        return self
+
+
+class CrossContractCombiResponse(BaseModel):
+    """Response for cross-contract combi creation"""
+    combi_group_id: str
+    cargos: List["Cargo"]
+    message: str
+
 class CargoUpdate(BaseModel):
     vessel_name: Optional[str] = None
     load_ports: Optional[str] = None

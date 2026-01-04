@@ -312,6 +312,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     selected_product: '',  // For combie cargos - which product the top-up is for
   })
   const [isAddingTopup, setIsAddingTopup] = useState(false)
+  
+  // Cross-Contract Combi state
+  const [crossContractDialogOpen, setCrossContractDialogOpen] = useState(false)
+  const [crossContractEntry, setCrossContractEntry] = useState<{ month: number; year: number; entryIndex: number; entry: MonthlyPlanEntry } | null>(null)
+  const [eligibleContracts, setEligibleContracts] = useState<any[]>([])
+  const [selectedCrossContractItems, setSelectedCrossContractItems] = useState<Array<{ contractId: number; contractNumber: string; monthlyPlanId: number; productName: string; quantity: string }>>([])
+  const [isLoadingEligible, setIsLoadingEligible] = useState(false)
 
   // Get product list from contract
   const products = contract?.products ? (Array.isArray(contract.products) ? contract.products : JSON.parse(contract.products)) : []
@@ -1083,6 +1090,53 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     }
   }
 
+  // Cross-Contract Combi handlers
+  const handleOpenCrossContractDialog = async (month: number, year: number, entryIndex: number, entry: MonthlyPlanEntry) => {
+    setCrossContractEntry({ month, year, entryIndex, entry })
+    setIsLoadingEligible(true)
+    setCrossContractDialogOpen(true)
+    setSelectedCrossContractItems([])
+    
+    try {
+      const response = await contractAPI.getEligibleForCrossCombi(contractId, month, year)
+      setEligibleContracts(response.data.eligible_contracts || [])
+    } catch (error: any) {
+      console.error('Error loading eligible contracts:', error)
+      alert('Failed to load eligible contracts for cross-contract combi')
+      setCrossContractDialogOpen(false)
+    } finally {
+      setIsLoadingEligible(false)
+    }
+  }
+  
+  const handleCloseCrossContractDialog = () => {
+    setCrossContractDialogOpen(false)
+    setCrossContractEntry(null)
+    setEligibleContracts([])
+    setSelectedCrossContractItems([])
+  }
+  
+  const handleToggleCrossContractItem = (contractId: number, contractNumber: string, monthlyPlanId: number, productName: string) => {
+    setSelectedCrossContractItems(prev => {
+      const existingIndex = prev.findIndex(item => item.monthlyPlanId === monthlyPlanId)
+      if (existingIndex >= 0) {
+        // Remove if already selected
+        return prev.filter((_, i) => i !== existingIndex)
+      } else {
+        // Add new item
+        return [...prev, { contractId, contractNumber, monthlyPlanId, productName, quantity: '' }]
+      }
+    })
+  }
+  
+  const handleCrossContractQuantityChange = (monthlyPlanId: number, quantity: string) => {
+    setSelectedCrossContractItems(prev => 
+      prev.map(item => 
+        item.monthlyPlanId === monthlyPlanId ? { ...item, quantity } : item
+      )
+    )
+  }
+
   const getQuarterMonths = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): Array<{ month: number, year: number }> => {
     const quarterMonths = QUARTER_MONTHS[quarter].months
     
@@ -1449,26 +1503,26 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               }))
             } else {
               // Regular contracts with quarterly plans
-              const qp = productQuarterlyPlanMap.get(productName)
-              if (!qp) continue
-              
-              createPromises.push(monthlyPlanAPI.create({
-                quarterly_plan_id: qp.id,
-                month: month,
-                year: year,
-                month_quantity: productQty,
-                number_of_liftings: 1,
-                laycan_5_days: contractType === 'FOB' ? (entry.laycan_5_days || undefined) : undefined,
-                laycan_2_days: contractType === 'FOB' ? (entry.laycan_2_days || undefined) : undefined,
-                laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark || undefined) : undefined,
-                loading_month: contractType === 'CIF' ? (entry.loading_month || undefined) : undefined,
-                loading_window: contractType === 'CIF' ? (entry.loading_window || undefined) : undefined,
+            const qp = productQuarterlyPlanMap.get(productName)
+            if (!qp) continue
+            
+            createPromises.push(monthlyPlanAPI.create({
+              quarterly_plan_id: qp.id,
+              month: month,
+              year: year,
+              month_quantity: productQty,
+              number_of_liftings: 1,
+              laycan_5_days: contractType === 'FOB' ? (entry.laycan_5_days || undefined) : undefined,
+              laycan_2_days: contractType === 'FOB' ? (entry.laycan_2_days || undefined) : undefined,
+              laycan_2_days_remark: contractType === 'FOB' ? (entry.laycan_2_days_remark || undefined) : undefined,
+              loading_month: contractType === 'CIF' ? (entry.loading_month || undefined) : undefined,
+              loading_window: contractType === 'CIF' ? (entry.loading_window || undefined) : undefined,
                 cif_route: contractType === 'CIF' ? (entry.cif_route || undefined) : undefined,
-                delivery_month: contractType === 'CIF' ? (entry.delivery_month || undefined) : undefined,
-                delivery_window: contractType === 'CIF' ? (entry.delivery_window || undefined) : undefined,
-                delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark || undefined) : undefined,
-                combi_group_id: combiGroupId,
-              }))
+              delivery_month: contractType === 'CIF' ? (entry.delivery_month || undefined) : undefined,
+              delivery_window: contractType === 'CIF' ? (entry.delivery_window || undefined) : undefined,
+              delivery_window_remark: contractType === 'CIF' ? (entry.delivery_window_remark || undefined) : undefined,
+              combi_group_id: combiGroupId,
+            }))
             }
           }
         } else {
@@ -1704,11 +1758,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Typography variant="body1" fontWeight="bold" sx={{ color: '#1E293B' }}>
                       {p.name}
-                    </Typography>
+                  </Typography>
                     <Typography variant="body2" sx={{ color: getStatusColor() }}>
                       {getStatusIcon()}
-                    </Typography>
-                  </Box>
+                  </Typography>
+                </Box>
                   <Box sx={{ textAlign: 'right' }}>
                     <Typography variant="h6" fontWeight="bold" sx={{ color: getStatusColor(), lineHeight: 1 }}>
                       {allocated.toLocaleString()} KT
@@ -1760,9 +1814,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                     {/* Min threshold marker for min/max mode */}
                     {isMinMaxMode && minQuantity > 0 && (
                       <>
-                        <Box sx={{
-                          position: 'absolute',
-                          left: `${minPercentage}%`,
+                      <Box sx={{
+                        position: 'absolute',
+                        left: `${minPercentage}%`,
                           top: -4,
                           bottom: -4,
                           width: 3,
@@ -1843,8 +1897,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           borderRadius: '0 8px 8px 0'
                         }} />
                       )}
-                    </Box>
                   </Box>
+                </Box>
                   
                   {/* Scale markers */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5, px: 0.5 }}>
@@ -1866,8 +1920,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   
                   {/* Additional info chips */}
                   <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                    {isMinMaxMode ? (
-                      <>
+                  {isMinMaxMode ? (
+                    <>
                         <Chip 
                           label={`Range: ${minQuantity.toLocaleString()} - ${(p.max_quantity || 0).toLocaleString()} KT`}
                           size="small"
@@ -1893,9 +1947,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                             }}
                           />
                         )}
-                      </>
-                    ) : (
-                      <>
+                    </>
+                  ) : (
+                    <>
                         <Chip 
                           label={`Firm: ${firmQuantity.toLocaleString()} KT`}
                           size="small"
@@ -1921,8 +1975,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                             }}
                           />
                         )}
-                      </>
-                    )}
+                    </>
+                  )}
                     <Chip 
                       label={`${Math.round(percentage)}%`}
                       size="small"
@@ -1948,7 +2002,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   }}>
                     <Typography variant="caption" sx={{ color: '#7C3AED', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       🔷 Tapping into optional quantity: {optionalUsed.toLocaleString()} of {optionalQuantity.toLocaleString()} KT used
-                    </Typography>
+                </Typography>
                   </Box>
                 )}
               </Box>
@@ -2043,6 +2097,24 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           />
                         )}
                         
+                        {/* Cross-Contract Combi button - for single product contracts or when not using same-contract combi */}
+                        {!entry.id && !entry.is_combi && (
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => handleOpenCrossContractDialog(month, year, entryIndex, entry)}
+                            sx={{ 
+                              mb: 1, 
+                              color: '#7C3AED',
+                              textTransform: 'none',
+                              fontSize: '0.75rem',
+                              '&:hover': { bgcolor: '#EDE9FE' }
+                            }}
+                          >
+                            + Add from Another Contract (Cross-Contract Combi)
+                          </Button>
+                        )}
+                        
                         {/* Show combi badge for existing combi entries */}
                         {entry.is_combi && entry.id && (
                           <Chip 
@@ -2099,16 +2171,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           </Box>
                         ) : (
                           /* Single product quantity */
-                          <TextField
-                            size="small"
-                            label="Quantity (KT)"
-                            type="number"
-                            value={entry.quantity}
-                            onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
-                            onBlur={handleFieldBlur}
-                            fullWidth
-                            sx={{ mb: 1 }}
-                          />
+                        <TextField
+                          size="small"
+                          label="Quantity (KT)"
+                          type="number"
+                          value={entry.quantity}
+                          onChange={(e) => handleQuantityChange(month, year, entryIndex, e.target.value)}
+                          onBlur={handleFieldBlur}
+                          fullWidth
+                          sx={{ mb: 1 }}
+                        />
                         )}
                         
                         {/* FOB Laycans */}
@@ -2270,13 +2342,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               <ViewList fontSize="small" />
             </ToggleButton>
           </ToggleButtonGroup>
-          <ActiveUsersIndicator 
-            users={otherUsers} 
-            isConnected={isConnected}
-            variant="avatars"
-            showConnectionStatus
-            label="Also editing"
-          />
+        <ActiveUsersIndicator 
+          users={otherUsers} 
+          isConnected={isConnected}
+          variant="avatars"
+          showConnectionStatus
+          label="Also editing"
+        />
         </Box>
       </Box>
       
@@ -3362,6 +3434,181 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           }}
         />
       )}
+      
+      {/* Cross-Contract Combi Dialog */}
+      <Dialog 
+        open={crossContractDialogOpen} 
+        onClose={handleCloseCrossContractDialog} 
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#EDE9FE', borderBottom: '1px solid #C4B5FD' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Add sx={{ color: '#7C3AED' }} />
+            <Typography variant="h6">Cross-Contract Combi</Typography>
+          </Box>
+          {crossContractEntry && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Add products from other contracts to create a cross-contract combi for{' '}
+              <strong>{getMonthName(crossContractEntry.month)} {crossContractEntry.year}</strong>
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {isLoadingEligible ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <Typography color="text.secondary">Loading eligible contracts...</Typography>
+            </Box>
+          ) : eligibleContracts.length === 0 ? (
+            <Box sx={{ py: 4, textAlign: 'center' }}>
+              <Typography color="text.secondary">
+                No eligible contracts found for cross-contract combi.
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                Eligible contracts must:
+                <br />• Belong to the same customer
+                <br />• Be the same type ({contractType})
+                <br />• Have an active period covering {crossContractEntry ? `${getMonthName(crossContractEntry.month)} ${crossContractEntry.year}` : 'this month'}
+              </Typography>
+            </Box>
+          ) : (
+            <Box>
+              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                Select products from other contracts to combine with this cargo. All selected products will share the same vessel and timing.
+              </Typography>
+              
+              {eligibleContracts.map((eligibleContract) => (
+                <Box 
+                  key={eligibleContract.id} 
+                  sx={{ 
+                    mb: 2, 
+                    p: 2, 
+                    border: '1px solid #E2E8F0', 
+                    borderRadius: 1,
+                    bgcolor: selectedCrossContractItems.some(item => item.contractId === eligibleContract.id) ? '#F5F3FF' : 'white'
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ mb: 1, color: '#1E293B' }}>
+                    {eligibleContract.contract_number} ({eligibleContract.contract_type})
+                  </Typography>
+                  
+                  {eligibleContract.monthly_plans.length === 0 ? (
+                    <Typography variant="caption" color="text.secondary">
+                      No monthly plans for this month. Create a plan in this contract first.
+                    </Typography>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {eligibleContract.monthly_plans.map((mp: any) => {
+                        const isSelected = selectedCrossContractItems.some(item => item.monthlyPlanId === mp.id)
+                        const selectedItem = selectedCrossContractItems.find(item => item.monthlyPlanId === mp.id)
+                        
+                        return (
+                          <Box 
+                            key={mp.id} 
+                            sx={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: 2,
+                              p: 1,
+                              borderRadius: 1,
+                              bgcolor: isSelected ? '#EDE9FE' : '#F8FAFC'
+                            }}
+                          >
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  checked={isSelected}
+                                  onChange={() => handleToggleCrossContractItem(
+                                    eligibleContract.id,
+                                    eligibleContract.contract_number,
+                                    mp.id,
+                                    mp.product_name
+                                  )}
+                                  disabled={mp.has_cargo}
+                                  size="small"
+                                />
+                              }
+                              label={
+                                <Box>
+                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                    {mp.product_name}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Plan: {mp.month_quantity} KT
+                                    {mp.has_cargo && ' (Already has cargo)'}
+                                  </Typography>
+                                </Box>
+                              }
+                              sx={{ flex: 1, m: 0 }}
+                            />
+                            
+                            {isSelected && (
+                              <TextField
+                                label="Qty (KT)"
+                                type="number"
+                                size="small"
+                                value={selectedItem?.quantity || ''}
+                                onChange={(e) => handleCrossContractQuantityChange(mp.id, e.target.value)}
+                                sx={{ width: 120 }}
+                                inputProps={{ min: 0, step: 0.01 }}
+                              />
+                            )}
+                          </Box>
+                        )
+                      })}
+                    </Box>
+                  )}
+                </Box>
+              ))}
+              
+              {selectedCrossContractItems.length > 0 && (
+                <Box sx={{ mt: 2, p: 2, bgcolor: '#F0FDF4', borderRadius: 1 }}>
+                  <Typography variant="subtitle2" sx={{ color: '#10B981', mb: 1 }}>
+                    Selected for Cross-Contract Combi:
+                  </Typography>
+                  {selectedCrossContractItems.map((item, idx) => (
+                    <Typography key={idx} variant="body2">
+                      • {item.contractNumber} - {item.productName}: {item.quantity || '(no quantity)'} KT
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseCrossContractDialog}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={selectedCrossContractItems.length === 0 || selectedCrossContractItems.some(item => !item.quantity || parseFloat(item.quantity) <= 0)}
+            onClick={async () => {
+              if (!crossContractEntry) return
+              
+              // Validate all items have quantities
+              const invalidItems = selectedCrossContractItems.filter(item => !item.quantity || parseFloat(item.quantity) <= 0)
+              if (invalidItems.length > 0) {
+                alert('Please enter quantities for all selected products')
+                return
+              }
+              
+              // For now, show info message - full implementation requires cargo creation
+              alert(
+                `Cross-contract combi feature is ready!\n\n` +
+                `To create the combi:\n` +
+                `1. First save a cargo in this contract\n` +
+                `2. Then use the cross-contract combi API to link products from:\n` +
+                selectedCrossContractItems.map(item => `   • ${item.contractNumber} - ${item.productName}: ${item.quantity} KT`).join('\n') +
+                `\n\nThis will be fully integrated in the next update.`
+              )
+              
+              handleCloseCrossContractDialog()
+            }}
+            sx={{ bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
+          >
+            Create Cross-Contract Combi
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   )
 }

@@ -258,6 +258,115 @@ def read_contracts(
         logger.error(f"Error reading contracts: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error loading contracts: {str(e)}")
 
+@router.get("/eligible-for-cross-combi/{contract_id}")
+def get_eligible_contracts_for_cross_combi(
+    contract_id: int,
+    month: int = Query(..., ge=1, le=12, description="Month for the combi cargo"),
+    year: int = Query(..., ge=2020, le=2100, description="Year for the combi cargo"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get contracts eligible for cross-contract combi with the specified contract.
+    
+    Eligibility criteria:
+    - Same customer
+    - Same contract type (FOB or CIF)
+    - Contract period overlaps with the specified month/year
+    - Has products (not empty)
+    - Excludes the source contract itself
+    
+    Returns contracts with their products and monthly plans for the specified month.
+    """
+    import json
+    from datetime import date
+    
+    try:
+        # Get the source contract
+        source_contract = db.query(models.Contract).filter(
+            models.Contract.id == contract_id
+        ).first()
+        
+        if not source_contract:
+            raise HTTPException(status_code=404, detail="Source contract not found")
+        
+        # Build the target date for period check
+        target_date = date(year, month, 1)
+        
+        # Find eligible contracts
+        eligible_contracts = db.query(models.Contract).filter(
+            models.Contract.customer_id == source_contract.customer_id,
+            models.Contract.contract_type == source_contract.contract_type,
+            models.Contract.id != contract_id,
+            models.Contract.start_period <= target_date,
+            models.Contract.end_period >= target_date
+        ).all()
+        
+        result = []
+        for contract in eligible_contracts:
+            # Parse products
+            try:
+                products = json.loads(contract.products) if contract.products else []
+            except json.JSONDecodeError:
+                products = []
+            
+            if not products:
+                continue  # Skip contracts with no products
+            
+            # Get monthly plans for this contract in the specified month/year
+            monthly_plans = db.query(models.MonthlyPlan).filter(
+                models.MonthlyPlan.contract_id == contract.id,
+                models.MonthlyPlan.month == month,
+                models.MonthlyPlan.year == year
+            ).all()
+            
+            # Build monthly plans info
+            plans_info = []
+            for mp in monthly_plans:
+                # Check if this plan already has a cargo
+                existing_cargo = db.query(models.Cargo).filter(
+                    models.Cargo.monthly_plan_id == mp.id
+                ).first()
+                
+                plans_info.append({
+                    "id": mp.id,
+                    "product_name": mp.product_name,
+                    "month_quantity": mp.month_quantity,
+                    "has_cargo": existing_cargo is not None,
+                    "combi_group_id": mp.combi_group_id,
+                    "laycan_5_days": mp.laycan_5_days,
+                    "laycan_2_days": mp.laycan_2_days,
+                    "loading_window": mp.loading_window,
+                })
+            
+            result.append({
+                "id": contract.id,
+                "contract_id": contract.contract_id,
+                "contract_number": contract.contract_number,
+                "contract_type": contract.contract_type.value if hasattr(contract.contract_type, 'value') else contract.contract_type,
+                "products": products,
+                "monthly_plans": plans_info
+            })
+        
+        return {
+            "source_contract": {
+                "id": source_contract.id,
+                "contract_number": source_contract.contract_number,
+                "contract_type": source_contract.contract_type.value if hasattr(source_contract.contract_type, 'value') else source_contract.contract_type,
+                "customer_id": source_contract.customer_id,
+            },
+            "eligible_contracts": result,
+            "month": month,
+            "year": year
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logger.error(f"Error getting eligible contracts for cross-combi: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
 @router.get("/{contract_id}", response_model=schemas.Contract)
 def read_contract(contract_id: int, db: Session = Depends(get_db)):
     import json
