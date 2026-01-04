@@ -39,7 +39,7 @@ interface CalendarEvent {
   id: string
   title: string
   start: Date
-  end: Date
+  allDay: boolean
   extendedProps: {
     type: EventType
     customerName: string
@@ -181,13 +181,12 @@ export default function CalendarPage() {
 
       // Use only the first day of the laycan/loading window
       const eventStart = parsed.startDate
-      const eventEnd = new Date(eventStart.getTime() + 24 * 60 * 60 * 1000) // Single day event
 
       events.push({
         id: `cargo-${cargo.id}`,
         title: `${customerName} - ${contract.contract_number} - ${cargo.product_name}`,
         start: eventStart,
-        end: eventEnd,
+        allDay: true,
         extendedProps: {
           type: eventType,
           customerName,
@@ -223,7 +222,7 @@ export default function CalendarPage() {
             id: `tng-${cargo.id}`,
             title: `TNG Due: ${contract.contract_number}`,
             start: tngDueDate,
-            end: new Date(tngDueDate.getTime() + 24 * 60 * 60 * 1000),
+            allDay: true,
             extendedProps: {
               type: 'tng_due',
               customerName,
@@ -259,7 +258,7 @@ export default function CalendarPage() {
             id: `nd-${cargo.id}`,
             title: `ND Due: ${contract.contract_number}`,
             start: ndDueDate,
-            end: new Date(ndDueDate.getTime() + 24 * 60 * 60 * 1000),
+            allDay: true,
             extendedProps: {
               type: 'nd_due',
               customerName,
@@ -334,13 +333,12 @@ export default function CalendarPage() {
 
         // Use only the first day of the laycan/loading window
         const eventStart = parsed.startDate
-        const eventEnd = new Date(eventStart.getTime() + 24 * 60 * 60 * 1000) // Single day event
 
         events.push({
           id: `plan-${plan.id}`,
           title: `${customerName} - ${contract.contract_number} - ${productName}`,
           start: eventStart,
-          end: eventEnd,
+          allDay: true,
           extendedProps: {
             type: eventType,
             customerName,
@@ -378,7 +376,7 @@ export default function CalendarPage() {
       id: event.id,
       title: event.title,
       start: event.start!,
-      end: event.end!,
+      allDay: event.allDay,
       extendedProps: props,
       backgroundColor: event.backgroundColor,
       borderColor: event.borderColor,
