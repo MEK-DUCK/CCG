@@ -322,13 +322,23 @@ export default function CalendarPage() {
           ? plan.loading_window 
           : (plan.laycan_5_days || plan.laycan_2_days)
 
-        if (!laycanStr) return
+        let eventStart: Date
+        let rawLaycan: string
+        let isOverdue: boolean
 
-        // Parse laycan date
-        const parsed = parseLaycanDate(laycanStr, plan.month, plan.year)
-        if (!parsed.isValid || !parsed.startDate || !parsed.endDate) return
-
-        const isOverdue = parsed.endDate < today
+        if (laycanStr) {
+          // Parse laycan date if available
+          const parsed = parseLaycanDate(laycanStr, plan.month, plan.year)
+          if (!parsed.isValid || !parsed.startDate || !parsed.endDate) return
+          eventStart = parsed.startDate
+          rawLaycan = laycanStr
+          isOverdue = parsed.endDate < today
+        } else {
+          // No laycan set - use first day of the month
+          eventStart = new Date(plan.year, plan.month - 1, 1)
+          rawLaycan = `${plan.month}/${plan.year} (TBD)`
+          isOverdue = false
+        }
 
         // Filter by overdue
         if (showOverdueOnly && !isOverdue) return
@@ -341,9 +351,8 @@ export default function CalendarPage() {
         const colors = TBA_COLORS[eventType] || EVENT_COLORS[eventType]
         const productName = plan.product_name || 'Unknown Product'
 
-        // Use only the first day of the laycan/loading window
-        const eventStart = parsed.startDate
-        const eventEnd = new Date(eventStart.getTime() + 24 * 60 * 60 * 1000) // Single day event
+        // Single day event
+        const eventEnd = new Date(eventStart.getTime() + 24 * 60 * 60 * 1000)
 
         events.push({
           id: `plan-${plan.id}`,
@@ -365,7 +374,7 @@ export default function CalendarPage() {
             isOverdue,
             isTBA: true,
             contractType: contract.contract_type as 'FOB' | 'CIF',
-            rawLaycan: laycanStr,
+            rawLaycan,
           },
           backgroundColor: isOverdue ? '#FEE2E2' : colors.bg,
           borderColor: isOverdue ? '#EF4444' : colors.border,
@@ -589,10 +598,42 @@ export default function CalendarPage() {
 
           {/* Legend */}
           <Box sx={{ display: 'flex', gap: 1, ml: 'auto', flexWrap: 'wrap' }}>
-            <Chip size="small" label="FOB Laycan" sx={{ bgcolor: EVENT_COLORS.fob_laycan.bg, color: 'white' }} />
-            <Chip size="small" label="CIF Loading" sx={{ bgcolor: EVENT_COLORS.cif_loading.bg, color: 'white' }} />
-            <Chip size="small" label="TNG Due" sx={{ bgcolor: EVENT_COLORS.tng_due.bg, color: 'white' }} />
-            <Chip size="small" label="ND Due" sx={{ bgcolor: EVENT_COLORS.nd_due.bg, color: 'white' }} />
+            <Chip 
+              size="small" 
+              label="FOB Laycan" 
+              sx={{ 
+                bgcolor: `${EVENT_COLORS.fob_laycan.bg} !important`, 
+                color: 'white !important',
+                '& .MuiChip-label': { color: 'white' }
+              }} 
+            />
+            <Chip 
+              size="small" 
+              label="CIF Loading" 
+              sx={{ 
+                bgcolor: `${EVENT_COLORS.cif_loading.bg} !important`, 
+                color: 'white !important',
+                '& .MuiChip-label': { color: 'white' }
+              }} 
+            />
+            <Chip 
+              size="small" 
+              label="TNG Due" 
+              sx={{ 
+                bgcolor: `${EVENT_COLORS.tng_due.bg} !important`, 
+                color: 'white !important',
+                '& .MuiChip-label': { color: 'white' }
+              }} 
+            />
+            <Chip 
+              size="small" 
+              label="ND Due" 
+              sx={{ 
+                bgcolor: `${EVENT_COLORS.nd_due.bg} !important`, 
+                color: 'white !important',
+                '& .MuiChip-label': { color: 'white' }
+              }} 
+            />
           </Box>
         </Box>
       </Paper>
