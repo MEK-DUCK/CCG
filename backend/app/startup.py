@@ -1,13 +1,74 @@
 """
-Startup script to ensure admin and test users exist.
+Startup script to ensure admin/test users and reference data exist.
 This runs automatically when the FastAPI app starts.
 """
 import logging
 from app.database import SessionLocal
-from app.models import User, UserRole, UserStatus
+from app.models import User, UserRole, UserStatus, DischargePort
 from app.auth import get_password_hash
 
 logger = logging.getLogger(__name__)
+
+# Default discharge ports with restrictions and voyage durations
+DEFAULT_DISCHARGE_PORTS = [
+    {
+        "name": "Shell Haven",
+        "restrictions": """All vessels must be capable of connecting to two 16-inch Woodfield loading/unloading arms.
+All vessels must be capable of discharging at a rate of 2500 Cubic meters per hour, or of maintaining a discharge pressure at the vessel's manifold of at least 100PSIG (7.5Bar).
+It is Seller's responsibility to provide vessels which do not exceed the Maximum Limitations as follows: -
+Maximum draft on arrival at S Jetty is 14.9 meters.
+Max. LOA: 250 M
+Max displacement of 135,000 MT
+SDWT maximum 116,000 MT""",
+        "voyage_days_suez": 43,
+        "voyage_days_cape": 57,
+        "sort_order": 1
+    },
+    {
+        "name": "Milford Haven",
+        "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
+Maximum draft on arrival is 14.5 meters.
+Max. LOA: 274 M
+Max displacement of 150,000 MT
+SDWT maximum 125,000 MT""",
+        "voyage_days_suez": 43,
+        "voyage_days_cape": 57,
+        "sort_order": 2
+    },
+    {
+        "name": "Rotterdam",
+        "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
+Maximum draft on arrival is 15.2 meters.
+Max. LOA: 280 M
+Max displacement of 160,000 MT
+SDWT maximum 130,000 MT""",
+        "voyage_days_suez": 39,
+        "voyage_days_cape": 53,
+        "sort_order": 3
+    },
+    {
+        "name": "Le Havre",
+        "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
+Maximum draft on arrival is 14.0 meters.
+Max. LOA: 260 M
+Max displacement of 140,000 MT
+SDWT maximum 115,000 MT""",
+        "voyage_days_suez": 41,
+        "voyage_days_cape": 55,
+        "sort_order": 4
+    },
+    {
+        "name": "Naples",
+        "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
+Maximum draft on arrival is 13.5 meters.
+Max. LOA: 245 M
+Max displacement of 130,000 MT
+SDWT maximum 110,000 MT""",
+        "voyage_days_suez": 30,
+        "voyage_days_cape": 44,
+        "sort_order": 5
+    },
+]
 
 def ensure_user(email: str, password: str, full_name: str, initials: str, role: UserRole):
     """Ensure a user exists, create or update if needed."""
@@ -83,4 +144,37 @@ def ensure_test_users():
     
     for user_data in test_users:
         ensure_user(**user_data)
+
+
+def ensure_discharge_ports():
+    """Ensure default discharge ports exist, create if they don't."""
+    db = SessionLocal()
+    
+    try:
+        # Check if any discharge ports exist
+        existing_count = db.query(DischargePort).count()
+        
+        if existing_count == 0:
+            # Seed default discharge ports
+            for port_data in DEFAULT_DISCHARGE_PORTS:
+                port = DischargePort(
+                    name=port_data["name"],
+                    restrictions=port_data["restrictions"],
+                    voyage_days_suez=port_data["voyage_days_suez"],
+                    voyage_days_cape=port_data["voyage_days_cape"],
+                    is_active=True,
+                    sort_order=port_data["sort_order"]
+                )
+                db.add(port)
+            
+            db.commit()
+            logger.info(f"✅ Seeded {len(DEFAULT_DISCHARGE_PORTS)} default discharge ports")
+        else:
+            logger.info(f"ℹ️  Discharge ports already exist ({existing_count} ports)")
+            
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error seeding discharge ports: {e}")
+    finally:
+        db.close()
 
