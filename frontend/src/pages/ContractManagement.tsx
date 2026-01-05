@@ -553,7 +553,7 @@ export default function ContractManagement() {
             year_quantities: p.year_quantities && p.year_quantities.length > 0 ? p.year_quantities : undefined
           }
         }),
-        discharge_ranges: formData.discharge_ranges || undefined,
+        discharge_ranges: formData.contract_type === 'CIF' && formData.discharge_ranges ? formData.discharge_ranges : undefined,
         additives_required: jetA1Selected ? (formData.additives_required === '' ? undefined : formData.additives_required === 'yes') : undefined,
         fax_received: formData.fax_received === '' ? undefined : formData.fax_received === 'yes',
         fax_received_date: formData.fax_received === 'yes' && formData.fax_received_date ? formData.fax_received_date : undefined,
@@ -1390,15 +1390,17 @@ export default function ContractManagement() {
               </Grid>
             </Grid>
 
-            <TextField
-              label="Discharge Ranges"
-              value={formData.discharge_ranges}
-              onChange={(e) => setFormData({ ...formData, discharge_ranges: e.target.value })}
-              fullWidth
-              multiline
-              minRows={5}
-              placeholder="Enter discharge ranges (for reference)..."
-            />
+            {formData.contract_type === 'CIF' && (
+              <TextField
+                label="Discharge Ranges"
+                value={formData.discharge_ranges}
+                onChange={(e) => setFormData({ ...formData, discharge_ranges: e.target.value })}
+                fullWidth
+                multiline
+                minRows={5}
+                placeholder="Enter discharge ranges (for reference)..."
+              />
+            )}
 
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
