@@ -27,28 +27,64 @@ SDWT maximum 116,000 MT""",
     },
     {
         "name": "Milford Haven",
-        "restrictions": "",  # To be provided
+        "restrictions": """Tide table for 2026 for discharging JET A-1 at Milford has been sent by email on 26th Dec 2025 for your reference.
+
+VPOT berth No.2 restriction as follows:
+
+MAX L.O.A.: 283.00 M
+CONTROL DEPTH: 16.50 M
+APPROACH DEPTH: 16.30 M
+MAX DWT: 165,000
+
+Control depths are at chart datum - add height of tide on top.
+10 per cent of vessels draft or min 1m is required for under keel clearance on approach.
+5 per cent of vessels draft or min 1m is required for under keel clearance alongside.
+The requirement may increase in periods of adverse weather/heavy swell.
+Water density is 1.026 g/cm3 within the open confines of the harbor.
+Water salinity ranges from 21.74 to 35.12 ppt.""",
         "voyage_days_suez": 23,
         "voyage_days_cape": 39,
         "sort_order": 2
     },
     {
         "name": "Rotterdam",
-        "restrictions": "",  # To be provided
+        "restrictions": """The following are the restrictions:
+LOA restriction of a maximum of 250 meters.
+Draft restriction at KTM terminal Rotterdam is 14.5 meters BW.""",
         "voyage_days_suez": 24,
         "voyage_days_cape": 40,
         "sort_order": 3
     },
     {
         "name": "Le Havre",
-        "restrictions": "",  # To be provided
+        "restrictions": """Disport Limitation:
+a. All vessels must be capable of connecting to two 16-inch Woodfield loading/unloading arms.
+b. All vessels must be capable of discharging at a rate of 2500 Cubic meters per hour, or of maintaining a discharge pressure at the vessel's manifold of at least 100PSIG (7.5Bar).
+c. It is Seller's responsibility to provide vessels, which do not exceed the Le Havre Maximum Limitations as follows:
+
+                        CIM 7           CIM 8           CIM 10
+Maximum LOA             265M            330 M           350 M
+Minimum LOA             -----           225 M           225 M
+Maximum Beam            40 M            50 M            60 M
+Maximum Summer DWT      90000 MT        230,000 MT      250,000 MT
+Maximum Depth at berth  11.00M+Tide     14.00 M+Tide    14.50 M+Tide
+Under keel clearance    30 cms deducted from above maximum""",
         "voyage_days_suez": 24,
         "voyage_days_cape": 40,
         "sort_order": 4
     },
     {
         "name": "Naples",
-        "restrictions": "",  # To be provided
+        "restrictions": """Napoli - Pier 69
+
+LOA, mtrs. Max:                 260
+Beam, mtrs. Max:                45
+Draft, mtrs. Max:               14.5
+Manifold to water, mtrs. Max:   17
+Manifold to water, mtrs. Min:   3.5
+Stern-centre manifold Max:      130
+
+**Delivered cargo should not exceed the maximum 100 KT""",
         "voyage_days_suez": 17,
         "voyage_days_cape": 40,
         "sort_order": 5
