@@ -88,6 +88,23 @@ Combi cargos allow multiple products to be loaded on a single vessel, sharing th
 - **Pydantic**: Data validation
 - **WebSockets**: Real-time bidirectional communication for presence and data sync
 
+### Database Design (Normalized)
+The database uses proper relational design with foreign key constraints:
+- **Products**: Centralized product definitions (code, name, description)
+- **Load Ports**: Centralized port definitions with FK references from cargo operations
+- **Inspectors**: Centralized inspector definitions with FK references from cargos
+- **Discharge Ports**: CIF destination ports with voyage duration data
+
+All business entities use foreign keys instead of storing names as strings:
+- `Cargo.product_id` → `products.id`
+- `Cargo.inspector_id` → `inspectors.id`
+- `Cargo.customer_id` → `customers.id`
+- `CargoPortOperation.load_port_id` → `load_ports.id`
+- `MonthlyPlan.product_id` → `products.id`
+- `QuarterlyPlan.product_id` → `products.id`
+
+This ensures data integrity and makes renaming entities automatic across all references.
+
 ### Frontend
 - **React 18**: UI library
 - **TypeScript**: Type safety
@@ -134,12 +151,17 @@ oil-lifting-program/
 │   │   │   │   └── VersionHistory.tsx
 │   │   │   ├── RecycleBin/      # Recycle bin components
 │   │   │   │   └── RecycleBin.tsx
+│   │   ├── MonthlyPlan/      # Monthly plan sub-components
+│   │   │   ├── MoveEntryDialog.tsx
+│   │   │   ├── TopupDialog.tsx
+│   │   │   └── CrossContractCombiDialog.tsx
 │   │   │   └── ...
 │   │   ├── contexts/
 │   │   │   └── AuthContext.tsx  # Authentication context
 │   │   ├── hooks/
 │   │   │   ├── usePresence.ts   # WebSocket presence hook
-│   │   │   └── useRealTimeSync.ts # Real-time data sync hook
+│   │   │   ├── useRealTimeSync.ts # Real-time data sync hook
+│   │   │   └── useAutosave.ts   # Debounced autosave hook
 │   │   ├── pages/               # Page components
 │   │   ├── types/               # TypeScript types
 │   │   ├── App.tsx
