@@ -218,71 +218,15 @@ def delete_discharge_port(port_id: int, db: Session = Depends(get_db)):
 @router.post("/seed-defaults")
 def seed_default_discharge_ports(db: Session = Depends(get_db)):
     """Seed the database with default discharge ports if none exist."""
+    from app.startup import DEFAULT_DISCHARGE_PORTS
+    
     try:
         existing = db.query(models.DischargePort).count()
         if existing > 0:
             return {"message": f"Discharge ports already exist ({existing} ports). Skipping seed."}
         
-        # Default ports with restrictions and voyage durations
-        default_ports = [
-            {
-                "name": "Shell Haven",
-                "restrictions": """All vessels must be capable of connecting to two 16-inch Woodfield loading/unloading arms.
-All vessels must be capable of discharging at a rate of 2500 Cubic meters per hour, or of maintaining a discharge pressure at the vessel's manifold of at least 100PSIG (7.5Bar).
-It is Seller's responsibility to provide vessels which do not exceed the Maximum Limitations as follows: -
-Maximum draft on arrival at S Jetty is 14.9 meters.
-Max. LOA: 250 M
-Max displacement of 135,000 MT
-SDWT maximum 116,000 MT""",
-                "voyage_days_suez": 43,
-                "voyage_days_cape": 57,
-                "sort_order": 1
-            },
-            {
-                "name": "Milford Haven",
-                "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 14.5 meters.
-Max. LOA: 274 M
-Max displacement of 150,000 MT
-SDWT maximum 125,000 MT""",
-                "voyage_days_suez": 43,
-                "voyage_days_cape": 57,
-                "sort_order": 2
-            },
-            {
-                "name": "Rotterdam",
-                "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 15.2 meters.
-Max. LOA: 280 M
-Max displacement of 160,000 MT
-SDWT maximum 130,000 MT""",
-                "voyage_days_suez": 39,
-                "voyage_days_cape": 53,
-                "sort_order": 3
-            },
-            {
-                "name": "Le Havre",
-                "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 14.0 meters.
-Max. LOA: 260 M
-Max displacement of 140,000 MT
-SDWT maximum 115,000 MT""",
-                "voyage_days_suez": 41,
-                "voyage_days_cape": 55,
-                "sort_order": 4
-            },
-            {
-                "name": "Naples",
-                "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 13.5 meters.
-Max. LOA: 245 M
-Max displacement of 130,000 MT
-SDWT maximum 110,000 MT""",
-                "voyage_days_suez": 30,
-                "voyage_days_cape": 44,
-                "sort_order": 5
-            },
-        ]
+        # Use default ports from startup.py (single source of truth)
+        default_ports = DEFAULT_DISCHARGE_PORTS
         
         for p in default_ports:
             db_port = models.DischargePort(

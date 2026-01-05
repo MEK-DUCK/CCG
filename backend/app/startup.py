@@ -10,6 +10,7 @@ from app.auth import get_password_hash
 logger = logging.getLogger(__name__)
 
 # Default discharge ports with restrictions and voyage durations
+# Trip duration includes 2-day laycan
 DEFAULT_DISCHARGE_PORTS = [
     {
         "name": "Shell Haven",
@@ -20,52 +21,36 @@ Maximum draft on arrival at S Jetty is 14.9 meters.
 Max. LOA: 250 M
 Max displacement of 135,000 MT
 SDWT maximum 116,000 MT""",
-        "voyage_days_suez": 43,
-        "voyage_days_cape": 57,
+        "voyage_days_suez": 24,
+        "voyage_days_cape": 40,
         "sort_order": 1
     },
     {
         "name": "Milford Haven",
-        "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 14.5 meters.
-Max. LOA: 274 M
-Max displacement of 150,000 MT
-SDWT maximum 125,000 MT""",
-        "voyage_days_suez": 43,
-        "voyage_days_cape": 57,
+        "restrictions": "",  # To be provided
+        "voyage_days_suez": 23,
+        "voyage_days_cape": 39,
         "sort_order": 2
     },
     {
         "name": "Rotterdam",
-        "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 15.2 meters.
-Max. LOA: 280 M
-Max displacement of 160,000 MT
-SDWT maximum 130,000 MT""",
-        "voyage_days_suez": 39,
-        "voyage_days_cape": 53,
+        "restrictions": "",  # To be provided
+        "voyage_days_suez": 24,
+        "voyage_days_cape": 40,
         "sort_order": 3
     },
     {
         "name": "Le Havre",
-        "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 14.0 meters.
-Max. LOA: 260 M
-Max displacement of 140,000 MT
-SDWT maximum 115,000 MT""",
-        "voyage_days_suez": 41,
-        "voyage_days_cape": 55,
+        "restrictions": "",  # To be provided
+        "voyage_days_suez": 24,
+        "voyage_days_cape": 40,
         "sort_order": 4
     },
     {
         "name": "Naples",
-        "restrictions": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 13.5 meters.
-Max. LOA: 245 M
-Max displacement of 130,000 MT
-SDWT maximum 110,000 MT""",
-        "voyage_days_suez": 30,
-        "voyage_days_cape": 44,
+        "restrictions": "",  # To be provided
+        "voyage_days_suez": 17,
+        "voyage_days_cape": 40,
         "sort_order": 5
     },
 ]
