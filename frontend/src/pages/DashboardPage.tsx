@@ -519,6 +519,7 @@ export default function DashboardPage() {
                 <MenuItem value="all">All Types</MenuItem>
                 <MenuItem value="amendment">Amendments</MenuItem>
                 <MenuItem value="topup">Top-Ups</MenuItem>
+                <MenuItem value="defer">Defer/Advance</MenuItem>
               </Select>
             </FormControl>
             <TextField
@@ -558,6 +559,7 @@ export default function DashboardPage() {
               // Type filter
               if (authorityFilter.type === 'amendment' && auth.type !== 'Amendment') return false
               if (authorityFilter.type === 'topup' && !auth.type.includes('Top-Up')) return false
+              if (authorityFilter.type === 'defer' && auth.type !== 'Defer/Advance') return false
               
               // Product filter
               if (authorityFilter.product && !auth.product_name?.toLowerCase().includes(authorityFilter.product.toLowerCase())) return false
@@ -570,7 +572,8 @@ export default function DashboardPage() {
                   auth.customer_name?.toLowerCase().includes(searchLower) ||
                   auth.product_name?.toLowerCase().includes(searchLower) ||
                   auth.authority_reference?.toLowerCase().includes(searchLower) ||
-                  auth.reason?.toLowerCase().includes(searchLower)
+                  auth.reason?.toLowerCase().includes(searchLower) ||
+                  auth.description?.toLowerCase().includes(searchLower)
                 )
               }
               
@@ -605,7 +608,7 @@ export default function DashboardPage() {
                           <Chip
                             label={auth.type}
                             size="small"
-                            color={auth.type === 'Amendment' ? 'primary' : 'success'}
+                            color={auth.type === 'Amendment' ? 'primary' : auth.type === 'Defer/Advance' ? 'warning' : 'success'}
                             variant="outlined"
                           />
                         </TableCell>
@@ -628,6 +631,8 @@ export default function DashboardPage() {
                         <TableCell align="right" sx={{ fontWeight: 500 }}>
                           {auth.type === 'Amendment' 
                             ? `${auth.quantity_change > 0 ? '+' : ''}${auth.quantity_change?.toLocaleString() || 0} KT`
+                            : auth.type === 'Defer/Advance'
+                            ? `${auth.quantity_display || auth.quantity?.toLocaleString() || 0} KT`
                             : `${auth.quantity?.toLocaleString() || 0} KT`
                           }
                         </TableCell>
@@ -642,7 +647,7 @@ export default function DashboardPage() {
                           }
                         </TableCell>
                         <TableCell>
-                          <Tooltip title={auth.reason || auth.amendment_type || 'No details'}>
+                          <Tooltip title={auth.reason || auth.amendment_type || auth.description || 'No details'}>
                             <Typography variant="body2" sx={{ 
                               maxWidth: 200, 
                               overflow: 'hidden', 
@@ -651,6 +656,8 @@ export default function DashboardPage() {
                             }}>
                               {auth.type === 'Amendment' 
                                 ? `${auth.amendment_type?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || ''}${auth.year ? ` (Year ${auth.year})` : ''}`
+                                : auth.type === 'Defer/Advance'
+                                ? `${auth.description || ''} ${auth.user_initials ? `(${auth.user_initials})` : ''}`
                                 : auth.reason || '-'
                               }
                             </Typography>

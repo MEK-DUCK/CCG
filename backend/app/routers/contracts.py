@@ -852,6 +852,65 @@ def get_all_authorities(
             "created_at": mp.updated_at.isoformat() if mp.updated_at else None
         })
     
+    # Process Quarterly Plan Adjustments (Defer/Advance)
+    # Only show OUT records to avoid duplicates (each defer/advance creates 2 records: OUT and IN)
+    adjustment_query = db.query(models.QuarterlyPlanAdjustment).options(
+        joinedload(models.QuarterlyPlanAdjustment.quarterly_plan)
+    ).filter(
+        models.QuarterlyPlanAdjustment.adjustment_type.in_(['DEFER_OUT', 'ADVANCE_OUT'])
+    )
+    
+    adjustments = adjustment_query.all()
+    
+    for adj in adjustments:
+        qp = adj.quarterly_plan
+        if not qp:
+            continue
+        
+        # Filter by contract_id if specified
+        if contract_id and qp.contract_id != contract_id:
+            continue
+        
+        # Get contract info
+        contract = db.query(models.Contract).filter(models.Contract.id == qp.contract_id).first()
+        if not contract:
+            continue
+        
+        customer_name = customer_map.get(contract.customer_id, "Unknown")
+        
+        # Get product name from quarterly plan
+        adj_product_name = ''
+        if qp.product_id:
+            product = db.query(models.Product).filter(models.Product.id == qp.product_id).first()
+            adj_product_name = product.name if product else ''
+        
+        # Filter by product_name if specified
+        if product_name and adj_product_name != product_name:
+            continue
+        
+        # Determine action type
+        action = 'Deferred' if adj.adjustment_type.startswith('DEFER') else 'Advanced'
+        
+        authorities.append({
+            "type": f"Defer/Advance",
+            "subtype": adj.adjustment_type,
+            "contract_id": contract.id,
+            "contract_number": contract.contract_number,
+            "customer_name": customer_name,
+            "product_name": adj_product_name,
+            "quantity": adj.quantity,
+            "quantity_display": f"{adj.quantity:,.0f}",
+            "authority_reference": adj.authority_reference,
+            "reason": adj.reason or '',
+            "from_quarter": adj.from_quarter,
+            "to_quarter": adj.to_quarter,
+            "from_year": adj.from_year,
+            "to_year": adj.to_year,
+            "description": f"{action} Q{adj.from_quarter} → Q{adj.to_quarter}",
+            "created_at": adj.created_at.isoformat() if adj.created_at else None,
+            "user_initials": adj.user_initials
+        })
+    
     # Sort by date (most recent first)
     authorities.sort(key=lambda x: x.get('created_at') or x.get('authorization_date') or x.get('effective_date') or '', reverse=True)
     
