@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   TextField,
@@ -10,25 +10,21 @@ import {
   IconButton,
   InputAdornment,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
   MenuItem,
   Chip,
-  Checkbox,
-  FormControlLabel,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Menu,
   ListItemIcon,
   ListItemText,
   Tabs,
   Tab,
+  Checkbox,
 } from '@mui/material'
 import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp, CalendarMonth, History, ViewModule, ViewList } from '@mui/icons-material'
 import { ToggleButton, ToggleButtonGroup } from '@mui/material'
-import { monthlyPlanAPI, contractAPI, cargoAPI, MonthlyPlanTopUpRequest } from '../api/client'
+import { monthlyPlanAPI, contractAPI, cargoAPI } from '../api/client'
 import { MonthlyPlanStatus } from '../types'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
@@ -37,15 +33,24 @@ import { CIF_ROUTES, calculateDeliveryWindow, calculateETA, setVoyageDurations, 
 import client from '../api/client'
 import { BADGE_COLORS } from '../utils/chipColors'
 import { getContractYearMonths } from '../utils/fiscalYear'
-
-// Simple UUID generator
-const generateUUID = (): string => {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    const v = c === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
-}
+import { useAutosave } from '../hooks/useAutosave'
+import {
+  generateUUID,
+  getMonthName,
+  getDeliveryMonthOptions,
+  roundQuantity,
+  getLoadingMonthOption,
+  getQuarterOrder,
+  getContractMonths,
+  QUARTER_MONTHS,
+  MONTH_NAMES,
+} from '../utils/monthlyPlanUtils'
+import {
+  MoveEntryDialog,
+  TopupDialog,
+  CrossContractCombiDialog,
+  type TopupFormData,
+} from './MonthlyPlan'
 
 interface MonthlyPlanFormProps {
   contractId: number
@@ -55,99 +60,6 @@ interface MonthlyPlanFormProps {
   onCancel?: () => void
   isSpotContract?: boolean  // If true, this is a SPOT contract (skip quarterly plan)
   isRangeContract?: boolean  // If true, this is a Range contract with min/max quantities (skip quarterly plan)
-}
-
-const QUARTER_MONTHS: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', { months: number[], labels: string[] }> = {
-  Q1: { months: [1, 2, 3], labels: ['January', 'February', 'March'] },
-  Q2: { months: [4, 5, 6], labels: ['April', 'May', 'June'] },
-  Q3: { months: [7, 8, 9], labels: ['July', 'August', 'September'] },
-  Q4: { months: [10, 11, 12], labels: ['October', 'November', 'December'] },
-}
-
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-
-// Get month name from number
-const getMonthName = (month: number): string => {
-  const date = new Date(2000, month - 1, 1)
-  return date.toLocaleString('default', { month: 'long' })
-}
-
-// Generate delivery month options for CIF contracts
-// Shows months AFTER the loading month (delivery cannot be same month as loading)
-// Typically shows next 3 months after loading month
-const getDeliveryMonthOptions = (loadingMonth: number, loadingYear: number): Array<{ value: string, label: string }> => {
-  const options: Array<{ value: string, label: string }> = []
-  
-  // Generate options for 3 months AFTER loading month (i starts at 1, not 0)
-  // Delivery is always after loading, so skip the loading month itself
-  for (let i = 1; i <= 3; i++) {
-    const date = new Date(loadingYear, loadingMonth - 1 + i, 1)
-    const month = date.getMonth() + 1
-    const year = date.getFullYear()
-    const monthName = MONTH_NAMES[month - 1]
-    options.push({
-      value: `${monthName} ${year}`,
-      label: `${monthName} ${year}`
-    })
-  }
-  
-  return options
-}
-
-// Round quantity to avoid floating-point precision issues
-// Rounds to 3 decimal places which is sufficient for KT measurements
-const roundQuantity = (qty: number | string | undefined | null): string => {
-  if (qty === undefined || qty === null || qty === '') return ''
-  const num = typeof qty === 'string' ? parseFloat(qty) : qty
-  if (isNaN(num)) return ''
-  // Round to 3 decimal places to avoid floating-point issues
-  return Math.round(num * 1000) / 1000 + ''
-}
-
-// Get the loading month option for a specific month/year (single option dropdown)
-const getLoadingMonthOption = (loadingMonth: number, loadingYear: number): { value: string, label: string } => {
-  const monthName = MONTH_NAMES[loadingMonth - 1]
-  return {
-    value: `${monthName} ${loadingYear}`,
-    label: `${monthName} ${loadingYear}`
-  }
-}
-
-// Determine quarter order based on contract start month
-const getQuarterOrder = (startMonth: number): ('Q1' | 'Q2' | 'Q3' | 'Q4')[] => {
-  if (startMonth >= 1 && startMonth <= 3) {
-    return ['Q1', 'Q2', 'Q3', 'Q4']
-  } else if (startMonth >= 4 && startMonth <= 6) {
-    return ['Q2', 'Q3', 'Q4', 'Q1']
-  } else if (startMonth >= 7 && startMonth <= 9) {
-    return ['Q3', 'Q4', 'Q1', 'Q2']
-  } else {
-    return ['Q4', 'Q1', 'Q2', 'Q3']
-  }
-}
-
-// Get all months in contract period with their years
-// For CIF contracts, include one month BEFORE contract start (for loadings that deliver in first month)
-const getContractMonths = (startPeriod: string, endPeriod: string, isCIF: boolean = false): Array<{ month: number, year: number }> => {
-  const start = new Date(startPeriod)
-  const end = new Date(endPeriod)
-  const months: Array<{ month: number, year: number }> = []
-  
-  // For CIF contracts, start one month earlier to allow pre-contract loadings
-  const current = new Date(start)
-  if (isCIF) {
-    current.setMonth(current.getMonth() - 1)
-  }
-  
-  while (current <= end) {
-    months.push({
-      month: current.getMonth() + 1,
-      year: current.getFullYear()
-    })
-    current.setMonth(current.getMonth() + 1)
-  }
-  
-  return months
 }
 
 interface MonthlyPlanEntry {
@@ -186,7 +98,6 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const [quarterOrder, setQuarterOrder] = useState<('Q1' | 'Q2' | 'Q3' | 'Q4')[]>([])
   const [contractMonths, setContractMonths] = useState<Array<{ month: number, year: number }>>([])
   const [planStatuses, setPlanStatuses] = useState<Record<number, MonthlyPlanStatus>>({})
-  const autosaveTimersRef = useRef<Record<string, number>>({})
   const [editingUser, setEditingUser] = useState<{ user: PresenceUser; field: string } | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
   
@@ -293,7 +204,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   // Top-Up dialog state
   const [topupDialogOpen, setTopupDialogOpen] = useState(false)
   const [topupEntry, setTopupEntry] = useState<{ month: number; year: number; entry: MonthlyPlanEntry } | null>(null)
-  const [topupForm, setTopupForm] = useState({
+  const [topupForm, setTopupForm] = useState<TopupFormData>({
     quantity: '',
     authority_reference: '',
     reason: '',
@@ -328,70 +239,23 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     productQuarterlyPlanMap.set(products[0].name, yearQuarterlyPlans[0])
   }
 
-  // Pending changes accumulator - batches multiple field changes into one save
-  // Using a module-level variable to avoid React Strict Mode issues with refs
-  const pendingChangesRef = useRef<Record<number, { data: any; version?: number; monthKey?: string; entryIndex?: number }>>({})
-  
-  const scheduleAutosave = useCallback((planId: number, data: any, _keySuffix: string, version?: number, monthKey?: string, entryIndex?: number) => {
-    // Use a single timer key per plan to batch all changes together
-    const key = `plan:${planId}`
-    
-    // Accumulate changes for this plan - merge with existing pending changes
-    const existing = pendingChangesRef.current[planId] || { data: {} }
-    const newData = { ...existing.data, ...data }
-    
-    pendingChangesRef.current[planId] = {
-      data: newData,
-      version: version ?? existing.version,
-      monthKey: monthKey ?? existing.monthKey,
-      entryIndex: entryIndex !== undefined ? entryIndex : existing.entryIndex,
-    }
-    
-    console.log(`[Autosave] Accumulated changes for plan ${planId}:`, Object.keys(newData))
-    
-    // Clear existing timer for this plan
-    const existingTimer = autosaveTimersRef.current[key]
-    if (existingTimer) {
-      console.log(`[Autosave] Clearing existing timer for plan ${planId}`)
-      window.clearTimeout(existingTimer)
-      delete autosaveTimersRef.current[key]
-    }
-    
-    // Set new timer - will save all accumulated changes after 1200ms of no activity
-    autosaveTimersRef.current[key] = window.setTimeout(async () => {
-      const pending = pendingChangesRef.current[planId]
-      if (!pending || Object.keys(pending.data).length === 0) return
-      
-      // Clear pending changes before saving
-      delete pendingChangesRef.current[planId]
-      delete autosaveTimersRef.current[key]
-      
-      console.log(`[Autosave] Saving batched changes for plan ${planId}:`, Object.keys(pending.data))
-      
-      try {
-        // Include version for optimistic locking
-        const updateData = { ...pending.data, version: pending.version || 1 }
-        const result = await monthlyPlanAPI.update(planId, updateData)
-        
-        // Update local state with new version to prevent conflicts on subsequent saves
-        if (pending.monthKey !== undefined && pending.entryIndex !== undefined && result.data?.version) {
-          setMonthEntries(prev => {
-            const entries = [...(prev[pending.monthKey!] || [])]
-            if (entries[pending.entryIndex!]) {
-              entries[pending.entryIndex!] = { ...entries[pending.entryIndex!], version: result.data.version }
-            }
-            return { ...prev, [pending.monthKey!]: entries }
-          })
-          // Also update existingMonthlyPlans
-          setExistingMonthlyPlans(prev => prev.map(p => 
-            p.id === planId ? { ...p, version: result.data.version } : p
-          ))
+  // Autosave hook for batching and debouncing field changes
+  const { scheduleAutosave } = useAutosave({
+    onVersionUpdate: (planId, newVersion, monthKey, entryIndex) => {
+      // Update local state with new version to prevent conflicts on subsequent saves
+      setMonthEntries(prev => {
+        const entries = [...(prev[monthKey] || [])]
+        if (entries[entryIndex]) {
+          entries[entryIndex] = { ...entries[entryIndex], version: newVersion }
         }
-      } catch (error) {
-        console.error('Error autosaving monthly plan field:', error)
-      }
-    }, 120000)  // 120 second (2 min) delay to allow batching multiple field changes
-  }, [])
+        return { ...prev, [monthKey]: entries }
+      })
+      // Also update existingMonthlyPlans
+      setExistingMonthlyPlans(prev => prev.map(p => 
+        p.id === planId ? { ...p, version: newVersion } : p
+      ))
+    },
+  })
 
   // Load discharge ports for voyage duration calculations (if not already loaded)
   useEffect(() => {
@@ -3238,232 +3102,32 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       </Menu>
       
       {/* Move Dialog */}
-      <Dialog open={moveDialogOpen} onClose={handleCloseMoveDialog} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>
-          {moveAction === 'DEFER' ? 'Defer Cargo to Later Month' : 'Advance Cargo to Earlier Month'}
-        </DialogTitle>
-        <DialogContent>
-          {moveEntryData && (
-            <Box sx={{ mt: 1 }}>
-              <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
-                Moving {moveEntryData.entry.is_combi ? 'combi cargo' : 'cargo'} from{' '}
-                <strong>{getMonthName(moveEntryData.month)} {moveEntryData.year}</strong>
-              </Typography>
-              
-              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                <FormControl size="small" sx={{ flex: 1 }}>
-                  <InputLabel>Target Month</InputLabel>
-                  <Select
-                    value={moveTargetMonth}
-                    label="Target Month"
-                    onChange={(e) => setMoveTargetMonth(Number(e.target.value))}
-                  >
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
-                      <MenuItem key={m} value={m}>
-                        {getMonthName(m)}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <TextField
-                  size="small"
-                  label="Year"
-                  type="number"
-                  value={moveTargetYear}
-                  onChange={(e) => setMoveTargetYear(Number(e.target.value))}
-                  sx={{ width: 100 }}
-                  inputProps={{ min: 2020, max: 2100 }}
-                />
-              </Box>
-              
-              <TextField
-                size="small"
-                label="Reason (optional)"
-                value={moveReason}
-                onChange={(e) => setMoveReason(e.target.value)}
-                fullWidth
-                multiline
-                rows={2}
-                placeholder="e.g., Customer request, Authority approval"
-              />
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={handleCloseMoveDialog} disabled={isMoving}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleExecuteMove}
-            disabled={isMoving}
-            sx={{
-              bgcolor: moveAction === 'DEFER' ? '#2563EB' : '#7C3AED',
-              '&:hover': { bgcolor: moveAction === 'DEFER' ? '#1D4ED8' : '#6D28D9' },
-            }}
-          >
-            {isMoving ? 'Moving...' : moveAction === 'DEFER' ? 'Defer Cargo' : 'Advance Cargo'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <MoveEntryDialog
+        open={moveDialogOpen}
+        onClose={handleCloseMoveDialog}
+        onExecute={handleExecuteMove}
+        moveAction={moveAction}
+        moveEntryData={moveEntryData}
+        targetMonth={moveTargetMonth}
+        targetYear={moveTargetYear}
+        reason={moveReason}
+        isMoving={isMoving}
+        onTargetMonthChange={setMoveTargetMonth}
+        onTargetYearChange={setMoveTargetYear}
+        onReasonChange={setMoveReason}
+      />
       
       {/* Authority Top-Up Dialog */}
-      <Dialog open={topupDialogOpen} onClose={() => { setTopupDialogOpen(false); setTopupEntry(null); }} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ bgcolor: '#F0FDF4', borderBottom: '1px solid #D1FAE5' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <TrendingUp sx={{ color: '#10B981' }} />
-            <Typography variant="h6">Authority Top-Up</Typography>
-          </Box>
-          {topupEntry && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Add authorized quantity increase for{' '}
-              <strong>
-                {getMonthName(topupEntry.month)} {topupEntry.year}
-                {topupEntry.entry.is_combi ? ' (Combie)' : ` - ${topupEntry.entry.product_name}`}
-              </strong>
-            </Typography>
-          )}
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-            {/* Product selector for combie cargos */}
-            {topupEntry?.entry.is_combi && (
-              <FormControl fullWidth required>
-                <InputLabel>Select Product for Top-Up</InputLabel>
-                <Select
-                  value={topupForm.selected_product}
-                  label="Select Product for Top-Up"
-                  onChange={(e) => setTopupForm({ ...topupForm, selected_product: e.target.value })}
-                >
-                  {Object.keys(topupEntry.entry.combi_quantities || {}).map((productName) => (
-                    <MenuItem key={productName} value={productName}>
-                      {productName} (Current: {topupEntry.entry.combi_quantities[productName] || 0} KT)
-                    </MenuItem>
-                  ))}
-                </Select>
-                <Typography variant="caption" sx={{ mt: 0.5, color: 'text.secondary' }}>
-                  Choose which product this top-up is for
-                </Typography>
-              </FormControl>
-            )}
-            <TextField
-              label="Top-Up Quantity (KT)"
-              type="number"
-              value={topupForm.quantity}
-              onChange={(e) => setTopupForm({ ...topupForm, quantity: e.target.value })}
-              required
-              fullWidth
-              InputProps={{
-                endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
-              }}
-              helperText={topupEntry ? (
-                topupEntry.entry.is_combi && topupForm.selected_product 
-                  ? `Current: ${topupEntry.entry.combi_quantities[topupForm.selected_product] || 0} KT → New: ${(parseFloat(topupEntry.entry.combi_quantities[topupForm.selected_product]) || 0) + (parseFloat(topupForm.quantity) || 0)} KT`
-                  : topupEntry.entry.is_combi 
-                    ? 'Select a product first'
-                    : `Current quantity: ${topupEntry.entry.quantity || 0} KT → New: ${(parseFloat(topupEntry.entry.quantity) || 0) + (parseFloat(topupForm.quantity) || 0)} KT`
-              ) : ''}
-            />
-            <TextField
-              label="Authority Reference"
-              value={topupForm.authority_reference}
-              onChange={(e) => setTopupForm({ ...topupForm, authority_reference: e.target.value })}
-              required
-              fullWidth
-              placeholder="e.g., AUTH-2025-001"
-              helperText="Reference number for the authorization"
-            />
-            <TextField
-              label="Date"
-              type="date"
-              value={topupForm.date}
-              onChange={(e) => setTopupForm({ ...topupForm, date: e.target.value })}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-            />
-            <TextField
-              label="Reason (Optional)"
-              value={topupForm.reason}
-              onChange={(e) => setTopupForm({ ...topupForm, reason: e.target.value })}
-              fullWidth
-              multiline
-              rows={2}
-              placeholder="e.g., Customer request, market demand"
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => { setTopupDialogOpen(false); setTopupEntry(null); }} disabled={isAddingTopup}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={async () => {
-              if (!topupForm.quantity || !topupForm.authority_reference) {
-                alert('Please fill in quantity and authority reference')
-                return
-              }
-              
-              if (!topupEntry || !topupEntry.entry.id) {
-                alert('No monthly plan selected. This should not happen - please close the dialog and try again.')
-                return
-              }
-              
-              // For combie cargos, require product selection
-              if (topupEntry.entry.is_combi && !topupForm.selected_product) {
-                alert('Please select which product the top-up is for')
-                return
-              }
-              
-              setIsAddingTopup(true)
-              try {
-                const topupData: MonthlyPlanTopUpRequest = {
-                  quantity: parseFloat(topupForm.quantity),
-                  authority_reference: topupForm.authority_reference,
-                  reason: topupForm.reason || undefined,
-                  authorization_date: topupForm.date || undefined,
-                }
-                
-                // Determine which plan ID to use
-                let planIdToUpdate: number
-                if (topupEntry.entry.is_combi && topupEntry.entry._combi_product_plan_map && topupForm.selected_product) {
-                  // For combie entries, use the specific product's plan ID
-                  planIdToUpdate = topupEntry.entry._combi_product_plan_map[topupForm.selected_product]
-                  if (!planIdToUpdate) {
-                    throw new Error(`Could not find plan ID for product ${topupForm.selected_product}`)
-                  }
-                } else {
-                  // For single product entries, use the entry's ID
-                  planIdToUpdate = topupEntry.entry.id
-                }
-                
-                await monthlyPlanAPI.addAuthorityTopup(planIdToUpdate, topupData)
-                
-                setTopupDialogOpen(false)
-                setTopupEntry(null)
-                const productInfo = topupEntry.entry.is_combi ? ` for ${topupForm.selected_product}` : ''
-                alert(`Authority top-up of ${parseFloat(topupForm.quantity).toLocaleString()} KT${productInfo} added successfully!`)
-                
-                // Reload data
-                onPlanCreated()
-              } catch (error: any) {
-                console.error('Error adding authority top-up:', error)
-                const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error'
-                alert(`Error adding top-up: ${errorMessage}`)
-              } finally {
-                setIsAddingTopup(false)
-              }
-            }}
-            disabled={isAddingTopup || !topupForm.quantity || !topupForm.authority_reference || (topupEntry?.entry.is_combi && !topupForm.selected_product)}
-            sx={{ 
-              bgcolor: '#10B981', 
-              '&:hover': { bgcolor: '#059669' } 
-            }}
-          >
-            {isAddingTopup ? 'Adding...' : 'Add Top-Up'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <TopupDialog
+        open={topupDialogOpen}
+        onClose={() => { setTopupDialogOpen(false); setTopupEntry(null); }}
+        topupEntry={topupEntry}
+        topupForm={topupForm}
+        onFormChange={setTopupForm}
+        isAddingTopup={isAddingTopup}
+        setIsAddingTopup={setIsAddingTopup}
+        onSuccess={onPlanCreated}
+      />
       
       {/* Version History Dialog */}
       {historyEntryId && (
@@ -3484,179 +3148,17 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       )}
       
       {/* Cross-Contract Combi Dialog */}
-      <Dialog 
-        open={crossContractDialogOpen} 
-        onClose={handleCloseCrossContractDialog} 
-        maxWidth="md" 
-        fullWidth
-      >
-        <DialogTitle sx={{ bgcolor: '#EDE9FE', borderBottom: '1px solid #C4B5FD' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Add sx={{ color: '#7C3AED' }} />
-            <Typography variant="h6">Cross-Contract Combi</Typography>
-          </Box>
-          {crossContractEntry && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Add products from other contracts to create a cross-contract combi for{' '}
-              <strong>{getMonthName(crossContractEntry.month)} {crossContractEntry.year}</strong>
-            </Typography>
-          )}
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          {isLoadingEligible ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <Typography color="text.secondary">Loading eligible contracts...</Typography>
-            </Box>
-          ) : eligibleContracts.length === 0 ? (
-            <Box sx={{ py: 4, textAlign: 'center' }}>
-              <Typography color="text.secondary">
-                No eligible contracts found for cross-contract combi.
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                Eligible contracts must:
-                <br />• Belong to the same customer
-                <br />• Be the same type ({contractType})
-                <br />• Have an active period covering {crossContractEntry ? `${getMonthName(crossContractEntry.month)} ${crossContractEntry.year}` : 'this month'}
-              </Typography>
-            </Box>
-          ) : (
-            <Box>
-              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-                Select products from other contracts to combine with this cargo. All selected products will share the same vessel and timing.
-              </Typography>
-              
-              {eligibleContracts.map((eligibleContract) => (
-                <Box 
-                  key={eligibleContract.id} 
-                  sx={{ 
-                    mb: 2, 
-                    p: 2, 
-                    border: '1px solid #E2E8F0', 
-                    borderRadius: 1,
-                    bgcolor: selectedCrossContractItems.some(item => item.contractId === eligibleContract.id) ? '#F5F3FF' : 'white'
-                  }}
-                >
-                  <Typography variant="subtitle2" sx={{ mb: 1, color: '#1E293B' }}>
-                    {eligibleContract.contract_number} ({eligibleContract.contract_type})
-                  </Typography>
-                  
-                  {eligibleContract.monthly_plans.length === 0 ? (
-                    <Typography variant="caption" color="text.secondary">
-                      No monthly plans for this month. Create a plan in this contract first.
-                    </Typography>
-                  ) : (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {eligibleContract.monthly_plans.map((mp: any) => {
-                        const isSelected = selectedCrossContractItems.some(item => item.monthlyPlanId === mp.id)
-                        const selectedItem = selectedCrossContractItems.find(item => item.monthlyPlanId === mp.id)
-                        
-                        return (
-                          <Box 
-                            key={mp.id} 
-                            sx={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              gap: 2,
-                              p: 1,
-                              borderRadius: 1,
-                              bgcolor: isSelected ? '#EDE9FE' : '#F8FAFC'
-                            }}
-                          >
-                            <FormControlLabel
-                              control={
-                                <Checkbox
-                                  checked={isSelected}
-                                  onChange={() => handleToggleCrossContractItem(
-                                    eligibleContract.id,
-                                    eligibleContract.contract_number,
-                                    mp.id,
-                                    mp.product_name
-                                  )}
-                                  disabled={mp.has_cargo}
-                                  size="small"
-                                />
-                              }
-                              label={
-                                <Box>
-                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                    {mp.product_name}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Plan: {mp.month_quantity} KT
-                                    {mp.has_cargo && ' (Already has cargo)'}
-                                  </Typography>
-                                </Box>
-                              }
-                              sx={{ flex: 1, m: 0 }}
-                            />
-                            
-                            {isSelected && (
-                              <TextField
-                                label="Qty (KT)"
-                                type="number"
-                                size="small"
-                                value={selectedItem?.quantity || ''}
-                                onChange={(e) => handleCrossContractQuantityChange(mp.id, e.target.value)}
-                                sx={{ width: 120 }}
-                                inputProps={{ min: 0, step: 0.01 }}
-                              />
-                            )}
-                          </Box>
-                        )
-                      })}
-                    </Box>
-                  )}
-                </Box>
-              ))}
-              
-              {selectedCrossContractItems.length > 0 && (
-                <Box sx={{ mt: 2, p: 2, bgcolor: '#F0FDF4', borderRadius: 1 }}>
-                  <Typography variant="subtitle2" sx={{ color: '#10B981', mb: 1 }}>
-                    Selected for Cross-Contract Combi:
-                  </Typography>
-                  {selectedCrossContractItems.map((item, idx) => (
-                    <Typography key={idx} variant="body2">
-                      • {item.contractNumber} - {item.productName}: {item.quantity || '(no quantity)'} KT
-                    </Typography>
-                  ))}
-                </Box>
-              )}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={handleCloseCrossContractDialog}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={selectedCrossContractItems.length === 0 || selectedCrossContractItems.some(item => !item.quantity || parseFloat(item.quantity) <= 0)}
-            onClick={async () => {
-              if (!crossContractEntry) return
-              
-              // Validate all items have quantities
-              const invalidItems = selectedCrossContractItems.filter(item => !item.quantity || parseFloat(item.quantity) <= 0)
-              if (invalidItems.length > 0) {
-                alert('Please enter quantities for all selected products')
-                return
-              }
-              
-              // For now, show info message - full implementation requires cargo creation
-              alert(
-                `Cross-contract combi feature is ready!\n\n` +
-                `To create the combi:\n` +
-                `1. First save a cargo in this contract\n` +
-                `2. Then use the cross-contract combi API to link products from:\n` +
-                selectedCrossContractItems.map(item => `   • ${item.contractNumber} - ${item.productName}: ${item.quantity} KT`).join('\n') +
-                `\n\nThis will be fully integrated in the next update.`
-              )
-              
-              handleCloseCrossContractDialog()
-            }}
-            sx={{ bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
-          >
-            Create Cross-Contract Combi
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CrossContractCombiDialog
+        open={crossContractDialogOpen}
+        onClose={handleCloseCrossContractDialog}
+        crossContractEntry={crossContractEntry}
+        contractType={contractType}
+        isLoadingEligible={isLoadingEligible}
+        eligibleContracts={eligibleContracts}
+        selectedItems={selectedCrossContractItems}
+        onToggleItem={handleToggleCrossContractItem}
+        onQuantityChange={handleCrossContractQuantityChange}
+      />
     </Paper>
   )
 }

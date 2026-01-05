@@ -34,7 +34,7 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material'
-import { FileDownload, Search, Description, Clear, History, PlayArrow, CheckCircle, Edit } from '@mui/icons-material'
+import { FileDownload, Search, Description, Clear, History } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
 import { format } from 'date-fns'
 import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, documentsAPI } from '../api/client'
@@ -1798,291 +1798,6 @@ export default function HomePage() {
   // ============================================================================
   // QUICK ACTIONS - Hover-based status change handlers
   // ============================================================================
-  
-  // State for quick action feedback
-  const [quickActionSnackbar, setQuickActionSnackbar] = useState<{
-    open: boolean
-    message: string
-    severity: 'success' | 'error' | 'info'
-    undoAction?: () => void
-  }>({ open: false, message: '', severity: 'success' })
-
-  // Quick action: Mark cargo as Loading
-  const handleQuickMarkLoading = async (cargo: Cargo, e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent row click
-    
-    // Validate: cargo must have load ports
-    if (!cargo.load_ports || cargo.load_ports.length === 0) {
-      setQuickActionSnackbar({
-        open: true,
-        message: 'Please add Load Port before marking as Loading',
-        severity: 'error'
-      })
-      return
-    }
-    
-    const originalStatus = cargo.status
-    const originalCargo = { ...cargo }
-    
-    // Get all load ports for this cargo
-    const loadPorts = parseLoadPorts(cargo.load_ports)
-    
-    // Update existing port operations or create new ones with Loading status
-    const existingOps = Array.isArray(cargo.port_operations) ? cargo.port_operations : []
-    const loadingPortOps: CargoPortOperation[] = loadPorts.map(port => {
-      const existing = existingOps.find(op => op.port_code === port)
-      if (existing) {
-        return { ...existing, status: 'Loading' as PortOperationStatus }
-      }
-      // Create a minimal port op for optimistic UI (will be replaced by API response)
-      return {
-        id: 0,
-        cargo_id: cargo.id,
-        port_code: port,
-        status: 'Loading' as PortOperationStatus,
-        created_at: new Date().toISOString()
-      } as CargoPortOperation
-    })
-    
-    // Optimistic update
-    const updatedCargo: Cargo = { 
-      ...cargo, 
-      status: 'Loading' as CargoStatus,
-      port_operations: loadingPortOps
-    }
-    
-    // Update Port Movement
-    setPortMovement(prev => prev.map(c => 
-      c.id === cargo.id ? updatedCargo : 
-      (cargo.combi_group_id && c.combi_group_id === cargo.combi_group_id) ? { ...c, status: 'Loading' as CargoStatus, port_operations: loadingPortOps } : c
-    ))
-    
-    // Add to Active Loadings
-    setActiveLoadings(prev => {
-      const exists = prev.some(c => c.id === cargo.id)
-      if (exists) return prev.map(c => c.id === cargo.id ? updatedCargo : c)
-      
-      // For combi cargos, add all in group
-      if (cargo.combi_group_id) {
-        const combiCargos = portMovement.filter(c => c.combi_group_id === cargo.combi_group_id)
-        return [...prev, ...combiCargos.map(c => ({ ...c, status: 'Loading' as CargoStatus, port_operations: loadingPortOps }))]
-      }
-      return [...prev, updatedCargo]
-    })
-    
-    try {
-      // Get all cargo IDs to update (including combi group)
-      const allCargoIds = cargo.combi_group_id
-        ? [cargo.id, ...portMovement.filter(c => c.combi_group_id === cargo.combi_group_id && c.id !== cargo.id).map(c => c.id)]
-        : [cargo.id]
-      
-      // Update port operations for ALL ports to "Loading" for all cargos
-      const portOpPromises: Promise<any>[] = []
-      for (const cargoId of allCargoIds) {
-        for (const port of loadPorts) {
-          portOpPromises.push(
-            cargoAPI.upsertPortOperation(cargoId, port, { status: 'Loading' as PortOperationStatus })
-          )
-        }
-      }
-      await Promise.all(portOpPromises)
-      
-      // Update cargo status for all cargos
-      const cargoUpdatePromises = allCargoIds.map(id => {
-        const c = portMovement.find(cargo => cargo.id === id)
-        return cargoAPI.update(id, { status: 'Loading', version: c?.version })
-      })
-      await Promise.all(cargoUpdatePromises)
-      
-      setQuickActionSnackbar({
-        open: true,
-        message: `${cargo.vessel_name} marked as Loading`,
-        severity: 'success',
-        undoAction: () => handleQuickUndoStatus(cargo.id, originalStatus, cargo.combi_group_id)
-      })
-      
-      // Refresh data in background
-      loadPortMovement()
-      loadActiveLoadings()
-    } catch (error: any) {
-      // Rollback on error
-      setPortMovement(prev => prev.map(c => c.id === cargo.id ? originalCargo : c))
-      setActiveLoadings(prev => prev.filter(c => c.id !== cargo.id))
-      
-      setQuickActionSnackbar({
-        open: true,
-        message: `Error: ${error?.response?.data?.detail || error?.message || 'Failed to update'}`,
-        severity: 'error'
-      })
-    }
-  }
-
-  // Quick action: Mark cargo as Completed Loading
-  const handleQuickCompleteLoading = async (cargo: Cargo, e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent row click
-    
-    const originalStatus = cargo.status
-    const originalCargo = { ...cargo }
-    const isCIF = cargo.contract_type === 'CIF'
-    
-    // Get all load ports for this cargo
-    const loadPorts = parseLoadPorts(cargo.load_ports)
-    if (loadPorts.length === 0) {
-      setQuickActionSnackbar({
-        open: true,
-        message: 'No load ports found for this cargo',
-        severity: 'error'
-      })
-      return
-    }
-    
-    // Update existing port operations or create new ones with Completed Loading status
-    const existingOps = Array.isArray(cargo.port_operations) ? cargo.port_operations : []
-    const updatedPortOps: CargoPortOperation[] = loadPorts.map(port => {
-      const existing = existingOps.find(op => op.port_code === port)
-      if (existing) {
-        return { ...existing, status: 'Completed Loading' as PortOperationStatus }
-      }
-      // Create a minimal port op for optimistic UI (will be replaced by API response)
-      return {
-        id: 0,
-        cargo_id: cargo.id,
-        port_code: port,
-        status: 'Completed Loading' as PortOperationStatus,
-        created_at: new Date().toISOString()
-      } as CargoPortOperation
-    })
-    
-    // Optimistic update - cargo with updated port ops
-    const updatedCargo: Cargo = { 
-      ...cargo, 
-      status: 'Completed Loading' as CargoStatus,
-      port_operations: updatedPortOps
-    }
-    
-    // Remove from Active Loadings
-    setActiveLoadings(prev => {
-      if (cargo.combi_group_id) {
-        return prev.filter(c => c.combi_group_id !== cargo.combi_group_id)
-      }
-      return prev.filter(c => c.id !== cargo.id)
-    })
-    
-    // Update Port Movement
-    setPortMovement(prev => prev.map(c => 
-      c.id === cargo.id ? updatedCargo : 
-      (cargo.combi_group_id && c.combi_group_id === cargo.combi_group_id) ? { ...c, status: 'Completed Loading' as CargoStatus, port_operations: updatedPortOps } : c
-    ))
-    
-    // Add to Completed Cargos (FOB) or In-Road CIF (CIF)
-    if (isCIF) {
-      setInRoadCIF(prev => {
-        if (cargo.combi_group_id) {
-          const combiCargos = portMovement.filter(c => c.combi_group_id === cargo.combi_group_id)
-          return [...prev, ...combiCargos.map(c => ({ ...c, status: 'Completed Loading' as CargoStatus, port_operations: updatedPortOps }))]
-        }
-        return [...prev, updatedCargo]
-      })
-    } else {
-      setCompletedCargos(prev => {
-        if (cargo.combi_group_id) {
-          const combiCargos = portMovement.filter(c => c.combi_group_id === cargo.combi_group_id)
-          return [...prev, ...combiCargos.map(c => ({ ...c, status: 'Completed Loading' as CargoStatus, port_operations: updatedPortOps }))]
-        }
-        return [...prev, updatedCargo]
-      })
-    }
-    
-    try {
-      // Get all cargo IDs to update (including combi group)
-      const allCargoIds = cargo.combi_group_id
-        ? [cargo.id, ...portMovement.filter(c => c.combi_group_id === cargo.combi_group_id && c.id !== cargo.id).map(c => c.id)]
-        : [cargo.id]
-      
-      // Update port operations for ALL ports to "Completed Loading" for all cargos
-      const portOpPromises: Promise<any>[] = []
-      for (const cargoId of allCargoIds) {
-        for (const port of loadPorts) {
-          portOpPromises.push(
-            cargoAPI.upsertPortOperation(cargoId, port, { status: 'Completed Loading' as PortOperationStatus })
-          )
-        }
-      }
-      await Promise.all(portOpPromises)
-      
-      // Update cargo status for all cargos
-      const cargoUpdatePromises = allCargoIds.map(id => {
-        const c = [...portMovement, ...activeLoadings].find(cargo => cargo.id === id)
-        return cargoAPI.update(id, { status: 'Completed Loading', version: c?.version })
-      })
-      await Promise.all(cargoUpdatePromises)
-      
-      setQuickActionSnackbar({
-        open: true,
-        message: `${cargo.vessel_name} completed loading`,
-        severity: 'success',
-        undoAction: () => handleQuickUndoStatus(cargo.id, originalStatus, cargo.combi_group_id)
-      })
-      
-      // Refresh data in background
-      loadPortMovement()
-      loadActiveLoadings()
-      loadData()
-    } catch (error: any) {
-      // Rollback on error
-      setActiveLoadings(prev => [...prev, originalCargo])
-      setPortMovement(prev => prev.map(c => c.id === cargo.id ? originalCargo : c))
-      if (isCIF) {
-        setInRoadCIF(prev => prev.filter(c => c.id !== cargo.id))
-      } else {
-        setCompletedCargos(prev => prev.filter(c => c.id !== cargo.id))
-      }
-      
-      setQuickActionSnackbar({
-        open: true,
-        message: `Error: ${error?.response?.data?.detail || error?.message || 'Failed to update'}`,
-        severity: 'error'
-      })
-    }
-  }
-
-  // Undo quick action
-  const handleQuickUndoStatus = async (cargoId: number, originalStatus: CargoStatus, combiGroupId?: string | null) => {
-    try {
-      const cargo = [...portMovement, ...activeLoadings, ...completedCargos, ...inRoadCIF].find(c => c.id === cargoId)
-      if (!cargo) return
-      
-      await cargoAPI.update(cargoId, { status: originalStatus, version: cargo.version })
-      
-      if (combiGroupId) {
-        const combiCargos = [...portMovement, ...activeLoadings].filter(c => c.combi_group_id === combiGroupId && c.id !== cargoId)
-        await Promise.all(combiCargos.map(c => cargoAPI.update(c.id, { status: originalStatus, version: c.version })))
-      }
-      
-      // Refresh all data
-      loadPortMovement()
-      loadActiveLoadings()
-      loadData()
-      
-      setQuickActionSnackbar({
-        open: true,
-        message: 'Status change undone',
-        severity: 'info'
-      })
-    } catch (error) {
-      setQuickActionSnackbar({
-        open: true,
-        message: 'Failed to undo. Please refresh the page.',
-        severity: 'error'
-      })
-    }
-  }
-
-  // Quick action: Edit cargo (opens dialog)
-  const handleQuickEdit = (cargo: Cargo, e: React.MouseEvent) => {
-    e.stopPropagation()
-    handleEditCargo(cargo)
-  }
 
   const getCustomerName = (customerId: number) => {
     const customer = customers.find((c) => c.id === customerId)
@@ -4774,118 +4489,24 @@ export default function HomePage() {
                       </TableCell>
                       <TableCell 
                         sx={{ 
-                          minWidth: isMobile ? 100 : 180,
+                          minWidth: isMobile ? 100 : 120,
                           whiteSpace: 'nowrap',
-                          position: 'relative',
-                          '& .hover-actions': {
-                            opacity: 0,
-                            transition: 'opacity 0.2s ease-in-out',
-                          },
-                          'tr:hover & .hover-actions': {
-                            opacity: 1,
-                          },
                         }}
                       >
-                        {cargo ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            {/* Always visible: Nomination button */}
-                            <Button
-                              variant="outlined"
-                              size="small"
-                              startIcon={<Description />}
-                              onClick={(e) => handleGenerateNomination(cargo.id, e)}
-                              sx={{ 
-                                fontSize: '0.7rem',
-                                minWidth: 'auto',
-                                px: 1,
-                              }}
-                            >
-                              Nom
-                            </Button>
-                            
-                            {/* Hover Actions */}
-                            <Box className="hover-actions" sx={{ display: 'flex', gap: 0.5 }}>
-                              {/* Mark as Loading - only for Planned/Pending status */}
-                              {(cargo.status === 'Planned' || cargo.status === 'Pending Nomination') && (
-                                <Tooltip title="Mark as Loading">
-                                  <IconButton
-                                    size="small"
-                                    onClick={(e) => handleQuickMarkLoading(cargo, e)}
-                                    sx={{ 
-                                      bgcolor: '#DBEAFE',
-                                      color: '#1D4ED8',
-                                      '&:hover': { bgcolor: '#BFDBFE' },
-                                      width: 28,
-                                      height: 28,
-                                    }}
-                                  >
-                                    <PlayArrow sx={{ fontSize: 16 }} />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                              
-                              {/* Complete Loading - only for Loading status */}
-                              {cargo.status === 'Loading' && (
-                                <Tooltip title="Complete Loading">
-                                  <IconButton
-                                    size="small"
-                                    onClick={(e) => handleQuickCompleteLoading(cargo, e)}
-                                    sx={{ 
-                                      bgcolor: '#DCFCE7',
-                                      color: '#16A34A',
-                                      '&:hover': { bgcolor: '#BBF7D0' },
-                                      width: 28,
-                                      height: 28,
-                                    }}
-                                  >
-                                    <CheckCircle sx={{ fontSize: 16 }} />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                              
-                              {/* Edit - always available */}
-                              <Tooltip title="Edit">
-                                <IconButton
-                                  size="small"
-                                  onClick={(e) => handleQuickEdit(cargo, e)}
-                                  sx={{ 
-                                    bgcolor: '#F1F5F9',
-                                    color: '#475569',
-                                    '&:hover': { bgcolor: '#E2E8F0' },
-                                    width: 28,
-                                    height: 28,
-                                  }}
-                                >
-                                  <Edit sx={{ fontSize: 16 }} />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
-                          </Box>
-                        ) : (
-                          /* Monthly Plan without cargo - show Create button on hover */
-                          <Box className="hover-actions">
-                            <Tooltip title="Create Cargo">
-                              <Button
-                                variant="contained"
-                                size="small"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  if (monthlyPlan) {
-                                    handleCreateCargoForPlan(monthlyPlan, isCombi && combiMonthlyPlans ? combiMonthlyPlans : undefined)
-                                  }
-                                }}
-                                sx={{ 
-                                  fontSize: '0.7rem',
-                                  minWidth: 'auto',
-                                  px: 1.5,
-                                  bgcolor: '#3B82F6',
-                                  '&:hover': { bgcolor: '#2563EB' },
-                                }}
-                              >
-                                Create
-                              </Button>
-                            </Tooltip>
-                          </Box>
+                        {cargo && (
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<Description />}
+                            onClick={(e) => handleGenerateNomination(cargo.id, e)}
+                            sx={{ 
+                              fontSize: '0.7rem',
+                              minWidth: 'auto',
+                              px: 1,
+                            }}
+                          >
+                            Nom
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -4924,36 +4545,6 @@ export default function HomePage() {
             sx={{ width: '100%' }}
           >
             {dataChangedNotification} - Data may have changed. Consider refreshing.
-          </Alert>
-        </Snackbar>
-
-        {/* Quick Action Feedback Snackbar */}
-        <Snackbar
-          open={quickActionSnackbar.open}
-          autoHideDuration={4000}
-          onClose={() => setQuickActionSnackbar(prev => ({ ...prev, open: false }))}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        >
-          <Alert
-            severity={quickActionSnackbar.severity}
-            onClose={() => setQuickActionSnackbar(prev => ({ ...prev, open: false }))}
-            sx={{ width: '100%' }}
-            action={
-              quickActionSnackbar.undoAction && (
-                <Button 
-                  color="inherit" 
-                  size="small"
-                  onClick={() => {
-                    quickActionSnackbar.undoAction?.()
-                    setQuickActionSnackbar(prev => ({ ...prev, open: false }))
-                  }}
-                >
-                  UNDO
-                </Button>
-              )
-            }
-          >
-            {quickActionSnackbar.message}
           </Alert>
         </Snackbar>
 
@@ -5188,7 +4779,6 @@ export default function HomePage() {
                             <TableCell sx={{ fontWeight: 'bold', minWidth: 120 }}>ETC</TableCell>
                             <TableCell sx={{ fontWeight: 'bold', minWidth: 130 }}>Delivery Window</TableCell>
                             <TableCell sx={{ fontWeight: 'bold', minWidth: 200 }}>Notes</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold', minWidth: 100 }}>Actions</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -5368,54 +4958,6 @@ export default function HomePage() {
                                     onSave={(val) => schedulePortOpSave(cargo.id, port, { notes: val })}
                                     fullWidth
                                   />
-                                </TableCell>
-                                <TableCell 
-                                  onClick={(e) => e.stopPropagation()}
-                                  sx={{ 
-                                    '& .hover-actions': {
-                                      opacity: 0,
-                                      transition: 'opacity 0.2s ease-in-out',
-                                    },
-                                    'tr:hover & .hover-actions': {
-                                      opacity: 1,
-                                    },
-                                  }}
-                                >
-                                  <Box className="hover-actions" sx={{ display: 'flex', gap: 0.5 }}>
-                                    {/* Complete Loading - main action */}
-                                    <Tooltip title="Complete Loading">
-                                      <IconButton
-                                        size="small"
-                                        onClick={(e) => handleQuickCompleteLoading(cargo, e)}
-                                        sx={{ 
-                                          bgcolor: '#DCFCE7',
-                                          color: '#16A34A',
-                                          '&:hover': { bgcolor: '#BBF7D0' },
-                                          width: 28,
-                                          height: 28,
-                                        }}
-                                      >
-                                        <CheckCircle sx={{ fontSize: 16 }} />
-                                      </IconButton>
-                                    </Tooltip>
-                                    
-                                    {/* Edit */}
-                                    <Tooltip title="Edit">
-                                      <IconButton
-                                        size="small"
-                                        onClick={(e) => handleQuickEdit(cargo, e)}
-                                        sx={{ 
-                                          bgcolor: '#F1F5F9',
-                                          color: '#475569',
-                                          '&:hover': { bgcolor: '#E2E8F0' },
-                                          width: 28,
-                                          height: 28,
-                                        }}
-                                      >
-                                        <Edit sx={{ fontSize: 16 }} />
-                                      </IconButton>
-                                    </Tooltip>
-                                  </Box>
                                 </TableCell>
                               </TableRow>
                             )

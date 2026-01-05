@@ -1,6 +1,7 @@
 """
 SQLAlchemy models for the Oil Lifting Program.
 """
+from typing import Optional
 from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Enum, Text, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -82,6 +83,9 @@ class Product(Base):
     sort_order = Column(Integer, default=0)  # For display ordering
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    contract_products = relationship("ContractProduct", back_populates="product")
 
 
 class LoadPort(Base):
@@ -192,7 +196,7 @@ class Customer(Base):
 class Contract(Base):
     """
     Sales contract with a customer.
-    Contains one or more products with quantities.
+    Contains one or more products with quantities via ContractProduct relationship.
     """
     __tablename__ = "contracts"
     
@@ -211,16 +215,6 @@ class Contract(Base):
     # Contract category for different planning needs
     # Default TERM for backward compatibility
     contract_category = Column(Enum(ContractCategory), nullable=True, default=ContractCategory.TERM)
-    
-    # Products as JSON array with either fixed or min/max quantities:
-    # Fixed mode: [{"name": "JET A-1", "total_quantity": 1000, "optional_quantity": 200}]
-    # Min/Max mode: [{"name": "JET A-1", "min_quantity": 200, "max_quantity": 900}]
-    # Using Text for SQLite compatibility, but PostgreSQL can use JSONB natively
-    products = Column(Text, nullable=False)
-    
-    # Authority Amendments: Mid-contract adjustments to min/max quantities
-    # JSON array: [{"product_name": "GASOIL", "amendment_type": "increase_max", "quantity_change": 50, "authority_reference": "AUTH-2024-002", "effective_date": "2024-06-15"}]
-    authority_amendments = Column(Text, nullable=True)
     
     discharge_ranges = Column(Text, nullable=True)  # Free-form notes
     additives_required = Column(Boolean, nullable=True)  # For JET A-1 contracts
@@ -251,6 +245,124 @@ class Contract(Base):
     
     customer = relationship("Customer", back_populates="contracts")
     quarterly_plans = relationship("QuarterlyPlan", back_populates="contract", cascade="all, delete-orphan")
+    # New normalized relationships
+    contract_products = relationship("ContractProduct", back_populates="contract", cascade="all, delete-orphan", order_by="ContractProduct.id")
+    authority_amendments = relationship("AuthorityAmendment", back_populates="contract", cascade="all, delete-orphan", order_by="AuthorityAmendment.id")
+    
+    def get_products_list(self):
+        """Convert contract_products relationship to list of dicts for API compatibility."""
+        return [cp.to_dict() for cp in self.contract_products]
+    
+    def get_amendments_list(self):
+        """Convert authority_amendments relationship to list of dicts for API compatibility."""
+        return [aa.to_dict() for aa in self.authority_amendments] if self.authority_amendments else None
+
+
+class ContractProduct(Base):
+    """
+    Product allocation within a contract.
+    Links contracts to products with quantity information.
+    Replaces the old JSON products column for proper relational storage.
+    """
+    __tablename__ = "contract_products"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    contract_id = Column(Integer, ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    
+    # Fixed quantity mode (legacy/simple)
+    total_quantity = Column(Float, nullable=True)  # Total fixed quantity in KT
+    optional_quantity = Column(Float, nullable=True, default=0)  # Optional quantity in KT
+    
+    # Min/Max quantity mode (range-based)
+    min_quantity = Column(Float, nullable=True)  # Minimum contract quantity in KT
+    max_quantity = Column(Float, nullable=True)  # Maximum contract quantity in KT
+    
+    # Per-year breakdown stored as JSONB for flexibility
+    # Format: [{"year": 1, "quantity": 500, "min_quantity": 200, "max_quantity": 600}, ...]
+    year_quantities = Column(Text, nullable=True)  # JSON array for per-year quantities
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    contract = relationship("Contract", back_populates="contract_products")
+    product = relationship("Product", back_populates="contract_products")
+    
+    def to_dict(self):
+        """Convert to dict format matching the old JSON structure for API compatibility."""
+        import json
+        result = {
+            "name": self.product.name,
+            "product_id": self.product_id,  # Include product_id for normalized lookups
+        }
+        
+        if self.total_quantity is not None:
+            result["total_quantity"] = self.total_quantity
+        if self.optional_quantity is not None and self.optional_quantity > 0:
+            result["optional_quantity"] = self.optional_quantity
+        if self.min_quantity is not None:
+            result["min_quantity"] = self.min_quantity
+        if self.max_quantity is not None:
+            result["max_quantity"] = self.max_quantity
+        if self.year_quantities:
+            try:
+                result["year_quantities"] = json.loads(self.year_quantities)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        return result
+
+
+class AuthorityAmendment(Base):
+    """
+    Authority amendment for mid-contract quantity adjustments.
+    Replaces the old JSON authority_amendments column.
+    """
+    __tablename__ = "authority_amendments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    contract_id = Column(Integer, ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    
+    amendment_type = Column(String(20), nullable=False)  # increase_max, decrease_max, increase_min, decrease_min, set_min, set_max
+    quantity_change = Column(Float, nullable=True)  # Amount to add/subtract
+    new_min_quantity = Column(Float, nullable=True)  # New absolute min value (if set_min)
+    new_max_quantity = Column(Float, nullable=True)  # New absolute max value (if set_max)
+    authority_reference = Column(String(100), nullable=False)  # Reference number
+    reason = Column(String(500), nullable=True)  # Reason for the amendment
+    effective_date = Column(Date, nullable=True)  # When the amendment takes effect
+    year = Column(Integer, nullable=True)  # Specific contract year affected (None = all years)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    contract = relationship("Contract", back_populates="authority_amendments")
+    product = relationship("Product")
+    
+    def to_dict(self):
+        """Convert to dict format matching the old JSON structure for API compatibility."""
+        result = {
+            "product_name": self.product.name,
+            "amendment_type": self.amendment_type,
+            "authority_reference": self.authority_reference,
+        }
+        
+        if self.quantity_change is not None:
+            result["quantity_change"] = self.quantity_change
+        if self.new_min_quantity is not None:
+            result["new_min_quantity"] = self.new_min_quantity
+        if self.new_max_quantity is not None:
+            result["new_max_quantity"] = self.new_max_quantity
+        if self.reason:
+            result["reason"] = self.reason
+        if self.effective_date:
+            result["effective_date"] = self.effective_date.isoformat()
+        if self.year is not None:
+            result["year"] = self.year
+        
+        return result
 
 
 class QuarterlyPlan(Base):
@@ -262,7 +374,9 @@ class QuarterlyPlan(Base):
     __tablename__ = "quarterly_plans"
     
     id = Column(Integer, primary_key=True, index=True)
-    product_name = Column(String, nullable=True)  # For multi-product contracts
+    
+    # Foreign key to products table - normalized reference
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
     
     # Contract year: 1, 2, etc. (which year of the contract)
     # Default 1 for backward compatibility
@@ -281,6 +395,7 @@ class QuarterlyPlan(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     contract = relationship("Contract", back_populates="quarterly_plans")
+    product = relationship("Product")
     monthly_plans = relationship("MonthlyPlan", back_populates="quarterly_plan", cascade="all, delete-orphan")
 
 
@@ -339,9 +454,9 @@ class MonthlyPlan(Base):
     # For SPOT/RANGE contracts: set directly
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
     
-    # Product name - stored for ALL contract types (TERM, SPOT, SEMI_TERM)
+    # Foreign key to products table - normalized reference
     # For multi-product contracts, identifies which product this monthly plan is for
-    product_name = Column(String, nullable=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
     
     # Optimistic locking - prevents lost updates in concurrent edits
     version = Column(Integer, nullable=False, default=1)
@@ -351,6 +466,7 @@ class MonthlyPlan(Base):
     
     quarterly_plan = relationship("QuarterlyPlan", back_populates="monthly_plans")
     contract = relationship("Contract", foreign_keys=[contract_id])
+    product = relationship("Product")
     cargos = relationship("Cargo", back_populates="monthly_plan", cascade="all, delete-orphan")
 
 
@@ -364,8 +480,8 @@ class Cargo(Base):
     id = Column(Integer, primary_key=True, index=True)
     cargo_id = Column(String, unique=True, index=True)  # System generated (e.g., CARGO-XXXX)
     vessel_name = Column(String, nullable=False)
-    customer_id = Column(Integer, nullable=False)
-    product_name = Column(String, nullable=False)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
     contract_type = Column(Enum(ContractType), nullable=False)
     
@@ -375,8 +491,12 @@ class Cargo(Base):
     # LC status - stored as string value for database compatibility
     lc_status = Column(String, nullable=True)
     
-    load_ports = Column(Text, nullable=False)  # Comma-separated or JSON array
-    inspector_name = Column(String)
+    # NOTE: load_ports column REMOVED - now derived from port_operations relationship
+    # Use cargo.get_load_ports_string() or cargo.port_operations for port data
+    
+    # Normalized FK to inspectors table (replaces old inspector_name string)
+    inspector_id = Column(Integer, ForeignKey("inspectors.id"), nullable=True, index=True)
+    
     cargo_quantity = Column(Float, nullable=False)
     laycan_window = Column(String)
     
@@ -428,19 +548,44 @@ class Cargo(Base):
     
     monthly_plan = relationship("MonthlyPlan", back_populates="cargos")
     contract = relationship("Contract")
+    customer = relationship("Customer")
+    product = relationship("Product")
+    inspector = relationship("Inspector")
     port_operations = relationship("CargoPortOperation", back_populates="cargo", cascade="all, delete-orphan")
+    
+    def get_load_ports_string(self) -> str:
+        """Get load ports as comma-separated string for API compatibility."""
+        if not self.port_operations:
+            return ""
+        # Sort by load_port.sort_order for consistent display
+        sorted_ops = sorted(
+            self.port_operations, 
+            key=lambda op: (op.load_port.sort_order if op.load_port else 0, op.load_port_id)
+        )
+        return ",".join(op.load_port.code for op in sorted_ops if op.load_port)
+    
+    def get_load_port_ids(self) -> list:
+        """Get list of load_port_ids for this cargo."""
+        return [op.load_port_id for op in (self.port_operations or [])]
+    
+    def get_inspector_name(self) -> Optional[str]:
+        """Get inspector name from relationship for API compatibility."""
+        return self.inspector.name if self.inspector else None
 
 
 class CargoPortOperation(Base):
     """
     Per-load-port operational tracking for a cargo.
     Allows tracking the same cargo independently across multiple load ports.
+    This is now the SOURCE OF TRUTH for which ports a cargo is loading at.
     """
     __tablename__ = "cargo_port_operations"
 
     id = Column(Integer, primary_key=True, index=True)
     cargo_id = Column(Integer, ForeignKey("cargos.id"), nullable=False, index=True)
-    port_code = Column(String, nullable=False, index=True)  # MAA, MAB, SHU, ZOR
+    
+    # Normalized FK to load_ports table (replaces old port_code string)
+    load_port_id = Column(Integer, ForeignKey("load_ports.id"), nullable=False, index=True)
 
     # Per-port status (String for easy migration across SQLite/Postgres)
     status = Column(String, nullable=False, default="Planned")  # Planned | Loading | Completed Loading
@@ -456,6 +601,7 @@ class CargoPortOperation(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     cargo = relationship("Cargo", back_populates="port_operations")
+    load_port = relationship("LoadPort")
 
 
 # =============================================================================

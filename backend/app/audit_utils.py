@@ -5,7 +5,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from fastapi import Request
 from contextvars import ContextVar
-from app.models import CargoAuditLog, Cargo, MonthlyPlan, User
+from app.models import CargoAuditLog, Cargo, MonthlyPlan, User, Product
 
 # Context variable to store current user initials (set by middleware/dependency)
 _current_user_initials: ContextVar[Optional[str]] = ContextVar('current_user_initials', default=None)
@@ -56,11 +56,17 @@ def log_cargo_action(
         cargo_cargo_id = cargo.cargo_id
         # Store full cargo snapshot for DELETE actions
         if action == 'DELETE':
+            # Get product_name from product_id
+            product_name = None
+            if cargo.product_id:
+                product = db.query(Product).filter(Product.id == cargo.product_id).first()
+                product_name = product.name if product else None
+            
             cargo_snapshot = json.dumps({
                 'cargo_id': cargo.cargo_id,
                 'vessel_name': cargo.vessel_name,
                 'customer_id': cargo.customer_id,
-                'product_name': cargo.product_name,
+                'product_name': product_name,
                 'contract_id': cargo.contract_id,
                 'monthly_plan_id': cargo.monthly_plan_id,
                 'cargo_quantity': cargo.cargo_quantity,

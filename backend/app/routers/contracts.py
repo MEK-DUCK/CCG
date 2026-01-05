@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session, defer
+from sqlalchemy.orm import Session, defer, joinedload
 from sqlalchemy import inspect
 from typing import List
 from app.database import get_db
@@ -7,6 +7,7 @@ from app import models, schemas
 from app.models import ContractCategory
 from app.utils.fiscal_year import calculate_contract_years, generate_quarterly_plan_periods, generate_monthly_plan_periods
 from app.contract_audit_utils import log_contract_action, log_contract_field_changes, get_contract_snapshot
+from app.utils.quantity import get_product_name_by_id
 import uuid
 import logging
 
@@ -21,42 +22,224 @@ def _contracts_has_column(db: Session, column_name: str) -> bool:
     except Exception:
         return False
 
+
+def _get_product_by_name(db: Session, name: str) -> models.Product:
+    """Get product by name, raise HTTPException if not found."""
+    product = db.query(models.Product).filter(
+        models.Product.name == name,
+        models.Product.is_active == True
+    ).first()
+    if not product:
+        raise HTTPException(status_code=400, detail=f"Invalid product: {name}")
+    return product
+
+
+def _contract_to_dict(db_contract: models.Contract, has_remarks: bool = True, has_additives_required: bool = True) -> dict:
+    """Convert a Contract model to dict with products and amendments as lists."""
+    return {
+        "id": db_contract.id,
+        "contract_id": db_contract.contract_id,
+        "contract_number": db_contract.contract_number,
+        "contract_type": db_contract.contract_type,
+        "contract_category": getattr(db_contract, "contract_category", ContractCategory.TERM),
+        "payment_method": db_contract.payment_method,
+        "start_period": db_contract.start_period,
+        "end_period": db_contract.end_period,
+        "fiscal_start_month": getattr(db_contract, "fiscal_start_month", 1),
+        "products": db_contract.get_products_list(),
+        "authority_amendments": db_contract.get_amendments_list(),
+        "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
+        **({"additives_required": getattr(db_contract, "additives_required", None)} if has_additives_required else {}),
+        "fax_received": getattr(db_contract, "fax_received", None),
+        "fax_received_date": getattr(db_contract, "fax_received_date", None),
+        "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
+        "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
+        "tng_lead_days": getattr(db_contract, "tng_lead_days", None),
+        "tng_notes": getattr(db_contract, "tng_notes", None),
+        "cif_destination": getattr(db_contract, "cif_destination", None),
+        **({"remarks": getattr(db_contract, "remarks", None)} if has_remarks else {}),
+        "customer_id": db_contract.customer_id,
+        "version": getattr(db_contract, 'version', 1),
+        "created_at": db_contract.created_at,
+        "updated_at": db_contract.updated_at
+    }
+
+
+def _sync_contract_products(db: Session, contract: models.Contract, products_data: list):
+    """
+    Sync contract products - delete existing and create new ones.
+    products_data is a list of dicts with product info.
+    """
+    import json
+    
+    # Delete existing contract products
+    db.query(models.ContractProduct).filter(
+        models.ContractProduct.contract_id == contract.id
+    ).delete(synchronize_session=False)
+    
+    # Create new contract products
+    for product_data in products_data:
+        product_name = product_data.get("name") if isinstance(product_data, dict) else product_data.name
+        product = _get_product_by_name(db, product_name)
+        
+        # Handle both dict and Pydantic model
+        if isinstance(product_data, dict):
+            total_qty = product_data.get("total_quantity")
+            optional_qty = product_data.get("optional_quantity", 0)
+            min_qty = product_data.get("min_quantity")
+            max_qty = product_data.get("max_quantity")
+            year_quantities = product_data.get("year_quantities")
+        else:
+            total_qty = product_data.total_quantity
+            optional_qty = product_data.optional_quantity or 0
+            min_qty = product_data.min_quantity
+            max_qty = product_data.max_quantity
+            year_quantities = product_data.year_quantities
+        
+        # Convert year_quantities to JSON if present
+        year_quantities_json = None
+        if year_quantities:
+            if isinstance(year_quantities, list):
+                year_quantities_json = json.dumps([
+                    yq if isinstance(yq, dict) else yq.dict()
+                    for yq in year_quantities
+                ])
+            else:
+                year_quantities_json = json.dumps(year_quantities)
+        
+        cp = models.ContractProduct(
+            contract_id=contract.id,
+            product_id=product.id,
+            total_quantity=total_qty,
+            optional_quantity=optional_qty,
+            min_quantity=min_qty,
+            max_quantity=max_qty,
+            year_quantities=year_quantities_json
+        )
+        db.add(cp)
+
+
+def _sync_authority_amendments(db: Session, contract: models.Contract, amendments_data: list):
+    """
+    Sync authority amendments - delete existing and create new ones.
+    Also applies amendments to contract product quantities.
+    """
+    from datetime import datetime
+    
+    # Delete existing amendments
+    db.query(models.AuthorityAmendment).filter(
+        models.AuthorityAmendment.contract_id == contract.id
+    ).delete(synchronize_session=False)
+    
+    if not amendments_data:
+        return
+    
+    # Get contract products for applying amendments
+    contract_products = {cp.product.name: cp for cp in contract.contract_products}
+    
+    for amendment_data in amendments_data:
+        # Handle both dict and Pydantic model
+        if isinstance(amendment_data, dict):
+            product_name = amendment_data.get("product_name")
+            amendment_type = amendment_data.get("amendment_type")
+            quantity_change = amendment_data.get("quantity_change")
+            new_min = amendment_data.get("new_min_quantity")
+            new_max = amendment_data.get("new_max_quantity")
+            auth_ref = amendment_data.get("authority_reference")
+            reason = amendment_data.get("reason")
+            effective_date_str = amendment_data.get("effective_date")
+            year = amendment_data.get("year")
+        else:
+            product_name = amendment_data.product_name
+            amendment_type = amendment_data.amendment_type
+            quantity_change = amendment_data.quantity_change
+            new_min = amendment_data.new_min_quantity
+            new_max = amendment_data.new_max_quantity
+            auth_ref = amendment_data.authority_reference
+            reason = amendment_data.reason
+            effective_date_str = amendment_data.effective_date
+            year = amendment_data.year
+        
+        # Validate product exists in contract
+        if product_name not in contract_products:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Amendment product '{product_name}' not found in contract products"
+            )
+        
+        product = _get_product_by_name(db, product_name)
+        
+        # Parse effective date
+        effective_date = None
+        if effective_date_str:
+            if isinstance(effective_date_str, str):
+                try:
+                    effective_date = datetime.fromisoformat(effective_date_str.replace('Z', '+00:00')).date()
+                except ValueError:
+                    effective_date = datetime.strptime(effective_date_str, "%Y-%m-%d").date()
+            else:
+                effective_date = effective_date_str
+        
+        # Create amendment record
+        aa = models.AuthorityAmendment(
+            contract_id=contract.id,
+            product_id=product.id,
+            amendment_type=amendment_type,
+            quantity_change=quantity_change,
+            new_min_quantity=new_min,
+            new_max_quantity=new_max,
+            authority_reference=auth_ref,
+            reason=reason,
+            effective_date=effective_date,
+            year=year
+        )
+        db.add(aa)
+        
+        # Apply amendment to contract product
+        cp = contract_products[product_name]
+        qty_change = quantity_change or 0
+        
+        if amendment_type == 'increase_max':
+            cp.max_quantity = (cp.max_quantity or 0) + qty_change
+        elif amendment_type == 'decrease_max':
+            cp.max_quantity = max(0, (cp.max_quantity or 0) - qty_change)
+        elif amendment_type == 'increase_min':
+            cp.min_quantity = (cp.min_quantity or 0) + qty_change
+        elif amendment_type == 'decrease_min':
+            cp.min_quantity = max(0, (cp.min_quantity or 0) - qty_change)
+        elif amendment_type == 'set_min' and new_min is not None:
+            cp.min_quantity = new_min
+        elif amendment_type == 'set_max' and new_max is not None:
+            cp.max_quantity = new_max
+        
+        # Validate min <= max
+        min_qty = cp.min_quantity or 0
+        max_qty = cp.max_quantity or 0
+        if min_qty > max_qty and max_qty > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Amendment would make min_quantity ({min_qty}) greater than max_quantity ({max_qty}) for product '{product_name}'"
+            )
+
+
 @router.post("/", response_model=schemas.Contract)
 def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_db)):
     logger.info(f"Received contract creation request: {contract}")
     try:
-        import json
         # Verify customer exists
         customer = db.query(models.Customer).filter(models.Customer.id == contract.customer_id).first()
         if not customer:
             raise HTTPException(status_code=404, detail="Customer not found")
         
         # Validate products against database
-        # Fetch valid product names from database, or fall back to defaults if table doesn't exist yet
-        try:
-            db_products = db.query(models.Product).filter(models.Product.is_active == True).all()
-            valid_products = [p.name for p in db_products] if db_products else ["JET A-1", "GASOIL", "GASOIL 10PPM", "HFO", "LSFO"]
-        except Exception:
-            # Products table might not exist yet
-            valid_products = ["JET A-1", "GASOIL", "GASOIL 10PPM", "HFO", "LSFO"]
-        
         for product in contract.products:
-            if product.name not in valid_products:
-                raise HTTPException(status_code=400, detail=f"Invalid product: {product.name}. Must be one of: {', '.join(valid_products)}")
+            _get_product_by_name(db, product.name)
         
         # Generate system contract_id
         contract_id = f"CONT-{uuid.uuid4().hex[:8].upper()}"
         
-        # Store products as JSON string
-        products_json = json.dumps([p.dict() for p in contract.products])
-        
         has_remarks = _contracts_has_column(db, "remarks")
         has_additives_required = _contracts_has_column(db, "additives_required")
-        
-        # Handle authority amendments if provided
-        authority_amendments_json = None
-        if getattr(contract, 'authority_amendments', None):
-            authority_amendments_json = json.dumps([a.dict() for a in contract.authority_amendments], default=str)
         
         # Determine fiscal start month (default to contract start month if not provided)
         fiscal_start_month = getattr(contract, "fiscal_start_month", None)
@@ -77,21 +260,30 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             start_period=contract.start_period,
             end_period=contract.end_period,
             fiscal_start_month=fiscal_start_month,
-            products=products_json,
-            authority_amendments=authority_amendments_json,
             discharge_ranges=getattr(contract, "discharge_ranges", None),
             **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
             fax_received=getattr(contract, "fax_received", None),
             fax_received_date=getattr(contract, "fax_received_date", None),
             concluded_memo_received=getattr(contract, "concluded_memo_received", None),
             concluded_memo_received_date=getattr(contract, "concluded_memo_received_date", None),
-            tng_lead_days=getattr(contract, "tng_lead_days", None),  # CIF Tonnage Memo lead days
-            tng_notes=getattr(contract, "tng_notes", None),  # TNG-specific notes
-            cif_destination=getattr(contract, "cif_destination", None),  # CIF base destination
+            tng_lead_days=getattr(contract, "tng_lead_days", None),
+            tng_notes=getattr(contract, "tng_notes", None),
+            cif_destination=getattr(contract, "cif_destination", None),
             **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
             customer_id=contract.customer_id,
         )
         db.add(db_contract)
+        db.flush()  # Get the contract ID
+        
+        # Create contract products (normalized)
+        _sync_contract_products(db, db_contract, [p.dict() for p in contract.products])
+        
+        # Handle authority amendments if provided
+        if getattr(contract, 'authority_amendments', None):
+            db.flush()  # Ensure contract_products are created first
+            db.refresh(db_contract)  # Reload to get contract_products
+            _sync_authority_amendments(db, db_contract, [a.dict() for a in contract.authority_amendments])
+        
         db.commit()
         db.refresh(db_contract)
         
@@ -117,10 +309,12 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
             logger.info(f"Auto-generating {num_years} year(s) of quarterly plans for contract {db_contract.id}")
             
             for product in contract.products:
+                # Get product_id from product name
+                product_id = _get_product_by_name(db, product.name).id
                 for contract_year in range(1, num_years + 1):
                     db_quarterly = models.QuarterlyPlan(
                         contract_id=db_contract.id,
-                        product_name=product.name,
+                        product_id=product_id,
                         contract_year=contract_year,
                         q1_quantity=0,
                         q2_quantity=0,
@@ -134,33 +328,10 @@ def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_
         elif is_range_contract:
             logger.info(f"Skipping quarterly plans for range contract {db_contract.id} (min/max mode)")
         
-        # Convert products JSON string to list for response
-        contract_dict = {
-            "id": db_contract.id,
-            "contract_id": db_contract.contract_id,
-            "contract_number": db_contract.contract_number,
-            "contract_type": db_contract.contract_type,
-            "contract_category": db_contract.contract_category,
-            "payment_method": db_contract.payment_method,
-            "start_period": db_contract.start_period,
-            "end_period": db_contract.end_period,
-            "fiscal_start_month": db_contract.fiscal_start_month,
-            "products": json.loads(db_contract.products) if db_contract.products else [],
-            "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
-            **({"additives_required": getattr(db_contract, "additives_required", None)} if has_additives_required else {}),
-            "fax_received": getattr(db_contract, "fax_received", None),
-            "fax_received_date": getattr(db_contract, "fax_received_date", None),
-            "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
-            "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
-            "tng_lead_days": getattr(db_contract, "tng_lead_days", None),
-            "tng_notes": getattr(db_contract, "tng_notes", None),
-            "cif_destination": getattr(db_contract, "cif_destination", None),
-            **({"remarks": getattr(db_contract, "remarks", None)} if has_remarks else {}),
-            "customer_id": db_contract.customer_id,
-            "created_at": db_contract.created_at,
-            "updated_at": db_contract.updated_at
-        }
-        return contract_dict
+        # Reload contract with relationships
+        db.refresh(db_contract)
+        
+        return _contract_to_dict(db_contract, has_remarks, has_additives_required)
     except HTTPException:
         raise
     except Exception as e:
@@ -177,66 +348,31 @@ def read_contracts(
     db: Session = Depends(get_db),
 ):
     try:
-        import json
         from sqlalchemy import desc
         has_remarks = _contracts_has_column(db, "remarks")
         has_additives_required = _contracts_has_column(db, "additives_required")
-        query = db.query(models.Contract)
+        
+        query = db.query(models.Contract).options(
+            joinedload(models.Contract.contract_products).joinedload(models.ContractProduct.product),
+            joinedload(models.Contract.authority_amendments).joinedload(models.AuthorityAmendment.product)
+        )
+        
         if not has_remarks:
             query = query.options(defer(models.Contract.remarks))
         if not has_additives_required:
             query = query.options(defer(models.Contract.additives_required))
         if customer_id:
             query = query.filter(models.Contract.customer_id == customer_id)
+        
         # Order by created_at descending to get newest contracts first
         contracts = query.order_by(desc(models.Contract.created_at)).offset(skip).limit(limit).all()
         
-        # Convert products JSON string to list for each contract
         result = []
         for contract in contracts:
             # Skip contracts without customer_id (old data from before migration)
             if contract.customer_id is None:
                 continue
-            try:
-                products = json.loads(contract.products) if contract.products else []
-            except json.JSONDecodeError:
-                logger.warning(f"Failed to parse products JSON for contract {contract.id}")
-                products = []
-            
-            # Parse authority amendments
-            try:
-                authority_amendments = json.loads(contract.authority_amendments) if contract.authority_amendments else None
-            except json.JSONDecodeError:
-                authority_amendments = None
-            
-            contract_dict = {
-                "id": contract.id,
-                "contract_id": contract.contract_id,
-                "contract_number": contract.contract_number,
-                "contract_type": contract.contract_type,
-                "contract_category": getattr(contract, "contract_category", ContractCategory.TERM),
-                "payment_method": contract.payment_method,
-                "start_period": contract.start_period,
-                "end_period": contract.end_period,
-                "fiscal_start_month": getattr(contract, "fiscal_start_month", 1),
-                "products": products,
-                "authority_amendments": authority_amendments,
-                "discharge_ranges": getattr(contract, "discharge_ranges", None),
-                **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
-                "fax_received": getattr(contract, "fax_received", None),
-                "fax_received_date": getattr(contract, "fax_received_date", None),
-                "concluded_memo_received": getattr(contract, "concluded_memo_received", None),
-                "concluded_memo_received_date": getattr(contract, "concluded_memo_received_date", None),
-                "tng_lead_days": getattr(contract, "tng_lead_days", None),
-                "tng_notes": getattr(contract, "tng_notes", None),
-                "cif_destination": getattr(contract, "cif_destination", None),
-                **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
-                "customer_id": contract.customer_id,
-                "version": getattr(contract, 'version', 1),
-                "created_at": contract.created_at,
-                "updated_at": contract.updated_at
-            }
-            result.append(contract_dict)
+            result.append(_contract_to_dict(contract, has_remarks, has_additives_required))
         
         return result
     except Exception as e:
@@ -263,12 +399,13 @@ def get_eligible_contracts_for_cross_combi(
     
     Returns contracts with their products and monthly plans for the specified month.
     """
-    import json
     from datetime import date
     
     try:
         # Get the source contract
-        source_contract = db.query(models.Contract).filter(
+        source_contract = db.query(models.Contract).options(
+            joinedload(models.Contract.contract_products).joinedload(models.ContractProduct.product)
+        ).filter(
             models.Contract.id == contract_id
         ).first()
         
@@ -279,7 +416,9 @@ def get_eligible_contracts_for_cross_combi(
         target_date = date(year, month, 1)
         
         # Find eligible contracts
-        eligible_contracts = db.query(models.Contract).filter(
+        eligible_contracts = db.query(models.Contract).options(
+            joinedload(models.Contract.contract_products).joinedload(models.ContractProduct.product)
+        ).filter(
             models.Contract.customer_id == source_contract.customer_id,
             models.Contract.contract_type == source_contract.contract_type,
             models.Contract.id != contract_id,
@@ -289,11 +428,7 @@ def get_eligible_contracts_for_cross_combi(
         
         result = []
         for contract in eligible_contracts:
-            # Parse products
-            try:
-                products = json.loads(contract.products) if contract.products else []
-            except json.JSONDecodeError:
-                products = []
+            products = contract.get_products_list()
             
             if not products:
                 continue  # Skip contracts with no products
@@ -315,7 +450,7 @@ def get_eligible_contracts_for_cross_combi(
                 
                 plans_info.append({
                     "id": mp.id,
-                    "product_name": mp.product_name,
+                    "product_name": get_product_name_by_id(db, mp.product_id) if mp.product_id else None,
                     "month_quantity": mp.month_quantity,
                     "has_cargo": existing_cargo is not None,
                     "combi_group_id": mp.combi_group_id,
@@ -355,66 +490,25 @@ def get_eligible_contracts_for_cross_combi(
 
 @router.get("/{contract_id}", response_model=schemas.Contract)
 def read_contract(contract_id: int, db: Session = Depends(get_db)):
-    import json
     try:
         has_remarks = _contracts_has_column(db, "remarks")
         has_additives_required = _contracts_has_column(db, "additives_required")
-        query = db.query(models.Contract)
+        
+        query = db.query(models.Contract).options(
+            joinedload(models.Contract.contract_products).joinedload(models.ContractProduct.product),
+            joinedload(models.Contract.authority_amendments).joinedload(models.AuthorityAmendment.product)
+        )
+        
         if not has_remarks:
             query = query.options(defer(models.Contract.remarks))
         if not has_additives_required:
             query = query.options(defer(models.Contract.additives_required))
+        
         contract = query.filter(models.Contract.id == contract_id).first()
         if contract is None:
             raise HTTPException(status_code=404, detail="Contract not found")
         
-        # Parse products JSON string to list for response
-        products_list = []
-        if contract.products:
-            try:
-                products_list = json.loads(contract.products)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse products JSON for contract {contract_id}: {e}")
-                logger.error(f"Products value: {contract.products}")
-                products_list = []
-        
-        # Parse authority amendments
-        authority_amendments_list = None
-        if contract.authority_amendments:
-            try:
-                authority_amendments_list = json.loads(contract.authority_amendments)
-            except json.JSONDecodeError:
-                authority_amendments_list = None
-        
-        # Convert products JSON string to list for response
-        contract_dict = {
-            "id": contract.id,
-            "contract_id": contract.contract_id,
-            "contract_number": contract.contract_number,
-            "contract_type": contract.contract_type,
-            "contract_category": getattr(contract, "contract_category", ContractCategory.TERM),
-            "payment_method": contract.payment_method,
-            "start_period": contract.start_period,
-            "end_period": contract.end_period,
-            "fiscal_start_month": getattr(contract, "fiscal_start_month", 1),
-            "products": products_list,
-            "authority_amendments": authority_amendments_list,
-            "discharge_ranges": getattr(contract, "discharge_ranges", None),
-            **({"additives_required": getattr(contract, "additives_required", None)} if has_additives_required else {}),
-            "fax_received": getattr(contract, "fax_received", None),
-            "fax_received_date": getattr(contract, "fax_received_date", None),
-            "concluded_memo_received": getattr(contract, "concluded_memo_received", None),
-            "concluded_memo_received_date": getattr(contract, "concluded_memo_received_date", None),
-            "tng_lead_days": getattr(contract, "tng_lead_days", None),
-            "tng_notes": getattr(contract, "tng_notes", None),
-            "cif_destination": getattr(contract, "cif_destination", None),
-            **({"remarks": getattr(contract, "remarks", None)} if has_remarks else {}),
-            "customer_id": contract.customer_id,
-            "version": getattr(contract, 'version', 1),
-            "created_at": contract.created_at,
-            "updated_at": contract.updated_at
-        }
-        return contract_dict
+        return _contract_to_dict(contract, has_remarks, has_additives_required)
     except HTTPException:
         raise
     except Exception as e:
@@ -431,16 +525,19 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
     If client sends 'version', we verify it matches the current version
     to prevent lost updates from concurrent edits.
     """
-    import json
     has_remarks = _contracts_has_column(db, "remarks")
     has_additives_required = _contracts_has_column(db, "additives_required")
     
     # Use SELECT FOR UPDATE to prevent concurrent modifications
-    query = db.query(models.Contract)
+    query = db.query(models.Contract).options(
+        joinedload(models.Contract.contract_products).joinedload(models.ContractProduct.product),
+        joinedload(models.Contract.authority_amendments).joinedload(models.AuthorityAmendment.product)
+    )
     if not has_remarks:
         query = query.options(defer(models.Contract.remarks))
     if not has_additives_required:
         query = query.options(defer(models.Contract.additives_required))
+    
     db_contract = query.filter(models.Contract.id == contract_id).with_for_update().first()
     if db_contract is None:
         raise HTTPException(status_code=404, detail="Contract not found")
@@ -482,78 +579,19 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
     if new_start and new_end and new_start > new_end:
         raise HTTPException(status_code=400, detail="start_period must be on or before end_period")
     
-    # Handle products conversion to JSON
+    # Handle products update (normalized)
     if "products" in update_data:
-        valid_products = ["JET A-1", "GASOIL", "GASOIL 10PPM", "HFO", "LSFO"]
         for product in update_data["products"]:
-            if product["name"] not in valid_products:
-                raise HTTPException(status_code=400, detail=f"Invalid product: {product['name']}. Must be one of: {', '.join(valid_products)}")
-        update_data["products"] = json.dumps(update_data["products"])
+            _get_product_by_name(db, product["name"])
+        _sync_contract_products(db, db_contract, update_data["products"])
+        del update_data["products"]  # Don't try to set as attribute
     
-    # Handle authority_amendments conversion to JSON AND apply to product quantities
+    # Handle authority_amendments update (normalized)
     if "authority_amendments" in update_data:
-        if update_data["authority_amendments"]:
-            # Get current products (from update or existing)
-            contract_products = json.loads(db_contract.products) if db_contract.products else []
-            if "products" in update_data:
-                contract_products = update_data["products"] if isinstance(update_data["products"], list) else json.loads(update_data["products"])
-            
-            product_names = {p.get('name') for p in contract_products}
-            
-            # Validate and apply amendments to product quantities
-            for amendment in update_data["authority_amendments"]:
-                product_name = amendment.get("product_name")
-                if product_name not in product_names:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"Amendment product '{product_name}' not found in contract products: {product_names}"
-                    )
-                
-                # Find the product and apply the amendment
-                for product in contract_products:
-                    if product.get('name') == product_name:
-                        amendment_type = amendment.get('amendment_type')
-                        quantity_change = amendment.get('quantity_change', 0) or 0
-                        
-                        # Apply the amendment based on type
-                        if amendment_type == 'increase_max':
-                            current_max = product.get('max_quantity', 0) or 0
-                            product['max_quantity'] = current_max + quantity_change
-                        elif amendment_type == 'decrease_max':
-                            current_max = product.get('max_quantity', 0) or 0
-                            product['max_quantity'] = max(0, current_max - quantity_change)
-                        elif amendment_type == 'increase_min':
-                            current_min = product.get('min_quantity', 0) or 0
-                            product['min_quantity'] = current_min + quantity_change
-                        elif amendment_type == 'decrease_min':
-                            current_min = product.get('min_quantity', 0) or 0
-                            product['min_quantity'] = max(0, current_min - quantity_change)
-                        elif amendment_type == 'set_min':
-                            new_min = amendment.get('new_min_quantity')
-                            if new_min is not None:
-                                product['min_quantity'] = new_min
-                        elif amendment_type == 'set_max':
-                            new_max = amendment.get('new_max_quantity')
-                            if new_max is not None:
-                                product['max_quantity'] = new_max
-                        
-                        # Ensure min <= max after amendment
-                        min_qty = product.get('min_quantity', 0) or 0
-                        max_qty = product.get('max_quantity', 0) or 0
-                        if min_qty > max_qty:
-                            raise HTTPException(
-                                status_code=400,
-                                detail=f"Amendment would make min_quantity ({min_qty}) greater than max_quantity ({max_qty}) for product '{product_name}'"
-                            )
-                        break
-            
-            # Update the products JSON with the amended values
-            update_data["products"] = json.dumps(contract_products)
-            
-            # Convert amendments to JSON, handling date serialization
-            update_data["authority_amendments"] = json.dumps(update_data["authority_amendments"], default=str)
-        else:
-            update_data["authority_amendments"] = None
+        db.flush()  # Ensure products are synced first
+        db.refresh(db_contract)
+        _sync_authority_amendments(db, db_contract, update_data["authority_amendments"])
+        del update_data["authority_amendments"]  # Don't try to set as attribute
     
     # Verify customer if being updated
     if "customer_id" in update_data:
@@ -561,6 +599,7 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         if not customer:
             raise HTTPException(status_code=404, detail="Customer not found")
     
+    # Update remaining fields
     for field, value in update_data.items():
         setattr(db_contract, field, value)
     
@@ -575,35 +614,7 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
     log_contract_field_changes(db, db_contract, old_values, new_values)
     db.commit()
     
-    # Convert products JSON string to list for response
-    contract_dict = {
-        "id": db_contract.id,
-        "contract_id": db_contract.contract_id,
-        "contract_number": db_contract.contract_number,
-        "contract_type": db_contract.contract_type,
-        "contract_category": getattr(db_contract, "contract_category", "TERM"),
-        "payment_method": db_contract.payment_method,
-        "start_period": db_contract.start_period,
-        "end_period": db_contract.end_period,
-        "fiscal_start_month": getattr(db_contract, "fiscal_start_month", None),
-        "products": json.loads(db_contract.products) if db_contract.products else [],
-        "authority_amendments": json.loads(db_contract.authority_amendments) if db_contract.authority_amendments else None,
-        "discharge_ranges": getattr(db_contract, "discharge_ranges", None),
-        **({"additives_required": getattr(db_contract, "additives_required", None)} if has_additives_required else {}),
-        "fax_received": getattr(db_contract, "fax_received", None),
-        "fax_received_date": getattr(db_contract, "fax_received_date", None),
-        "concluded_memo_received": getattr(db_contract, "concluded_memo_received", None),
-        "concluded_memo_received_date": getattr(db_contract, "concluded_memo_received_date", None),
-        "tng_lead_days": getattr(db_contract, "tng_lead_days", None),
-        "tng_notes": getattr(db_contract, "tng_notes", None),
-        "cif_destination": getattr(db_contract, "cif_destination", None),
-        **({"remarks": getattr(db_contract, "remarks", None)} if has_remarks else {}),
-        "customer_id": db_contract.customer_id,
-        "version": getattr(db_contract, 'version', 1),
-        "created_at": db_contract.created_at,
-        "updated_at": db_contract.updated_at
-    }
-    return contract_dict
+    return _contract_to_dict(db_contract, has_remarks, has_additives_required)
 
 
 @router.delete("/{contract_id}")
@@ -677,13 +688,14 @@ def get_all_authorities(
     Get all authority amendments and top-ups across all contracts.
     Top-ups are tracked at monthly plan level, amendments at contract level.
     """
-    import json
     from datetime import datetime
     
     authorities = []
     
-    # Get all contracts
-    query = db.query(models.Contract)
+    # Get all contracts with their amendments
+    query = db.query(models.Contract).options(
+        joinedload(models.Contract.authority_amendments).joinedload(models.AuthorityAmendment.product)
+    )
     if contract_id:
         query = query.filter(models.Contract.id == contract_id)
     contracts = query.all()
@@ -694,38 +706,39 @@ def get_all_authorities(
     for contract in contracts:
         customer_name = customer_map.get(contract.customer_id, "Unknown")
         
-        # Process Authority Amendments (at contract level)
-        if contract.authority_amendments:
-            try:
-                amendments = json.loads(contract.authority_amendments)
-                for amendment in amendments:
-                    if product_name and amendment.get('product_name') != product_name:
-                        continue
-                    authorities.append({
-                        "type": "Amendment",
-                        "contract_id": contract.id,
-                        "contract_number": contract.contract_number,
-                        "customer_name": customer_name,
-                        "product_name": amendment.get('product_name', ''),
-                        "amendment_type": amendment.get('amendment_type', ''),
-                        "quantity_change": amendment.get('quantity_change', 0),
-                        "authority_reference": amendment.get('authority_reference', ''),
-                        "effective_date": amendment.get('effective_date'),
-                        "year": amendment.get('year'),
-                        "reason": amendment.get('reason', ''),
-                        "created_at": contract.updated_at.isoformat() if contract.updated_at else None
-                    })
-            except (json.JSONDecodeError, Exception) as e:
-                logger.warning(f"Error parsing authority_amendments for contract {contract.id}: {e}")
+        # Process Authority Amendments (now from relationship)
+        for amendment in contract.authority_amendments:
+            if product_name and amendment.product.name != product_name:
+                continue
+            authorities.append({
+                "type": "Amendment",
+                "contract_id": contract.id,
+                "contract_number": contract.contract_number,
+                "customer_name": customer_name,
+                "product_name": amendment.product.name,
+                "amendment_type": amendment.amendment_type,
+                "quantity_change": amendment.quantity_change or 0,
+                "authority_reference": amendment.authority_reference,
+                "effective_date": amendment.effective_date.isoformat() if amendment.effective_date else None,
+                "year": amendment.year,
+                "reason": amendment.reason or '',
+                "created_at": contract.updated_at.isoformat() if contract.updated_at else None
+            })
     
     # Process Monthly Plan-Level Authority Top-Ups
-    monthly_plan_query = db.query(models.MonthlyPlan).filter(
+    monthly_plan_query = db.query(models.MonthlyPlan).options(
+        joinedload(models.MonthlyPlan.product)
+    ).filter(
         models.MonthlyPlan.authority_topup_quantity > 0
     )
     if contract_id:
         monthly_plan_query = monthly_plan_query.filter(models.MonthlyPlan.contract_id == contract_id)
     if product_name:
-        monthly_plan_query = monthly_plan_query.filter(models.MonthlyPlan.product_name == product_name)
+        # Look up product_id from product_name
+        from app.utils.quantity import get_product_id_by_name
+        product_id = get_product_id_by_name(db, product_name)
+        if product_id:
+            monthly_plan_query = monthly_plan_query.filter(models.MonthlyPlan.product_id == product_id)
     
     monthly_plans = monthly_plan_query.all()
     
@@ -736,13 +749,14 @@ def get_all_authorities(
             continue
         
         customer_name = customer_map.get(contract.customer_id, "Unknown")
+        mp_product_name = mp.product.name if mp.product else ''
         
         authorities.append({
             "type": "Top-Up (Monthly Plan)",
             "contract_id": contract.id,
             "contract_number": contract.contract_number,
             "customer_name": customer_name,
-            "product_name": mp.product_name or '',
+            "product_name": mp_product_name,
             "quantity": mp.authority_topup_quantity or 0,
             "authority_reference": mp.authority_topup_reference or '',
             "authorization_date": mp.authority_topup_date.isoformat() if mp.authority_topup_date else None,
@@ -760,4 +774,3 @@ def get_all_authorities(
         "authorities": authorities,
         "total_count": len(authorities)
     }
-

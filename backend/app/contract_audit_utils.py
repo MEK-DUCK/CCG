@@ -22,6 +22,10 @@ def serialize_value(value: Any) -> Optional[str]:
 
 def get_contract_snapshot(contract: Contract) -> dict:
     """Create a snapshot of a contract for audit logging"""
+    # Get products from the normalized relationship
+    products = contract.get_products_list() if hasattr(contract, 'get_products_list') else []
+    amendments = contract.get_amendments_list() if hasattr(contract, 'get_amendments_list') else None
+    
     return {
         "id": contract.id,
         "contract_id": contract.contract_id,
@@ -32,7 +36,8 @@ def get_contract_snapshot(contract: Contract) -> dict:
         "start_period": str(contract.start_period) if contract.start_period else None,
         "end_period": str(contract.end_period) if contract.end_period else None,
         "fiscal_start_month": contract.fiscal_start_month,
-        "products": contract.products,
+        "products": products,
+        "authority_amendments": amendments,
         "discharge_ranges": contract.discharge_ranges,
         "additives_required": getattr(contract, "additives_required", None),
         "fax_received": contract.fax_received,

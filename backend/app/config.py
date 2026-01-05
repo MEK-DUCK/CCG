@@ -109,14 +109,45 @@ QUANTITY_TOLERANCE = 0.01
 # =============================================================================
 
 def validate_load_port(port_code: str) -> bool:
-    """Check if a port code is valid."""
+    """Check if a port code is valid (uses hardcoded fallback for non-DB contexts)."""
     return port_code.upper() in SUPPORTED_LOAD_PORTS
 
 
 def get_port_name(port_code: str) -> str:
-    """Get human-readable port name."""
+    """Get human-readable port name (uses hardcoded fallback for non-DB contexts)."""
     info = LOAD_PORT_INFO.get(port_code.upper())
     return info["name"] if info else port_code
+
+
+# =============================================================================
+# DATABASE-AWARE PORT HELPERS (use these when you have a db session)
+# =============================================================================
+
+def get_load_port_by_code(db, port_code: str):
+    """Get LoadPort model by code from database."""
+    from app import models
+    return db.query(models.LoadPort).filter(
+        models.LoadPort.code == port_code.upper(),
+        models.LoadPort.is_active == True
+    ).first()
+
+
+def get_load_port_by_id(db, port_id: int):
+    """Get LoadPort model by ID from database."""
+    from app import models
+    return db.query(models.LoadPort).filter(models.LoadPort.id == port_id).first()
+
+
+def get_active_load_port_codes(db) -> Set[str]:
+    """Get set of active load port codes from database."""
+    from app import models
+    ports = db.query(models.LoadPort.code).filter(models.LoadPort.is_active == True).all()
+    return {p.code for p in ports}
+
+
+def validate_load_port_db(db, port_code: str) -> bool:
+    """Validate port code against database (preferred over hardcoded validation)."""
+    return get_load_port_by_code(db, port_code) is not None
 
 
 def get_product_category(product_name: str) -> Optional[ProductCategory]:

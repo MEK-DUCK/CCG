@@ -109,6 +109,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
     
     const products = Array.isArray(contractData.products) ? contractData.products : []
     const years = getContractYears(contractData.start_period, contractData.end_period)
+    const isSingleProduct = products.length === 1
     
     // Create plan data entries for each product for each year
     const newProductPlans: ProductPlanData[] = []
@@ -116,9 +117,13 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
     for (let year = 1; year <= years; year++) {
       for (const product of products) {
         // Find existing plan for this product and year
-        const existingPlan = existingPlans.find(p => 
-          p.product_name === product.name && (p.contract_year || 1) === year
-        )
+        // For single-product contracts, also match plans with null product_name (legacy data)
+        const existingPlan = existingPlans.find(p => {
+          const yearMatches = (p.contract_year || 1) === year
+          const productMatches = p.product_name === product.name || 
+            (isSingleProduct && p.product_name == null)
+          return yearMatches && productMatches
+        })
         
         // Load quantities from existing plan or default to empty
         let q1 = '', q2 = '', q3 = '', q4 = ''

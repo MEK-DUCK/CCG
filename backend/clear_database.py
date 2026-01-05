@@ -19,6 +19,8 @@ from app.models import (
     Cargo,
     MonthlyPlan,
     QuarterlyPlan,
+    ContractProduct,
+    AuthorityAmendment,
     Contract,
     Customer,
     Product,
@@ -60,6 +62,9 @@ def clear_database():
                 "cargos",
                 "monthly_plans",
                 "quarterly_plans",
+                # Contract-related normalized tables
+                "contract_products",
+                "authority_amendments",
                 "contracts",
                 "customers",
                 # PRESERVED: products, load_ports, inspectors, discharge_ports, users
@@ -120,6 +125,13 @@ def clear_database():
             # Delete quarterly plans (has foreign keys to contracts)
             db.query(QuarterlyPlan).delete()
             print("  ✓ Cleared quarterly_plans")
+            
+            # Delete contract-related normalized tables
+            db.query(ContractProduct).delete()
+            print("  ✓ Cleared contract_products")
+            
+            db.query(AuthorityAmendment).delete()
+            print("  ✓ Cleared authority_amendments")
             
             # Delete contracts (has foreign keys to customers)
             db.query(Contract).delete()

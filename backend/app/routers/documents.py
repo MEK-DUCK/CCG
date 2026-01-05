@@ -13,8 +13,29 @@ import logging
 
 from app.database import get_db
 from app import models
+from app.models import CargoPortOperation
+from app.utils.quantity import get_product_name_by_id
 
 logger = logging.getLogger(__name__)
+
+
+def _get_cargo_product_name(cargo: models.Cargo, db: Session) -> str:
+    """Get product name for a cargo from product_id."""
+    if cargo.product_id:
+        return get_product_name_by_id(db, cargo.product_id) or "Unknown Product"
+    return "Unknown Product"
+
+
+def _get_plan_product_name(plan: models.MonthlyPlan, db: Session) -> str:
+    """Get product name for a monthly plan from product_id or quarterly plan."""
+    if plan.product_id:
+        return get_product_name_by_id(db, plan.product_id) or "Unknown Product"
+    # Fallback to quarterly plan's product
+    if plan.quarterly_plan_id:
+        qp = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == plan.quarterly_plan_id).first()
+        if qp and qp.product_id:
+            return get_product_name_by_id(db, qp.product_id) or "Unknown Product"
+    return "Unknown Product"
 
 router = APIRouter()
 
@@ -111,8 +132,12 @@ def get_inspector_info(db: Session, customer_name: str, inspector_name: str):
 @router.get("/cargos/{cargo_id}/nomination")
 def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
     """Generate nomination Excel file for a specific cargo"""
-    # Get cargo data
-    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
+    from sqlalchemy.orm import joinedload
+    # Get cargo data with port_operations and inspector loaded
+    cargo = db.query(models.Cargo).options(
+        joinedload(models.Cargo.port_operations).joinedload(models.CargoPortOperation.load_port),
+        joinedload(models.Cargo.inspector)
+    ).filter(models.Cargo.id == cargo_id).first()
     if not cargo:
         raise HTTPException(status_code=404, detail="Cargo not found")
     
@@ -146,8 +171,11 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
     if hasattr(wb, '_external_links'):
         wb._external_links = []
     
+    # Get product name from product_id
+    product_name = _get_cargo_product_name(cargo, db)
+    
     # Determine which sheet to use
-    sheet_name = get_sheet_name_for_product(cargo.product_name, customer.name)
+    sheet_name = get_sheet_name_for_product(product_name, customer.name)
     if sheet_name not in wb.sheetnames:
         # Fallback to first available template sheet
         available_sheets = [s for s in wb.sheetnames if s not in ['Reference', 'LIST ']]
@@ -160,8 +188,9 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
     # Get reference data
     md_reference, indicator, ref_full_name = get_reference_data(db, contract.contract_number, customer.name)
     
-    # Get inspector info
-    inspector_code, spec_code = get_inspector_info(db, customer.name, cargo.inspector_name or '')
+    # Get inspector info (use inspector relationship)
+    inspector_name = cargo.inspector.name if cargo.inspector else ''
+    inspector_code, spec_code = get_inspector_info(db, customer.name, inspector_name)
     
     # Fill in the template
     # Note: A4 (Date/Header) is kept as is in template - don't change it
@@ -206,7 +235,7 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
     ws['G23'] = eta
     
     # PRODUCT (Row 24, Column C)
-    ws['C24'] = cargo.product_name
+    ws['C24'] = product_name
     
     # Delivery (Row 24, Column G) - FOB or CIF
     ws['G24'] = contract.contract_type.value
@@ -219,17 +248,15 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
         quantity_str = f"{quantity} KT +/- 10%"
     ws['C25'] = quantity_str
     
-    # Parse load ports once for reuse
-    load_ports = cargo.load_ports or ''
+    # Get load ports from port_operations (normalized source of truth)
     ports_list = []
-    if load_ports:
-        # Handle both comma and slash separators
-        if ',' in load_ports:
-            ports_list = [p.strip() for p in load_ports.split(',')]
-        elif '/' in load_ports:
-            ports_list = [p.strip() for p in load_ports.split('/')]
-        else:
-            ports_list = [load_ports.strip()]
+    if cargo.port_operations:
+        sorted_ops = sorted(
+            cargo.port_operations,
+            key=lambda op: (op.load_port.sort_order if op.load_port else 0, op.load_port_id)
+        )
+        ports_list = [op.load_port.code for op in sorted_ops if op.load_port]
+    load_ports = ",".join(ports_list) if ports_list else ""
     
     # Load ports in G7 to G14 (header section) - fill these with load ports
     # Note: G8 is kept as "KWT" - skip it
@@ -264,7 +291,7 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
             ws['D25'] = f'(AS PER MASTER REQUEST) to be loaded from: {load_ports}'
     
     # INSPECTOR (Row 28, Column C)
-    inspector = cargo.inspector_name or 'TBA'
+    inspector = cargo.inspector.name if cargo.inspector else 'TBA'
     ws['C28'] = inspector
     
     # CHARGES (Row 28, Column G-H) - Split customer name
@@ -277,7 +304,7 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
         ws['H28'] = customer.name
     
     # SAMPLING KPC PROCEDURE (Row 29, Column C) - based on product type
-    product_lower = cargo.product_name.lower().strip()
+    product_lower = product_name.lower().strip()
     # Check for gasoil (including "gasoil 10ppm" or "gasoil 10 ppm" variations)
     if 'gasoil' in product_lower:
         ws['C29'] = 'G-001'
@@ -293,7 +320,7 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
         ws['G29'] = spec_code
     else:
         # Default based on product
-        product_lower = cargo.product_name.lower()
+        product_lower = product_name.lower()
         if 'jet' in product_lower or 'gas' in product_lower:
             ws['G29'] = '3001-A'
         elif 'fuel' in product_lower or 'hfo' in product_lower:
@@ -354,9 +381,15 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
         vessel_name_clean = (cargo.vessel_name or 'TBA').replace(' ', '_').replace('/', '_').replace('\\', '_').replace(':', '_')
         customer_name_clean = (customer.name or 'TBA').replace(' ', '_').replace('/', '_').replace('\\', '_').replace(':', '_')
         contract_number_clean = (contract.contract_number or 'TBA').replace(' ', '_').replace('/', '_').replace('\\', '_').replace(':', '_')
-        # Get first load port or use TBA
-        load_ports_str = cargo.load_ports or 'TBA'
-        first_port = load_ports_str.split(',')[0].split('/')[0].strip() if load_ports_str != 'TBA' else 'TBA'
+        # Get first load port from port_operations or use TBA
+        first_port = 'TBA'
+        if cargo.port_operations:
+            sorted_ops = sorted(
+                cargo.port_operations,
+                key=lambda op: (op.load_port.sort_order if op.load_port else 0, op.load_port_id)
+            )
+            if sorted_ops and sorted_ops[0].load_port:
+                first_port = sorted_ops[0].load_port.code
         load_port_clean = first_port.replace(' ', '_').replace('/', '_').replace('\\', '_').replace(':', '_')
         
         filename = f"{vessel_name_clean}_{customer_name_clean}_{contract_number_clean}_{load_port_clean}.xlsx"
@@ -446,16 +479,12 @@ def generate_tng_document(
     products_data = []
     total_quantity = 0
     for plan in combi_plans:
-        product_name = plan.product_name
-        if not product_name and plan.quarterly_plan_id:
-            qp = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == plan.quarterly_plan_id).first()
-            if qp:
-                product_name = qp.product_name
+        plan_product_name = _get_plan_product_name(plan, db)
         
         quantity = plan.month_quantity or 0
         total_quantity += quantity
         products_data.append({
-            "name": product_name or "Unknown",
+            "name": plan_product_name,
             "quantity": quantity
         })
     

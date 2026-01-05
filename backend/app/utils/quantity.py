@@ -133,24 +133,20 @@ def parse_contract_products(contract) -> List[Dict[str, Any]]:
     Parse products JSON from a contract model.
     
     Args:
-        contract: Contract model instance with products field
+        contract: Contract model instance with products relationship
         
     Returns:
         List of product dicts
     """
-    if not contract.products:
-        return []
+    # Use the normalized relationship method if available
+    if hasattr(contract, 'get_products_list'):
+        return contract.get_products_list()
     
-    if isinstance(contract.products, str):
-        try:
-            return json.loads(contract.products)
-        except json.JSONDecodeError:
-            return []
-    
-    return contract.products
+    # Fallback for any edge cases
+    return []
 
 
-def get_authority_topup_for_product(db, contract_id: int, product_name: Optional[str] = None) -> float:
+def get_authority_topup_for_product(db, contract_id: int, product_name: Optional[str] = None, product_id: Optional[int] = None) -> float:
     """
     Get total authority top-up quantity for a contract/product by aggregating from monthly plans.
     
@@ -161,7 +157,8 @@ def get_authority_topup_for_product(db, contract_id: int, product_name: Optional
     Args:
         db: Database session
         contract_id: Contract ID to get top-ups for
-        product_name: If specified, get top-ups for this product only
+        product_name: If specified, get top-ups for this product only (legacy support)
+        product_id: If specified, get top-ups for this product only (preferred)
         
     Returns:
         Total top-up quantity in KT
@@ -173,11 +170,76 @@ def get_authority_topup_for_product(db, contract_id: int, product_name: Optional
         models.MonthlyPlan.authority_topup_quantity > 0
     )
     
-    if product_name:
-        query = query.filter(models.MonthlyPlan.product_name == product_name)
+    # Use product_id if available, otherwise fall back to product_name lookup
+    if product_id:
+        query = query.filter(models.MonthlyPlan.product_id == product_id)
+    elif product_name:
+        # Look up product_id from product_name
+        product = db.query(models.Product).filter(models.Product.name == product_name).first()
+        if product:
+            query = query.filter(models.MonthlyPlan.product_id == product.id)
     
     monthly_plans = query.all()
     return sum(mp.authority_topup_quantity or 0 for mp in monthly_plans)
+
+
+def get_product_id_by_name(db, product_name: str) -> Optional[int]:
+    """
+    Look up product ID by product name.
+    
+    Args:
+        db: Database session
+        product_name: Product name to look up
+        
+    Returns:
+        Product ID or None if not found
+    """
+    from app import models
+    product = db.query(models.Product).filter(models.Product.name == product_name).first()
+    return product.id if product else None
+
+
+def get_product_name_by_id(db, product_id: int) -> Optional[str]:
+    """
+    Look up product name by product ID.
+    
+    Args:
+        db: Database session
+        product_id: Product ID to look up
+        
+    Returns:
+        Product name or None if not found
+    """
+    from app import models
+    product = db.query(models.Product).filter(models.Product.id == product_id).first()
+    return product.name if product else None
+
+
+def get_products_list(contract) -> List[Dict[str, Any]]:
+    """
+    Retrieves the list of products for a contract from the relational table.
+    
+    Args:
+        contract: Contract model instance with contract_products relationship loaded.
+        
+    Returns:
+        List of product dicts in the format expected by the frontend.
+    """
+    products_data = []
+    for cp in contract.contract_products:
+        product_name = cp.product.name if cp.product else None
+        if product_name:
+            product_dict = {
+                "name": product_name,
+                "product_id": cp.product_id,
+                "total_quantity": cp.total_quantity,
+                "optional_quantity": cp.optional_quantity,
+                "min_quantity": cp.min_quantity,
+                "max_quantity": cp.max_quantity,
+                "year_quantities": json.loads(cp.year_quantities) if cp.year_quantities else None
+            }
+            products_data.append(product_dict)
+    return products_data
 
 
 def validate_quantity_against_limits(

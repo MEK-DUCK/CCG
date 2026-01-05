@@ -19,6 +19,9 @@ from app.config import (
     PortOperationStatus,
     QUANTITY_TOLERANCE,
     is_quantity_equal,
+    get_load_port_by_code,
+    get_load_port_by_id,
+    get_active_load_port_codes,
 )
 from app.errors import (
     AppError,
@@ -36,12 +39,132 @@ from app.errors import (
     ErrorCode,
 )
 from app.version_history import version_service
+from app.utils.quantity import get_product_id_by_name, get_product_name_by_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _cargo_to_broadcast_dict(cargo: models.Cargo) -> dict:
+def _get_inspector_id_by_name(db: Session, inspector_name: Optional[str]) -> Optional[int]:
+    """Get inspector_id from inspector name. Returns None if not found or name is empty."""
+    if not inspector_name:
+        return None
+    inspector = db.query(models.Inspector).filter(models.Inspector.name == inspector_name).first()
+    return inspector.id if inspector else None
+
+
+def _get_inspector_name_by_id(db: Session, inspector_id: Optional[int]) -> Optional[str]:
+    """Get inspector name from inspector_id. Returns None if not found."""
+    if not inspector_id:
+        return None
+    inspector = db.query(models.Inspector).filter(models.Inspector.id == inspector_id).first()
+    return inspector.name if inspector else None
+
+
+def _cargo_to_schema(cargo: models.Cargo, db: Session) -> dict:
+    """
+    Convert a Cargo model to a schema-compatible dict.
+    
+    Translates product_id back to product_name for API compatibility with frontend.
+    Computes load_ports string from port_operations relationship.
+    """
+    # Get product_name from product relationship or lookup
+    product_name = None
+    if cargo.product_id:
+        if hasattr(cargo, 'product') and cargo.product:
+            product_name = cargo.product.name
+        else:
+            product_name = get_product_name_by_id(db, cargo.product_id)
+    
+    # Handle enums
+    lc_status_val = cargo.lc_status
+    if lc_status_val and hasattr(lc_status_val, 'value'):
+        lc_status_val = lc_status_val.value
+    
+    contract_type_val = cargo.contract_type
+    if contract_type_val and hasattr(contract_type_val, 'value'):
+        contract_type_val = contract_type_val.value
+    
+    status_val = cargo.status
+    if status_val and hasattr(status_val, 'value'):
+        status_val = status_val.value
+    
+    # Compute load_ports string from port_operations (normalized source of truth)
+    load_ports_str = ""
+    port_operations = None
+    if hasattr(cargo, 'port_operations') and cargo.port_operations:
+        # Sort by load_port.sort_order for consistent display
+        sorted_ops = sorted(
+            cargo.port_operations,
+            key=lambda op: (op.load_port.sort_order if op.load_port else 0, op.load_port_id)
+        )
+        load_ports_str = ",".join(op.load_port.code for op in sorted_ops if op.load_port)
+        port_operations = [
+            {
+                "id": op.id,
+                "cargo_id": op.cargo_id,
+                "port_code": op.load_port.code if op.load_port else "",  # API compatibility
+                "status": op.status,
+                "eta": op.eta,
+                "berthed": op.berthed,
+                "commenced": op.commenced,
+                "etc": op.etc,
+                "notes": op.notes,
+                "created_at": op.created_at,
+                "updated_at": op.updated_at,
+            }
+            for op in sorted_ops
+        ]
+    
+    return {
+        "id": cargo.id,
+        "cargo_id": cargo.cargo_id,
+        "vessel_name": cargo.vessel_name,
+        "customer_id": cargo.customer_id,
+        "product_name": product_name,
+        "contract_id": cargo.contract_id,
+        "contract_type": contract_type_val,
+        "combi_group_id": cargo.combi_group_id,
+        "lc_status": lc_status_val,
+        "load_ports": load_ports_str,  # Computed from port_operations
+        "inspector_name": cargo.get_inspector_name(),
+        "cargo_quantity": cargo.cargo_quantity,
+        "laycan_window": cargo.laycan_window,
+        "eta": cargo.eta,
+        "berthed": cargo.berthed,
+        "commenced": cargo.commenced,
+        "etc": cargo.etc,
+        "eta_load_port": cargo.eta_load_port,
+        "loading_start_time": cargo.loading_start_time,
+        "loading_completion_time": cargo.loading_completion_time,
+        "etd_load_port": cargo.etd_load_port,
+        "eta_discharge_port": cargo.eta_discharge_port,
+        "discharge_port_location": cargo.discharge_port_location,
+        "discharge_completion_time": cargo.discharge_completion_time,
+        "five_nd_date": cargo.five_nd_date,
+        "nd_completed": cargo.nd_completed,
+        "nd_days": cargo.nd_days,
+        "nd_delivery_window": cargo.nd_delivery_window,
+        "notes": cargo.notes,
+        "sailing_fax_entry_completed": cargo.sailing_fax_entry_completed,
+        "sailing_fax_entry_initials": cargo.sailing_fax_entry_initials,
+        "sailing_fax_entry_date": cargo.sailing_fax_entry_date,
+        "documents_mailing_completed": cargo.documents_mailing_completed,
+        "documents_mailing_initials": cargo.documents_mailing_initials,
+        "documents_mailing_date": cargo.documents_mailing_date,
+        "inspector_invoice_completed": cargo.inspector_invoice_completed,
+        "inspector_invoice_initials": cargo.inspector_invoice_initials,
+        "inspector_invoice_date": cargo.inspector_invoice_date,
+        "status": status_val,
+        "monthly_plan_id": cargo.monthly_plan_id,
+        "version": cargo.version,
+        "created_at": cargo.created_at,
+        "updated_at": cargo.updated_at,
+        "port_operations": port_operations,
+    }
+
+
+def _cargo_to_broadcast_dict(cargo: models.Cargo, db: Session = None) -> dict:
     """Convert a cargo model to a dict for broadcasting."""
     # Handle lc_status - it might be stored as string or enum
     lc_status_val = cargo.lc_status
@@ -66,22 +189,51 @@ def _cargo_to_broadcast_dict(cargo: models.Cargo) -> dict:
     except Exception:
         pass  # Relationship not loaded, skip
     
+    # Get product_name from product relationship or lookup
+    product_name = None
+    if cargo.product_id:
+        if hasattr(cargo, 'product') and cargo.product:
+            product_name = cargo.product.name
+        elif db:
+            product_name = get_product_name_by_id(db, cargo.product_id)
+    
+    # Compute load_ports string from port_operations
+    load_ports_str = ""
+    try:
+        if hasattr(cargo, 'port_operations') and cargo.port_operations:
+            sorted_ops = sorted(
+                cargo.port_operations,
+                key=lambda op: (op.load_port.sort_order if op.load_port else 0, op.load_port_id)
+            )
+            load_ports_str = ",".join(op.load_port.code for op in sorted_ops if op.load_port)
+    except Exception:
+        pass  # Relationship not loaded
+    
+    # Get inspector_name from relationship
+    inspector_name = None
+    try:
+        if hasattr(cargo, 'inspector') and cargo.inspector:
+            inspector_name = cargo.inspector.name
+    except Exception:
+        pass  # Relationship not loaded
+    
     return {
         "id": cargo.id,
         "cargo_id": cargo.cargo_id,
         "vessel_name": cargo.vessel_name,
         "customer_id": cargo.customer_id,
         "customer_name": customer_name,
-        "product_name": cargo.product_name,
+        "product_name": product_name,
         "contract_id": cargo.contract_id,
         "contract_type": contract_type_val,
         "cargo_quantity": cargo.cargo_quantity,
         "status": status_val,
         "laycan_window": cargo.laycan_window,
-        "load_ports": cargo.load_ports,
+        "load_ports": load_ports_str,  # Computed from port_operations
         "monthly_plan_id": cargo.monthly_plan_id,
         "combi_group_id": cargo.combi_group_id,
         "lc_status": lc_status_val,
+        "inspector_name": inspector_name,
         "notes": cargo.notes,
     }
 
@@ -130,10 +282,13 @@ def _port_op_to_broadcast_dict(op: models.CargoPortOperation, cargo: models.Carg
     if cargo_status_val and hasattr(cargo_status_val, 'value'):
         cargo_status_val = cargo_status_val.value
     
+    # Get port_code from load_port relationship for API compatibility
+    port_code = op.load_port.code if op.load_port else ""
+    
     return {
         "id": op.id,
         "cargo_id": op.cargo_id,
-        "port_code": op.port_code,
+        "port_code": port_code,  # Derived from load_port relationship
         "status": status_val,
         "eta": op.eta,
         "berthed": op.berthed,
@@ -171,10 +326,10 @@ async def _broadcast_port_op_change(
         logger.error(f"Failed to broadcast port operation change: {e}", exc_info=True)
 
 
-def _parse_load_ports(load_ports: Optional[str]) -> List[str]:
+def _parse_load_ports_input(load_ports: Optional[str]) -> List[str]:
     """
-    Parse Cargo.load_ports into a list of port codes.
-    Expected format from UI/backend is a comma-separated string, but we accept JSON arrays too.
+    Parse load_ports input from API (comma-separated string or JSON array) into list of port codes.
+    This is used to interpret what the frontend sends us.
     """
     if not load_ports:
         return []
@@ -185,36 +340,52 @@ def _parse_load_ports(load_ports: Optional[str]) -> List[str]:
         try:
             arr = json.loads(raw)
             if isinstance(arr, list):
-                return [str(x).strip() for x in arr if str(x).strip()]
+                return [str(x).strip().upper() for x in arr if str(x).strip()]
         except Exception:
             pass
-    return [p.strip() for p in raw.split(",") if p.strip()]
+    return [p.strip().upper() for p in raw.split(",") if p.strip()]
 
 
-def _sync_port_operations(db: Session, cargo: models.Cargo, ports: List[str]):
+def _sync_port_operations_normalized(db: Session, cargo: models.Cargo, port_codes: List[str]):
     """
-    Ensure per-port operation rows exist for the given cargo + selected ports.
-    Also removes operations for ports no longer selected (only for SUPPORTED_LOAD_PORTS).
+    Sync port operations for a cargo based on desired port codes.
+    Creates operations for new ports, removes operations for removed ports.
+    Uses normalized load_port_id instead of port_code string.
     """
-    selected = [p for p in ports if p in SUPPORTED_LOAD_PORTS]
-    existing = {op.port_code: op for op in getattr(cargo, "port_operations", []) or []}
-
+    # Get active port codes from DB for validation
+    active_port_codes = get_active_load_port_codes(db)
+    
+    # Filter to only valid/active ports
+    selected_codes = [p for p in port_codes if p in active_port_codes]
+    
+    # Build map of existing operations by port code
+    existing_by_code = {}
+    for op in (cargo.port_operations or []):
+        if op.load_port:
+            existing_by_code[op.load_port.code] = op
+    
     # Create missing operations
-    for port in selected:
-        if port not in existing:
-            try:
-                # Prefer relationship append so in-memory collections update immediately
-                cargo.port_operations.append(
-                    models.CargoPortOperation(port_code=port, status=PortOperationStatus.PLANNED.value)
-                )
-            except Exception:
-                db.add(models.CargoPortOperation(
-                    cargo_id=cargo.id, port_code=port, status=PortOperationStatus.PLANNED.value
-                ))
-
-    # Remove operations for removed ports (supported only)
-    for port_code, op in existing.items():
-        if port_code in SUPPORTED_LOAD_PORTS and port_code not in selected:
+    for code in selected_codes:
+        if code not in existing_by_code:
+            load_port = get_load_port_by_code(db, code)
+            if load_port:
+                try:
+                    cargo.port_operations.append(
+                        models.CargoPortOperation(
+                            load_port_id=load_port.id,
+                            status=PortOperationStatus.PLANNED.value
+                        )
+                    )
+                except Exception:
+                    db.add(models.CargoPortOperation(
+                        cargo_id=cargo.id,
+                        load_port_id=load_port.id,
+                        status=PortOperationStatus.PLANNED.value
+                    ))
+    
+    # Remove operations for removed ports
+    for code, op in existing_by_code.items():
+        if code not in selected_codes:
             db.delete(op)
 
 
@@ -232,7 +403,8 @@ def _recompute_cargo_status_from_port_ops(db: Session, cargo: models.Cargo):
         if not ops:
             return
 
-        statuses = [op.status for op in ops if op.port_code in SUPPORTED_LOAD_PORTS]
+        # Get statuses from all port operations (all are valid since they reference load_ports table)
+        statuses = [op.status for op in ops]
         if not statuses:
             return
 
@@ -262,22 +434,34 @@ async def create_cargo(
 ):
     logger.info(f"Creating cargo: vessel={cargo.vessel_name}, contract={cargo.contract_id}, monthly_plan={cargo.monthly_plan_id}")
     
+    from sqlalchemy.orm import joinedload
+    
     # Verify all related entities exist
     customer = db.query(models.Customer).filter(models.Customer.id == cargo.customer_id).first()
     if not customer:
         raise to_http_exception(customer_not_found(cargo.customer_id))
     
-    contract = db.query(models.Contract).filter(models.Contract.id == cargo.contract_id).first()
+    contract = db.query(models.Contract).options(
+        joinedload(models.Contract.contract_products).joinedload(models.ContractProduct.product)
+    ).filter(models.Contract.id == cargo.contract_id).first()
     if not contract:
         raise to_http_exception(contract_not_found(cargo.contract_id))
     
-    # Verify product_name is in contract's products list
-    contract_products = json.loads(contract.products) if contract.products else []
+    # Verify product_name is in contract's products list and get product_id
+    contract_products = contract.get_products_list()
     product_names = [p["name"] for p in contract_products]
     if cargo.product_name not in product_names:
         raise HTTPException(
             status_code=400,
             detail=f"Product '{cargo.product_name}' not found in contract's products list. Valid products: {', '.join(product_names)}"
+        )
+    
+    # Get product_id for normalized storage
+    product_id = get_product_id_by_name(db, cargo.product_name)
+    if not product_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Product '{cargo.product_name}' not found in products database"
         )
     
     # SECURITY: Lock the monthly plan row to prevent race conditions
@@ -320,16 +504,19 @@ async def create_cargo(
     if not combi_group_id and monthly_plan and monthly_plan.combi_group_id:
         combi_group_id = monthly_plan.combi_group_id
     
+    # Get inspector_id from inspector_name (normalized)
+    inspector_id = _get_inspector_id_by_name(db, cargo.inspector_name)
+    
     db_cargo = models.Cargo(
         cargo_id=cargo_id,
         vessel_name=cargo.vessel_name,
         customer_id=cargo.customer_id,
-        product_name=cargo.product_name,
+        product_id=product_id,  # Normalized product reference
         contract_id=cargo.contract_id,
         contract_type=contract.contract_type,
         lc_status=lc_status_for_db,
-        load_ports=cargo.load_ports,
-        inspector_name=cargo.inspector_name,
+        # NOTE: load_ports column removed - now derived from port_operations
+        inspector_id=inspector_id,  # Normalized inspector reference
         cargo_quantity=cargo.cargo_quantity,
         laycan_window=cargo.laycan_window,
         eta=cargo.eta,
@@ -353,8 +540,9 @@ async def create_cargo(
         db.add(db_cargo)
         db.flush()
 
-        # Create per-port operation rows for supported ports
-        _sync_port_operations(db, db_cargo, _parse_load_ports(db_cargo.load_ports))
+        # Create port operations from load_ports input (normalized)
+        port_codes = _parse_load_ports_input(cargo.load_ports)
+        _sync_port_operations_normalized(db, db_cargo, port_codes)
         
         # Log the creation
         log_cargo_action(
@@ -401,7 +589,7 @@ async def create_cargo(
         broadcast_success, broadcast_failures = await _broadcast_cargo_change(
             change_type="created",
             cargo_id=db_cargo.id,
-            cargo_data=_cargo_to_broadcast_dict(db_cargo),
+            cargo_data=_cargo_to_broadcast_dict(db_cargo, db),
             user_id=user_id,
             user_initials=user_initials
         )
@@ -410,11 +598,11 @@ async def create_cargo(
         logger.error(f"Failed to broadcast cargo creation: {e}")
         broadcast_failures = 1
     
-    # Convert to response with broadcast status
-    response = schemas.Cargo.model_validate(db_cargo)
-    response.broadcast_success = broadcast_success
-    response.broadcast_failures = broadcast_failures
-    return response
+    # Convert to response with broadcast status using helper
+    response_data = _cargo_to_schema(db_cargo, db)
+    response_data["broadcast_success"] = broadcast_success
+    response_data["broadcast_failures"] = broadcast_failures
+    return response_data
 
 
 @router.get("/", response_model=List[schemas.Cargo])
@@ -430,7 +618,12 @@ def read_cargos(
     db: Session = Depends(get_db)
 ):
     try:
-        query = db.query(models.Cargo)
+        from sqlalchemy.orm import joinedload
+        query = db.query(models.Cargo).options(
+            joinedload(models.Cargo.product),
+            joinedload(models.Cargo.inspector),
+            joinedload(models.Cargo.port_operations).joinedload(models.CargoPortOperation.load_port)
+        )
         
         if status:
             query = query.filter(models.Cargo.status == status)
@@ -450,7 +643,7 @@ def read_cargos(
             query = query.filter(models.MonthlyPlan.month_quantity > 0)
         
         cargos = query.offset(skip).limit(limit).all()
-        return cargos
+        return [_cargo_to_schema(c, db) for c in cargos]
     except SQLAlchemyError as e:
         logger.error(f"Database error reading cargos: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error loading cargos")
@@ -468,7 +661,12 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
                 year = now.year
         
         from sqlalchemy import or_, not_
-        query = db.query(models.Cargo).join(models.MonthlyPlan).filter(
+        from sqlalchemy.orm import joinedload
+        query = db.query(models.Cargo).options(
+            joinedload(models.Cargo.product),
+            joinedload(models.Cargo.inspector),
+            joinedload(models.Cargo.port_operations).joinedload(models.CargoPortOperation.load_port)
+        ).join(models.MonthlyPlan).filter(
             models.MonthlyPlan.month == month,
             models.MonthlyPlan.year == year,
             models.MonthlyPlan.month_quantity > 0
@@ -478,14 +676,10 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
         )
         cargos = query.all()
         
-        # Batch backfill port operations for cargos that need it
-        cargos_needing_ops = [c for c in cargos if not getattr(c, "port_operations", None)]
-        if cargos_needing_ops:
-            for c in cargos_needing_ops:
-                _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
-        db.commit()
+        # Note: Port operations are now the source of truth (normalized)
+        # No backfill needed - cargos without port_operations simply have no ports assigned
         
-        return cargos
+        return [_cargo_to_schema(c, db) for c in cargos]
     except SQLAlchemyError as e:
         logger.error(f"Database error in read_port_movement: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error loading port movement data")
@@ -496,7 +690,12 @@ def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = Non
     """Get FOB completed cargos and CIF cargos after loading completion (including discharge complete), optionally filtered by month/year"""
     try:
         from sqlalchemy import or_, and_
-        query = db.query(models.Cargo).filter(
+        from sqlalchemy.orm import joinedload
+        query = db.query(models.Cargo).options(
+            joinedload(models.Cargo.product),
+            joinedload(models.Cargo.inspector),
+            joinedload(models.Cargo.port_operations).joinedload(models.CargoPortOperation.load_port)
+        ).filter(
             or_(
                 # FOB cargos with Completed Loading status
                 and_(
@@ -525,14 +724,10 @@ def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = Non
         
         cargos = query.all()
         
-        # Batch backfill port operations
-        cargos_needing_ops = [c for c in cargos if not getattr(c, "port_operations", None)]
-        if cargos_needing_ops:
-            for c in cargos_needing_ops:
-                _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
-            db.commit()
+        # Note: Port operations are now the source of truth (normalized)
+        # No backfill needed - cargos without port_operations simply have no ports assigned
         
-        return cargos
+        return [_cargo_to_schema(c, db) for c in cargos]
     except SQLAlchemyError as e:
         logger.error(f"Database error in read_completed_cargos: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error loading completed cargos")
@@ -545,7 +740,12 @@ def read_active_loadings(db: Session = Depends(get_db)):
     regardless of month/year. Excludes cargos that have completed their lifecycle.
     """
     try:
-        query = db.query(models.Cargo).join(models.CargoPortOperation).filter(
+        from sqlalchemy.orm import joinedload
+        query = db.query(models.Cargo).options(
+            joinedload(models.Cargo.product),
+            joinedload(models.Cargo.inspector),
+            joinedload(models.Cargo.port_operations).joinedload(models.CargoPortOperation.load_port)
+        ).join(models.CargoPortOperation).filter(
             models.CargoPortOperation.status.in_([
                 PortOperationStatus.LOADING.value,
                 PortOperationStatus.COMPLETED_LOADING.value
@@ -557,14 +757,10 @@ def read_active_loadings(db: Session = Depends(get_db)):
 
         cargos = query.all()
 
-        # Batch backfill port operations
-        cargos_needing_ops = [c for c in cargos if not getattr(c, "port_operations", None)]
-        if cargos_needing_ops:
-            for c in cargos_needing_ops:
-                _sync_port_operations(db, c, _parse_load_ports(getattr(c, "load_ports", None)))
-        db.commit()
+        # Note: Port operations are now the source of truth (normalized)
+        # No backfill needed
         
-        return cargos
+        return [_cargo_to_schema(c, db) for c in cargos]
     except SQLAlchemyError as e:
         logger.error(f"Database error in read_active_loadings: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error loading active loadings")
@@ -575,14 +771,19 @@ def read_in_road_cif(db: Session = Depends(get_db)):
     """Get CIF cargos that completed loading but not discharge"""
     try:
         from sqlalchemy import and_
-        query = db.query(models.Cargo).filter(and_(
+        from sqlalchemy.orm import joinedload
+        query = db.query(models.Cargo).options(
+            joinedload(models.Cargo.product),
+            joinedload(models.Cargo.inspector),
+            joinedload(models.Cargo.port_operations).joinedload(models.CargoPortOperation.load_port)
+        ).filter(and_(
             models.Cargo.contract_type == ContractType.CIF,
             models.Cargo.discharge_completion_time.is_(None),
             models.Cargo.status == CargoStatus.COMPLETED_LOADING,
         ))
         cargos = query.all()
         logger.debug(f"In-Road CIF query found {len(cargos)} cargos")
-        return cargos
+        return [_cargo_to_schema(c, db) for c in cargos]
     except SQLAlchemyError as e:
         logger.error(f"Database error in read_in_road_cif: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error loading in-road CIF cargos")
@@ -593,11 +794,17 @@ def read_completed_in_road_cif(db: Session = Depends(get_db)):
     """Get CIF cargos that have Discharge Complete status"""
     try:
         from sqlalchemy import and_
-        query = db.query(models.Cargo).filter(and_(
+        from sqlalchemy.orm import joinedload
+        query = db.query(models.Cargo).options(
+            joinedload(models.Cargo.product),
+            joinedload(models.Cargo.inspector),
+            joinedload(models.Cargo.port_operations).joinedload(models.CargoPortOperation.load_port)
+        ).filter(and_(
             models.Cargo.contract_type == ContractType.CIF,
             models.Cargo.status == CargoStatus.DISCHARGE_COMPLETE,
         ))
-        return query.all()
+        cargos = query.all()
+        return [_cargo_to_schema(c, db) for c in cargos]
     except SQLAlchemyError as e:
         logger.error(f"Database error in read_completed_in_road_cif: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error loading completed in-road CIF cargos")
@@ -605,10 +812,15 @@ def read_completed_in_road_cif(db: Session = Depends(get_db)):
 
 @router.get("/{cargo_id}", response_model=schemas.Cargo)
 def read_cargo(cargo_id: int, db: Session = Depends(get_db)):
-    cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
+    from sqlalchemy.orm import joinedload
+    cargo = db.query(models.Cargo).options(
+        joinedload(models.Cargo.product),
+        joinedload(models.Cargo.inspector),
+        joinedload(models.Cargo.port_operations).joinedload(models.CargoPortOperation.load_port)
+    ).filter(models.Cargo.id == cargo_id).first()
     if cargo is None:
         raise to_http_exception(cargo_not_found(cargo_id))
-    return cargo
+    return _cargo_to_schema(cargo, db)
 
 
 @router.get("/{cargo_id}/port-operations", response_model=List[schemas.CargoPortOperation])
@@ -629,10 +841,15 @@ async def upsert_port_operation(
     db: Session = Depends(get_db)
 ):
     port_code = (port_code or "").strip().upper()
-    if port_code not in SUPPORTED_LOAD_PORTS:
+    
+    # Validate port code against database (normalized)
+    load_port = get_load_port_by_code(db, port_code)
+    if not load_port:
+        # Fallback to hardcoded validation for error message
         raise to_http_exception(invalid_load_port(port_code, list(SUPPORTED_LOAD_PORTS)))
 
     # Lock the cargo row to prevent concurrent modifications
+    # Note: Can't use joinedload with FOR UPDATE, so we do separate queries
     cargo = db.query(models.Cargo).filter(
         models.Cargo.id == cargo_id
     ).with_for_update().first()
@@ -644,15 +861,17 @@ async def upsert_port_operation(
         if update_data["status"] not in PORT_OP_ALLOWED_STATUSES:
             raise to_http_exception(invalid_status(update_data["status"], list(PORT_OP_ALLOWED_STATUSES)))
 
-    # Lock the port operation row as well
+    # Find existing port operation by load_port_id
     db_op = db.query(models.CargoPortOperation).filter(
         models.CargoPortOperation.cargo_id == cargo_id,
-        models.CargoPortOperation.port_code == port_code,
+        models.CargoPortOperation.load_port_id == load_port.id
     ).with_for_update().first()
 
     if not db_op:
         db_op = models.CargoPortOperation(
-            cargo_id=cargo_id, port_code=port_code, status=PortOperationStatus.PLANNED.value
+            cargo_id=cargo_id, 
+            load_port_id=load_port.id,  # Normalized FK
+            status=PortOperationStatus.PLANNED.value
         )
         db.add(db_op)
         db.flush()
@@ -661,6 +880,12 @@ async def upsert_port_operation(
         if hasattr(db_op, field):
             setattr(db_op, field, value)
 
+    # Reload port operations for status recomputation
+    from sqlalchemy.orm import joinedload
+    cargo = db.query(models.Cargo).options(
+        joinedload(models.Cargo.port_operations).joinedload(models.CargoPortOperation.load_port)
+    ).filter(models.Cargo.id == cargo_id).first()
+    
     # Recompute cargo status based on per-port status
     _recompute_cargo_status_from_port_ops(db, cargo)
     
@@ -670,6 +895,11 @@ async def upsert_port_operation(
     db.commit()
     db.refresh(db_op)
     db.refresh(cargo)  # Refresh cargo to get updated status
+    
+    # Load the load_port relationship for the response
+    db_op = db.query(models.CargoPortOperation).options(
+        joinedload(models.CargoPortOperation.load_port)
+    ).filter(models.CargoPortOperation.id == db_op.id).first()
     
     # Broadcast the port operation change to other users
     user_id = getattr(request.state, 'user_id', None)
@@ -682,7 +912,20 @@ async def upsert_port_operation(
         user_initials=user_initials
     )
     
-    return db_op
+    # Return dict with port_code for API compatibility
+    return {
+        "id": db_op.id,
+        "cargo_id": db_op.cargo_id,
+        "port_code": db_op.load_port.code if db_op.load_port else port_code,
+        "status": db_op.status,
+        "eta": db_op.eta,
+        "berthed": db_op.berthed,
+        "commenced": db_op.commenced,
+        "etc": db_op.etc,
+        "notes": db_op.notes,
+        "created_at": db_op.created_at,
+        "updated_at": db_op.updated_at,
+    }
 
 
 @router.put("/{cargo_id}", response_model=schemas.Cargo)
@@ -790,8 +1033,13 @@ async def update_cargo(
             except Exception:
                 intended_status = db_cargo.status
 
-        intended_load_ports = _coerce_load_ports_to_str(update_data.get("load_ports", getattr(db_cargo, "load_ports", None)))
-        selected_ports = _parse_load_ports(intended_load_ports)
+        # Get current ports from port_operations or from incoming update
+        intended_load_ports = _coerce_load_ports_to_str(update_data.get("load_ports"))
+        if intended_load_ports:
+            selected_ports = _parse_load_ports_input(intended_load_ports)
+        else:
+            # Get current ports from existing port_operations
+            selected_ports = [op.load_port.code for op in (db_cargo.port_operations or []) if op.load_port]
 
         if intended_status in {CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING} and len(selected_ports) == 0:
             raise to_http_exception(load_port_required_for_loading())
@@ -883,6 +1131,25 @@ async def update_cargo(
             except Exception as e:
                 logger.error(f"Failed to set monthly_plan_id: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail="Error updating monthly_plan_id")
+        elif field == 'inspector_name':
+            # Convert inspector_name to inspector_id (normalized)
+            try:
+                old_inspector_name = db_cargo.get_inspector_name()
+                new_inspector_id = _get_inspector_id_by_name(db, value)
+                db_cargo.inspector_id = new_inspector_id
+                new_inspector_name = db_cargo.get_inspector_name() if new_inspector_id else value
+                if old_inspector_name != new_inspector_name:
+                    log_cargo_action(
+                        db=db,
+                        action='UPDATE',
+                        cargo=db_cargo,
+                        field_name='inspector_name',
+                        old_value=old_inspector_name,
+                        new_value=new_inspector_name
+                    )
+            except Exception as e:
+                logger.error(f"Failed to set inspector_name: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail="Error updating inspector_name")
         else:
             try:
                 old_val = old_values.get(field)
@@ -900,15 +1167,16 @@ async def update_cargo(
                 logger.error(f"Failed to set field {field}: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Error updating field {field}")
 
-    # Keep per-port operations aligned when load_ports changes
+    # Keep per-port operations aligned when load_ports changes (normalized)
     if 'load_ports' in update_data:
-        _sync_port_operations(db, db_cargo, _parse_load_ports(getattr(db_cargo, "load_ports", None)))
+        port_codes = _parse_load_ports_input(update_data['load_ports'])
+        _sync_port_operations_normalized(db, db_cargo, port_codes)
 
     # If user sets cargo to "Planned", reset all port operations to "Planned"
     try:
         if 'status' in update_data and db_cargo.status == CargoStatus.PLANNED:
             for op in getattr(db_cargo, "port_operations", []) or []:
-                if op.port_code in SUPPORTED_LOAD_PORTS and op.status in [PortOperationStatus.LOADING.value, PortOperationStatus.COMPLETED_LOADING.value]:
+                if op.status in [PortOperationStatus.LOADING.value, PortOperationStatus.COMPLETED_LOADING.value]:
                     op.status = PortOperationStatus.PLANNED.value
     except Exception:
         pass
@@ -917,7 +1185,7 @@ async def update_cargo(
     try:
         if 'status' in update_data and db_cargo.status == CargoStatus.LOADING:
             for op in getattr(db_cargo, "port_operations", []) or []:
-                if op.port_code in SUPPORTED_LOAD_PORTS and op.status == PortOperationStatus.PLANNED.value:
+                if op.status == PortOperationStatus.PLANNED.value:
                     op.status = PortOperationStatus.LOADING.value
     except Exception:
         pass
@@ -959,7 +1227,7 @@ async def update_cargo(
         broadcast_success, broadcast_failures = await _broadcast_cargo_change(
             change_type="updated",
             cargo_id=db_cargo.id,
-            cargo_data=_cargo_to_broadcast_dict(db_cargo),
+            cargo_data=_cargo_to_broadcast_dict(db_cargo, db),
             user_id=user_id,
             user_initials=user_initials
         )
@@ -969,11 +1237,11 @@ async def update_cargo(
         logger.error(f"Failed to broadcast cargo update: {e}", exc_info=True)
         broadcast_failures = 1
     
-    # Convert to response with broadcast status
-    response = schemas.Cargo.model_validate(db_cargo)
-    response.broadcast_success = broadcast_success
-    response.broadcast_failures = broadcast_failures
-    return response
+    # Convert to response with broadcast status using helper
+    response_data = _cargo_to_schema(db_cargo, db)
+    response_data["broadcast_success"] = broadcast_success
+    response_data["broadcast_failures"] = broadcast_failures
+    return response_data
 
 
 @router.put("/combi-group/{combi_group_id}/sync")
@@ -1043,13 +1311,16 @@ def sync_combi_cargo_group(
         updated_cargos = []
         for cargo in cargos:
             for field, value in update_data.items():
+                # Skip load_ports - it's handled via port_operations now
+                if field == 'load_ports':
+                    continue
                 if hasattr(cargo, field):
                     setattr(cargo, field, value)
             
-            # Sync port operations if load_ports changed
+            # Sync port operations if load_ports changed (normalized)
             if 'load_ports' in update_data:
-                selected_ports = _parse_load_ports(update_data['load_ports'])
-                _sync_port_operations(db, cargo, selected_ports)
+                port_codes = _parse_load_ports_input(update_data['load_ports'])
+                _sync_port_operations_normalized(db, cargo, port_codes)
                 
                 if cargo.status in {CargoStatus.PLANNED, CargoStatus.LOADING, CargoStatus.COMPLETED_LOADING}:
                     _recompute_cargo_status_from_port_ops(db, cargo)
@@ -1081,10 +1352,13 @@ def sync_combi_cargo_group(
             # Increment version for optimistic locking
             cargo.version = (cargo.version or 1) + 1
             
+            # Get product_name from relationship for response
+            product_name = cargo.product.name if cargo.product else None
+            
             updated_cargos.append({
                 "id": cargo.id,
                 "cargo_id": cargo.cargo_id,
-                "product_name": cargo.product_name,
+                "product_name": product_name,
                 "status": cargo.status.value if cargo.status else None,
                 "version": cargo.version,
             })
@@ -1298,15 +1572,26 @@ async def create_cross_contract_combi(
             # Generate cargo_id
             cargo_id = f"CARGO-{uuid.uuid4().hex[:8].upper()}"
             
+            # Get product_id from product_name
+            product_id = get_product_id_by_name(db, item.product_name)
+            if not product_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Product '{item.product_name}' not found in products database"
+                )
+            
+            # Get inspector_id from inspector_name (normalized)
+            inspector_id = _get_inspector_id_by_name(db, combi_data.inspector_name)
+            
             db_cargo = models.Cargo(
                 cargo_id=cargo_id,
                 vessel_name=combi_data.vessel_name,
                 customer_id=combi_data.customer_id,
-                product_name=item.product_name,
+                product_id=product_id,  # Normalized product reference
                 contract_id=item.contract_id,
                 contract_type=contract_type,
-                load_ports=combi_data.load_ports,
-                inspector_name=combi_data.inspector_name,
+                # NOTE: load_ports column removed - now derived from port_operations
+                inspector_id=inspector_id,  # Normalized inspector reference
                 cargo_quantity=item.cargo_quantity,
                 laycan_window=combi_data.laycan_window,
                 notes=combi_data.notes,
@@ -1318,8 +1603,9 @@ async def create_cross_contract_combi(
             db.add(db_cargo)
             db.flush()
             
-            # Create per-port operation rows
-            _sync_port_operations(db, db_cargo, _parse_load_ports(db_cargo.load_ports))
+            # Create port operations (normalized)
+            port_codes = _parse_load_ports_input(combi_data.load_ports)
+            _sync_port_operations_normalized(db, db_cargo, port_codes)
             
             # Log the creation
             log_cargo_action(db=db, action='CREATE', cargo=db_cargo)

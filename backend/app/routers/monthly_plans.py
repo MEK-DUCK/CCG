@@ -26,10 +26,130 @@ from app.utils.quantity import (
     get_contract_quantity_limits,
     get_authority_topup_for_product,
     validate_quantity_against_limits,
+    get_product_id_by_name,
+    get_product_name_by_id,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _monthly_plan_to_schema(plan: models.MonthlyPlan, db: Session) -> dict:
+    """
+    Convert a MonthlyPlan model to a schema-compatible dict.
+    
+    Translates product_id back to product_name for API compatibility with frontend.
+    """
+    product_name = None
+    if plan.product_id:
+        # Use relationship if loaded, otherwise lookup
+        if plan.product:
+            product_name = plan.product.name
+        else:
+            product_name = get_product_name_by_id(db, plan.product_id)
+    
+    return {
+        "id": plan.id,
+        "month": plan.month,
+        "year": plan.year,
+        "month_quantity": plan.month_quantity,
+        "number_of_liftings": plan.number_of_liftings,
+        "planned_lifting_sizes": plan.planned_lifting_sizes,
+        "laycan_5_days": plan.laycan_5_days,
+        "laycan_2_days": plan.laycan_2_days,
+        "laycan_2_days_remark": plan.laycan_2_days_remark,
+        "loading_month": plan.loading_month,
+        "loading_window": plan.loading_window,
+        "cif_route": plan.cif_route,
+        "delivery_month": plan.delivery_month,
+        "delivery_window": plan.delivery_window,
+        "delivery_window_remark": plan.delivery_window_remark,
+        "combi_group_id": plan.combi_group_id,
+        "product_name": product_name,
+        "authority_topup_quantity": plan.authority_topup_quantity,
+        "authority_topup_reference": plan.authority_topup_reference,
+        "authority_topup_reason": plan.authority_topup_reason,
+        "authority_topup_date": plan.authority_topup_date,
+        "tng_issued": plan.tng_issued,
+        "tng_issued_date": plan.tng_issued_date,
+        "tng_issued_initials": plan.tng_issued_initials,
+        "tng_revised": plan.tng_revised,
+        "tng_revised_date": plan.tng_revised_date,
+        "tng_revised_initials": plan.tng_revised_initials,
+        "tng_remarks": plan.tng_remarks,
+        "quarterly_plan_id": plan.quarterly_plan_id,
+        "contract_id": plan.contract_id,
+        "version": plan.version,
+        "created_at": plan.created_at,
+        "updated_at": plan.updated_at,
+    }
+
+
+def _monthly_plan_to_enriched(plan: models.MonthlyPlan, db: Session) -> dict:
+    """
+    Convert a MonthlyPlan model to an enriched schema-compatible dict.
+    
+    Includes embedded quarterly_plan and contract info.
+    """
+    base = _monthly_plan_to_schema(plan, db)
+    
+    # Add quarterly plan if present
+    quarterly_plan_data = None
+    if plan.quarterly_plan:
+        qp = plan.quarterly_plan
+        qp_product_name = None
+        if qp.product_id and qp.product:
+            qp_product_name = qp.product.name
+        elif qp.product_id:
+            qp_product_name = get_product_name_by_id(db, qp.product_id)
+        
+        quarterly_plan_data = {
+            "id": qp.id,
+            "product_name": qp_product_name,
+            "contract_year": qp.contract_year,
+            "q1_quantity": qp.q1_quantity,
+            "q2_quantity": qp.q2_quantity,
+            "q3_quantity": qp.q3_quantity,
+            "q4_quantity": qp.q4_quantity,
+            "contract_id": qp.contract_id,
+        }
+    
+    # Add contract info - prefer direct contract, fall back to quarterly_plan.contract
+    contract_data = None
+    contract = plan.contract or (plan.quarterly_plan.contract if plan.quarterly_plan else None)
+    if contract:
+        customer_data = None
+        if contract.customer:
+            customer_data = {
+                "id": contract.customer.id,
+                "customer_id": contract.customer.customer_id,
+                "name": contract.customer.name,
+            }
+        
+        # Get products from relationship
+        products_data = contract.get_products_list() if hasattr(contract, 'get_products_list') else []
+        
+        contract_data = {
+            "id": contract.id,
+            "contract_id": contract.contract_id,
+            "contract_number": contract.contract_number,
+            "contract_type": contract.contract_type.value if contract.contract_type else None,
+            "contract_category": contract.contract_category.value if contract.contract_category else None,
+            "payment_method": contract.payment_method.value if contract.payment_method else None,
+            "start_period": contract.start_period,
+            "end_period": contract.end_period,
+            "fiscal_start_month": contract.fiscal_start_month,
+            "products": products_data,
+            "tng_lead_days": contract.tng_lead_days,
+            "tng_notes": contract.tng_notes,
+            "cif_destination": contract.cif_destination,
+            "customer_id": contract.customer_id,
+            "customer": customer_data,
+        }
+    
+    base["quarterly_plan"] = quarterly_plan_data
+    base["contract"] = contract_data
+    return base
 
 
 def get_cargo_info(monthly_plan_id: int, db: Session) -> Dict:
@@ -73,7 +193,8 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         # Use unified quantity utility for validation
         products = parse_contract_products(contract)
         product_name = getattr(plan, "product_name", None)
-        authority_topup = get_authority_topup_for_product(db, contract.id, product_name)
+        product_id = get_product_id_by_name(db, product_name) if product_name else None
+        authority_topup = get_authority_topup_for_product(db, contract.id, product_id=product_id)
         limits = get_contract_quantity_limits(products, product_name, authority_topup)
         
         # Get existing monthly plans for this contract (direct link, no quarterly plan)
@@ -83,8 +204,8 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         ).all()
         
         # If product-specific, only count plans for that product
-        if product_name:
-            used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans if mp.product_name == product_name)
+        if product_id:
+            used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans if mp.product_id == product_id)
         else:
             used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans)
         
@@ -112,7 +233,7 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
             combi_group_id=getattr(plan, "combi_group_id", None),
             quarterly_plan_id=None,  # No quarterly plan for SPOT/Range contracts
             contract_id=plan.contract_id,
-            product_name=getattr(plan, "product_name", None),  # Product name for ALL contract types
+            product_id=product_id,  # Normalized product reference
         )
     else:
         # Regular contract - verify quarterly plan exists
@@ -135,6 +256,10 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
         if plan.month_quantity > remaining_quantity:
             raise to_http_exception(quantity_exceeds_plan(plan.month_quantity, remaining_quantity, quarterly_total))
         
+        # Get product_id from plan.product_name or from quarterly plan
+        product_name = getattr(plan, "product_name", None)
+        product_id = get_product_id_by_name(db, product_name) if product_name else quarterly_plan.product_id
+        
         db_plan = models.MonthlyPlan(
             month=plan.month,
             year=plan.year,
@@ -152,7 +277,7 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
             combi_group_id=getattr(plan, "combi_group_id", None),
             quarterly_plan_id=plan.quarterly_plan_id,
             contract_id=quarterly_plan.contract_id,  # Always set contract_id from quarterly plan
-            product_name=getattr(plan, "product_name", None),  # Product name for ALL contract types
+            product_id=product_id,  # Normalized product reference
         )
     
     db.add(db_plan)
@@ -184,7 +309,7 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
     db.commit()
     db.refresh(db_plan)
     logger.info(f"Monthly plan created: id={db_plan.id}, month={plan.month}/{plan.year}, qty={plan.month_quantity}")
-    return db_plan
+    return _monthly_plan_to_schema(db_plan, db)
 
 
 @router.get("/", response_model=List[schemas.MonthlyPlan])
@@ -196,7 +321,9 @@ def read_monthly_plans(
     db: Session = Depends(get_db),
 ):
     try:
-        query = db.query(models.MonthlyPlan)
+        query = db.query(models.MonthlyPlan).options(
+            joinedload(models.MonthlyPlan.product)
+        )
         if quarterly_plan_id:
             query = query.filter(models.MonthlyPlan.quarterly_plan_id == quarterly_plan_id)
         if contract_id:
@@ -206,7 +333,7 @@ def read_monthly_plans(
                 models.MonthlyPlan.quarterly_plan_id.is_(None)
             )
         plans = query.offset(skip).limit(limit).all()
-        return plans
+        return [_monthly_plan_to_schema(p, db) for p in plans]
     except SQLAlchemyError as e:
         logger.error(f"Database error reading monthly plans: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error loading monthly plans")
@@ -242,7 +369,9 @@ def get_monthly_plans_bulk(
             .joinedload(models.Contract.customer),
             # Also load direct contract relationship for SPOT contracts
             joinedload(models.MonthlyPlan.contract)
-            .joinedload(models.Contract.customer)
+            .joinedload(models.Contract.customer),
+            # Load product for product_name
+            joinedload(models.MonthlyPlan.product)
         ).filter(
             models.MonthlyPlan.month.in_(month_list),
             models.MonthlyPlan.year == year
@@ -257,7 +386,8 @@ def get_monthly_plans_bulk(
         )
         
         plans = query.all()
-        return plans
+        # Convert to enriched format with product_name from product relationship
+        return [_monthly_plan_to_enriched(p, db) for p in plans]
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid month format: {str(e)}")
@@ -286,7 +416,9 @@ def get_cif_monthly_plans_for_tng(
             .joinedload(models.QuarterlyPlan.contract)
             .joinedload(models.Contract.customer),
             joinedload(models.MonthlyPlan.contract)
-            .joinedload(models.Contract.customer)
+            .joinedload(models.Contract.customer),
+            # Load product for product_name
+            joinedload(models.MonthlyPlan.product)
         )
         
         # Filter for CIF contracts only
@@ -323,7 +455,7 @@ def get_cif_monthly_plans_for_tng(
         )
         
         plans = query.all()
-        return plans
+        return [_monthly_plan_to_enriched(p, db) for p in plans]
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid parameter format: {str(e)}")
@@ -336,10 +468,12 @@ def get_cif_monthly_plans_for_tng(
 
 @router.get("/{plan_id}", response_model=schemas.MonthlyPlan)
 def read_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
-    plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
+    plan = db.query(models.MonthlyPlan).options(
+        joinedload(models.MonthlyPlan.product)
+    ).filter(models.MonthlyPlan.id == plan_id).first()
     if plan is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
-    return plan
+    return _monthly_plan_to_schema(plan, db)
 
 
 @router.put("/{plan_id}", response_model=schemas.MonthlyPlan)
@@ -515,7 +649,7 @@ async def update_monthly_plan(
     db.commit()
     db.refresh(db_plan)
     logger.info(f"Monthly plan {plan_id} updated")
-    return db_plan
+    return _monthly_plan_to_schema(db_plan, db)
 
 
 @router.put("/{plan_id}/move", response_model=schemas.MonthlyPlan)
@@ -673,7 +807,7 @@ async def move_monthly_plan(
     if moved_cargo_ids:
         logger.info(f"Moved {len(moved_cargo_ids)} cargo(s) with the plan: {', '.join(moved_cargo_ids)}")
     
-    return db_plan
+    return _monthly_plan_to_schema(db_plan, db)
 
 
 @router.delete("/{plan_id}")
@@ -849,4 +983,4 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
     db.refresh(db_plan)
     
     logger.info(f"Authority top-up completed: Monthly plan {plan_id}, Contract {contract.contract_number}: +{topup.quantity} KT {product_name}")
-    return db_plan
+    return _monthly_plan_to_schema(db_plan, db)

@@ -102,57 +102,47 @@ def get_database_stats(db: Session = Depends(get_db)):
 def get_analytics(db: Session = Depends(get_db)):
     """Get analytics data for inspector usage and port statistics."""
     
-    # Inspector usage statistics
+    # Inspector usage statistics (from normalized inspector_id FK)
     inspector_stats = []
     try:
-        # Query all cargos and count by inspector_name
+        from app.models import Inspector
         inspector_query = db.query(
-            Cargo.inspector_name,
+            Inspector.name,
             func.count(Cargo.id).label('cargo_count')
-        ).filter(
-            Cargo.inspector_name.isnot(None),
-            Cargo.inspector_name != ''
-        ).group_by(Cargo.inspector_name).order_by(func.count(Cargo.id).desc()).all()
+        ).join(
+            Cargo, Cargo.inspector_id == Inspector.id
+        ).group_by(Inspector.id, Inspector.name).order_by(
+            func.count(Cargo.id).desc()
+        ).all()
         
         for row in inspector_query:
             inspector_stats.append({
-                "name": row.inspector_name,
+                "name": row.name,
                 "cargo_count": row.cargo_count
             })
     except Exception as e:
         logger.error(f"Error getting inspector stats: {e}")
     
-    # Port usage statistics
+    # Port usage statistics (from normalized cargo_port_operations table)
     port_stats = []
     try:
-        # Get all cargos with load_ports
-        cargos = db.query(Cargo.load_ports).filter(
-            Cargo.load_ports.isnot(None),
-            Cargo.load_ports != ''
+        from app.models import CargoPortOperation, LoadPort
+        # Join cargo_port_operations with load_ports to get counts
+        port_query = db.query(
+            LoadPort.code,
+            LoadPort.name,
+            func.count(CargoPortOperation.id).label('cargo_count')
+        ).join(
+            CargoPortOperation, CargoPortOperation.load_port_id == LoadPort.id
+        ).group_by(LoadPort.id, LoadPort.code, LoadPort.name).order_by(
+            func.count(CargoPortOperation.id).desc()
         ).all()
         
-        # Count port occurrences
-        port_counts = {}
-        for cargo in cargos:
-            if cargo.load_ports:
-                # Parse load_ports - could be JSON array or comma-separated string
-                ports_str = cargo.load_ports
-                if ports_str.startswith('['):
-                    try:
-                        ports = json.loads(ports_str)
-                    except (json.JSONDecodeError, TypeError):
-                        ports = [p.strip() for p in ports_str.split(',') if p.strip()]
-                else:
-                    ports = [p.strip() for p in ports_str.split(',') if p.strip()]
-                
-                for port in ports:
-                    port_counts[port] = port_counts.get(port, 0) + 1
-        
-        # Sort by count descending
-        for port, count in sorted(port_counts.items(), key=lambda x: -x[1]):
+        for row in port_query:
             port_stats.append({
-                "port": port,
-                "cargo_count": count
+                "port": row.code,
+                "port_name": row.name,
+                "cargo_count": row.cargo_count
             })
     except Exception as e:
         logger.error(f"Error getting port stats: {e}")
@@ -229,20 +219,16 @@ def get_analytics(db: Session = Depends(get_db)):
     # Status enum names: COMPLETED_LOADING, DISCHARGE_COMPLETE are considered completed
     product_stats = []
     try:
-        # Get completed cargo quantities per product
-        # Use COALESCE to fall back to quarterly_plan's product_name if monthly_plan's is NULL
+        # Get completed cargo quantities per product using normalized product_id
         completed_query = db.execute(text('''
             SELECT 
-                COALESCE(mp.product_name, qp.product_name) as product_name,
+                p.name as product_name,
                 SUM(ca.cargo_quantity) as completed_quantity,
                 COUNT(ca.id) as cargo_count
             FROM cargos ca
-            JOIN monthly_plans mp ON ca.monthly_plan_id = mp.id
-            LEFT JOIN quarterly_plans qp ON mp.quarterly_plan_id = qp.id
-            WHERE COALESCE(mp.product_name, qp.product_name) IS NOT NULL 
-            AND COALESCE(mp.product_name, qp.product_name) != ''
-            AND ca.status IN ('COMPLETED_LOADING', 'DISCHARGE_COMPLETE')
-            GROUP BY COALESCE(mp.product_name, qp.product_name)
+            JOIN products p ON ca.product_id = p.id
+            WHERE ca.status IN ('COMPLETED_LOADING', 'DISCHARGE_COMPLETE')
+            GROUP BY p.name
             ORDER BY completed_quantity DESC
         ''')).fetchall()
         
@@ -278,13 +264,18 @@ def get_all_contracts_admin(
     db: Session = Depends(get_db)
 ):
     """Get all contracts with full details for admin view."""
-    contracts = db.query(Contract).offset(skip).limit(limit).all()
+    from sqlalchemy.orm import joinedload
+    from app.models import ContractProduct
+    
+    contracts = db.query(Contract).options(
+        joinedload(Contract.contract_products).joinedload(ContractProduct.product)
+    ).offset(skip).limit(limit).all()
     total = db.query(func.count(Contract.id)).scalar()
     
     result = []
     for c in contracts:
         customer = db.query(Customer).filter(Customer.id == c.customer_id).first()
-        products = json.loads(c.products) if c.products else []
+        products = c.get_products_list()
         
         result.append({
             "id": c.id,
@@ -376,7 +367,10 @@ def get_all_quarterly_plans_admin(
     db: Session = Depends(get_db)
 ):
     """Get all quarterly plans with full details for admin view."""
-    plans = db.query(QuarterlyPlan).offset(skip).limit(limit).all()
+    from sqlalchemy.orm import joinedload
+    plans = db.query(QuarterlyPlan).options(
+        joinedload(QuarterlyPlan.product)
+    ).offset(skip).limit(limit).all()
     total = db.query(func.count(QuarterlyPlan.id)).scalar()
     
     result = []
@@ -386,17 +380,18 @@ def get_all_quarterly_plans_admin(
         if contract:
             customer = db.query(Customer).filter(Customer.id == contract.customer_id).first()
         
+        product_name = qp.product.name if qp.product else None
         result.append({
             "id": qp.id,
-            "product_name": qp.product_name,
+            "product_name": product_name,
             "q1_quantity": qp.q1_quantity,
             "q2_quantity": qp.q2_quantity,
             "q3_quantity": qp.q3_quantity,
             "q4_quantity": qp.q4_quantity,
-            "q1_topup": qp.q1_topup or 0,
-            "q2_topup": qp.q2_topup or 0,
-            "q3_topup": qp.q3_topup or 0,
-            "q4_topup": qp.q4_topup or 0,
+            "q1_topup": getattr(qp, 'q1_topup', 0) or 0,
+            "q2_topup": getattr(qp, 'q2_topup', 0) or 0,
+            "q3_topup": getattr(qp, 'q3_topup', 0) or 0,
+            "q4_topup": getattr(qp, 'q4_topup', 0) or 0,
             "contract_id": qp.contract_id,
             "contract_number": contract.contract_number if contract else "Unknown",
             "customer_name": customer.name if customer else "Unknown",
@@ -466,18 +461,26 @@ def get_all_monthly_plans_admin(
     db: Session = Depends(get_db)
 ):
     """Get all monthly plans with full details for admin view."""
-    plans = db.query(MonthlyPlan).offset(skip).limit(limit).all()
+    from sqlalchemy.orm import joinedload
+    plans = db.query(MonthlyPlan).options(
+        joinedload(MonthlyPlan.product)
+    ).offset(skip).limit(limit).all()
     total = db.query(func.count(MonthlyPlan.id)).scalar()
     
     result = []
     for mp in plans:
-        qp = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == mp.quarterly_plan_id).first()
+        qp = db.query(QuarterlyPlan).options(
+            joinedload(QuarterlyPlan.product)
+        ).filter(QuarterlyPlan.id == mp.quarterly_plan_id).first()
         contract = None
         customer = None
         if qp:
             contract = db.query(Contract).filter(Contract.id == qp.contract_id).first()
             if contract:
                 customer = db.query(Customer).filter(Customer.id == contract.customer_id).first()
+        
+        # Get product_name from monthly plan's product, or fall back to quarterly plan's product
+        product_name = mp.product.name if mp.product else (qp.product.name if qp and qp.product else "Unknown")
         
         result.append({
             "id": mp.id,
@@ -498,7 +501,7 @@ def get_all_monthly_plans_admin(
             "authority_topup_reason": mp.authority_topup_reason,
             "authority_topup_date": mp.authority_topup_date.isoformat() if mp.authority_topup_date else None,
             "quarterly_plan_id": mp.quarterly_plan_id,
-            "product_name": qp.product_name if qp else "Unknown",
+            "product_name": product_name,
             "contract_id": qp.contract_id if qp else None,
             "contract_number": contract.contract_number if contract else "Unknown",
             "customer_name": customer.name if customer else "Unknown",
@@ -578,7 +581,13 @@ def get_all_cargos_admin(
     db: Session = Depends(get_db)
 ):
     """Get all cargos with full details for admin view."""
-    cargos = db.query(Cargo).offset(skip).limit(limit).all()
+    from sqlalchemy.orm import joinedload
+    from app.models import Inspector
+    cargos = db.query(Cargo).options(
+        joinedload(Cargo.product),
+        joinedload(Cargo.inspector),
+        joinedload(Cargo.port_operations)
+    ).offset(skip).limit(limit).all()
     total = db.query(func.count(Cargo.id)).scalar()
     
     result = []
@@ -587,14 +596,22 @@ def get_all_cargos_admin(
         contract = db.query(Contract).filter(Contract.id == c.contract_id).first()
         customer = db.query(Customer).filter(Customer.id == c.customer_id).first()
         
+        product_name = c.product.name if c.product else "Unknown"
+        
+        # Compute load_ports from port_operations (normalized)
+        load_ports_str = ""
+        if c.port_operations:
+            sorted_ops = sorted(c.port_operations, key=lambda op: (op.load_port.sort_order if op.load_port else 0, op.load_port_id))
+            load_ports_str = ",".join(op.load_port.code for op in sorted_ops if op.load_port)
+        
         result.append({
             "id": c.id,
             "cargo_id": c.cargo_id,
             "vessel_name": c.vessel_name,
-            "product_name": c.product_name,
+            "product_name": product_name,
             "cargo_quantity": c.cargo_quantity,
             "status": c.status.value if c.status else None,
-            "load_ports": c.load_ports,
+            "load_ports": load_ports_str,  # Computed from port_operations
             "laycan_window": c.laycan_window,
             "eta": c.eta,
             "berthed": c.berthed,
@@ -610,7 +627,7 @@ def get_all_cargos_admin(
             "contract_type": c.contract_type.value if c.contract_type else None,
             "customer_id": c.customer_id,
             "customer_name": customer.name if customer else "Unknown",
-            "inspector_name": c.inspector_name,
+            "inspector_name": c.inspector.name if c.inspector else None,
             "notes": c.notes,
             "created_at": c.created_at.isoformat() if c.created_at else None,
             "updated_at": c.updated_at.isoformat() if c.updated_at else None,
@@ -626,7 +643,13 @@ def update_cargo_admin(
     db: Session = Depends(get_db)
 ):
     """Update any cargo field directly (admin only)."""
-    cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+    from sqlalchemy.orm import joinedload
+    from app.models import CargoPortOperation
+    from app.config import get_load_port_by_code, PortOperationStatus
+    
+    cargo = db.query(Cargo).options(
+        joinedload(Cargo.port_operations).joinedload(CargoPortOperation.load_port)
+    ).filter(Cargo.id == cargo_id).first()
     if not cargo:
         raise HTTPException(status_code=404, detail="Cargo not found")
     
@@ -649,6 +672,50 @@ def update_cargo_admin(
     for field in allowed_fields:
         if field in data:
             value = data[field]
+            # Handle load_ports specially - update via port_operations
+            if field == "load_ports":
+                # Parse the load_ports string
+                port_codes = []
+                if value:
+                    if isinstance(value, str):
+                        port_codes = [p.strip().upper() for p in value.split(",") if p.strip()]
+                    elif isinstance(value, list):
+                        port_codes = [str(p).strip().upper() for p in value if str(p).strip()]
+                
+                # Build map of existing operations by port code
+                existing_by_code = {}
+                for op in (cargo.port_operations or []):
+                    if op.load_port:
+                        existing_by_code[op.load_port.code] = op
+                
+                # Create missing operations
+                for code in port_codes:
+                    if code not in existing_by_code:
+                        load_port = get_load_port_by_code(db, code)
+                        if load_port:
+                            cargo.port_operations.append(
+                                CargoPortOperation(
+                                    load_port_id=load_port.id,
+                                    status=PortOperationStatus.PLANNED.value
+                                )
+                            )
+                
+                # Remove operations for removed ports
+                for code, op in existing_by_code.items():
+                    if code not in port_codes:
+                        db.delete(op)
+                continue  # Skip setattr for load_ports
+            
+            # Handle inspector_name specially - convert to inspector_id
+            if field == "inspector_name":
+                from app.models import Inspector
+                if value:
+                    inspector = db.query(Inspector).filter(Inspector.name == value).first()
+                    cargo.inspector_id = inspector.id if inspector else None
+                else:
+                    cargo.inspector_id = None
+                continue  # Skip setattr for inspector_name
+            
             # Handle enum fields
             if field == "status" and value:
                 from app.models import CargoStatus
@@ -795,20 +862,26 @@ def get_all_audit_logs(
 @router.get("/integrity-check")
 def check_data_integrity(db: Session = Depends(get_db)):
     """Run comprehensive data integrity checks."""
+    from sqlalchemy.orm import joinedload
+    from app.models import ContractProduct
+    
     issues = []
     
     # 1. Check for quantity mismatches between contract and quarterly plans
-    contracts = db.query(Contract).all()
+    contracts = db.query(Contract).options(
+        joinedload(Contract.contract_products).joinedload(ContractProduct.product)
+    ).all()
     for contract in contracts:
-        products = json.loads(contract.products) if contract.products else []
+        products = contract.get_products_list()
         quarterly_plans = db.query(QuarterlyPlan).filter(QuarterlyPlan.contract_id == contract.id).all()
         
         for product in products:
             product_name = product.get("name")
             contract_total = product.get("total_quantity", 0) + product.get("optional_quantity", 0) + product.get("topup_quantity", 0)
             
-            # Find matching quarterly plan
-            qp = next((q for q in quarterly_plans if q.product_name == product_name), None)
+            # Find matching quarterly plan using product_id
+            product_id = product.get("product_id")
+            qp = next((q for q in quarterly_plans if q.product_id == product_id), None)
             if qp:
                 qp_total = (qp.q1_quantity or 0) + (qp.q2_quantity or 0) + (qp.q3_quantity or 0) + (qp.q4_quantity or 0)
                 qp_topup = (qp.q1_topup or 0) + (qp.q2_topup or 0) + (qp.q3_topup or 0) + (qp.q4_topup or 0)
@@ -838,7 +911,9 @@ def check_data_integrity(db: Session = Depends(get_db)):
                 })
     
     # 2. Check for quarterly vs monthly quantity mismatches
-    quarterly_plans = db.query(QuarterlyPlan).all()
+    quarterly_plans = db.query(QuarterlyPlan).options(
+        joinedload(QuarterlyPlan.product)
+    ).all()
     for qp in quarterly_plans:
         monthly_plans = db.query(MonthlyPlan).filter(MonthlyPlan.quarterly_plan_id == qp.id).all()
         
@@ -859,13 +934,14 @@ def check_data_integrity(db: Session = Depends(get_db)):
         for q in range(1, 5):
             if abs(qp_values[q] - q_totals[q]) > 0.01:
                 contract = db.query(Contract).filter(Contract.id == qp.contract_id).first()
+                qp_product_name = qp.product.name if qp.product else "Unknown"
                 issues.append({
                     "type": "quantity_mismatch",
                     "severity": "info",
                     "entity": "quarterly_vs_monthly",
                     "quarterly_plan_id": qp.id,
                     "contract_number": contract.contract_number if contract else "Unknown",
-                    "product": qp.product_name,
+                    "product": qp_product_name,
                     "quarter": q,
                     "quarterly_quantity": qp_values[q],
                     "monthly_total": q_totals[q],

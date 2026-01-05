@@ -149,17 +149,16 @@ def get_monthly_plan_audit_logs(
     db: Session = Depends(get_db)
 ):
     """Get monthly plan audit logs with optional filters, including product_name from quarterly plan or contract"""
-    # Join with QuarterlyPlan and Contract to get product_name
+    # Join with QuarterlyPlan -> Product to get product_name
     query = db.query(
         models.MonthlyPlanAuditLog,
-        models.QuarterlyPlan.product_name.label("qp_product_name"),
-        models.Contract.products.label("contract_products")
+        models.Product.name.label("qp_product_name")
     ).outerjoin(
         models.QuarterlyPlan,
         models.QuarterlyPlan.id == models.MonthlyPlanAuditLog.quarterly_plan_id
     ).outerjoin(
-        models.Contract,
-        models.Contract.id == models.MonthlyPlanAuditLog.contract_id
+        models.Product,
+        models.Product.id == models.QuarterlyPlan.product_id
     )
     
     if monthly_plan_id:
@@ -185,19 +184,10 @@ def get_monthly_plan_audit_logs(
     logs = []
     for row in rows:
         log = row[0]  # MonthlyPlanAuditLog object
-        qp_product_name = row[1]  # product_name from QuarterlyPlan
-        contract_products = row[2]  # products JSON from Contract
+        qp_product_name = row[1]  # product_name from QuarterlyPlan->Product join
         
-        # Determine product_name: use quarterly plan's product_name first,
-        # fallback to first product from contract if single-product contract
+        # Use the product_name from the join
         product_name = qp_product_name
-        if not product_name and contract_products:
-            try:
-                products = json.loads(contract_products) if isinstance(contract_products, str) else contract_products
-                if products and len(products) == 1:
-                    product_name = products[0].get('name')
-            except Exception:
-                pass
         
         # Create a dict from the log and add product_name
         log_dict = {
@@ -263,23 +253,25 @@ def get_reconciliation_logs(
     # Join monthly plan logs with QuarterlyPlan and Contract to get product_name
     monthly_query = db.query(
         models.MonthlyPlanAuditLog,
-        models.QuarterlyPlan.product_name.label("qp_product_name"),
-        models.Contract.products.label("contract_products")
+        models.Product.name.label("qp_product_name")
     ).outerjoin(
         models.QuarterlyPlan,
         models.QuarterlyPlan.id == models.MonthlyPlanAuditLog.quarterly_plan_id
     ).outerjoin(
-        models.Contract,
-        models.Contract.id == models.MonthlyPlanAuditLog.contract_id
+        models.Product,
+        models.Product.id == models.QuarterlyPlan.product_id
     )
     
-    # Join quarterly plan logs with QuarterlyPlan to get product_name
+    # Join quarterly plan logs with QuarterlyPlan -> Product to get product_name
     quarterly_query = db.query(
         models.QuarterlyPlanAuditLog,
-        models.QuarterlyPlan.product_name.label("qp_product_name")
+        models.Product.name.label("qp_product_name")
     ).outerjoin(
         models.QuarterlyPlan,
         models.QuarterlyPlan.id == models.QuarterlyPlanAuditLog.quarterly_plan_id
+    ).outerjoin(
+        models.Product,
+        models.Product.id == models.QuarterlyPlan.product_id
     )
     
     # Apply filters to monthly plan logs
@@ -302,19 +294,10 @@ def get_reconciliation_logs(
     monthly_logs_with_product = []
     for row in monthly_rows:
         log = row[0]  # MonthlyPlanAuditLog object
-        qp_product_name = row[1]  # product_name from QuarterlyPlan
-        contract_products = row[2]  # products JSON from Contract
+        qp_product_name = row[1]  # product_name from QuarterlyPlan->Product join
         
-        # Determine product_name: use quarterly plan's product_name first,
-        # fallback to first product from contract if single-product contract
+        # Use the product_name from the join
         product_name = qp_product_name
-        if not product_name and contract_products:
-            try:
-                products = json.loads(contract_products) if isinstance(contract_products, str) else contract_products
-                if products and len(products) == 1:
-                    product_name = products[0].get('name')
-            except Exception:
-                pass
         
         # Create a dict-like object with product_name and user_initials
         log_dict = {
@@ -386,15 +369,16 @@ def get_weekly_quantity_comparison(
                 models.Contract.id.label("contract_id"),
                 models.Contract.contract_number.label("contract_number"),
                 models.Customer.name.label("contract_name"),
-                models.QuarterlyPlan.product_name.label("product_name"),
+                models.Product.name.label("product_name"),
                 models.MonthlyPlan.month.label("month"),
                 func.coalesce(func.sum(models.MonthlyPlan.month_quantity), 0.0).label("qty"),
             )
             .join(models.QuarterlyPlan, models.QuarterlyPlan.id == models.MonthlyPlan.quarterly_plan_id)
             .join(models.Contract, models.Contract.id == models.QuarterlyPlan.contract_id)
             .join(models.Customer, models.Customer.id == models.Contract.customer_id)
+            .outerjoin(models.Product, models.Product.id == models.QuarterlyPlan.product_id)
             .filter(models.MonthlyPlan.year == target_year)
-            .group_by(models.Contract.id, models.Contract.contract_number, models.Customer.name, models.QuarterlyPlan.product_name, models.MonthlyPlan.month)
+            .group_by(models.Contract.id, models.Contract.contract_number, models.Customer.name, models.Product.name, models.MonthlyPlan.month)
             .all()
         )
 
@@ -411,14 +395,15 @@ def get_weekly_quantity_comparison(
             current_by_key[(int(r.contract_id), product_name, int(r.month))] = float(r.qty or 0.0)
 
         # Net deltas since snapshot_at from audit logs (previous = current - delta_since_snapshot)
-        # We need to get product_name for each log entry via quarterly_plan
+        # We need to get product_name for each log entry via quarterly_plan -> product
         # Also include DEFER/ADVANCE actions for move tracking
         logs = (
             db.query(
                 models.MonthlyPlanAuditLog,
-                models.QuarterlyPlan.product_name.label("product_name")
+                models.Product.name.label("product_name")
             )
             .outerjoin(models.QuarterlyPlan, models.QuarterlyPlan.id == models.MonthlyPlanAuditLog.quarterly_plan_id)
+            .outerjoin(models.Product, models.Product.id == models.QuarterlyPlan.product_id)
             .filter(models.MonthlyPlanAuditLog.created_at > snapshot_at)
             .filter(models.MonthlyPlanAuditLog.contract_id.isnot(None))
             .filter(
