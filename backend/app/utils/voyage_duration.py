@@ -8,39 +8,66 @@ including 2-day laycan allowance.
 from datetime import date, timedelta
 from calendar import monthrange
 from typing import Optional, Tuple
-
-# Voyage duration lookup table (days including 2-day laycan)
-# Format: { destination: { route: days } }
-VOYAGE_DURATIONS = {
-    "Rotterdam": {"SUEZ": 24, "CAPE": 40},
-    "Le Havre": {"SUEZ": 24, "CAPE": 40},
-    "Shell Haven": {"SUEZ": 24, "CAPE": 40},
-    "Naples": {"SUEZ": 17, "CAPE": 40},
-    "Milford Haven": {"SUEZ": 23, "CAPE": 39},
-}
-
-# List of valid destinations for dropdowns
-CIF_DESTINATIONS = list(VOYAGE_DURATIONS.keys())
+from sqlalchemy.orm import Session
 
 # List of valid routes
 CIF_ROUTES = ["SUEZ", "CAPE"]
 
 
-def get_voyage_duration(destination: str, route: str) -> Optional[int]:
+def get_voyage_duration(destination: str, route: str, db: Session = None) -> Optional[int]:
     """
     Get voyage duration in days for a destination and route.
     
+    Fetches from database if db session provided, otherwise returns None.
+    
     Args:
         destination: Destination port name (e.g., "Rotterdam", "Milford Haven")
+        route: Route name ("SUEZ" or "CAPE")
+        db: SQLAlchemy database session (optional)
+    
+    Returns:
+        Number of days for the voyage, or None if not found
+    """
+    if db is None:
+        return None
+    
+    from app import models
+    
+    discharge_port = db.query(models.DischargePort).filter(
+        models.DischargePort.name == destination
+    ).first()
+    
+    if not discharge_port:
+        return None
+    
+    if route.upper() == "SUEZ":
+        return discharge_port.voyage_days_suez
+    elif route.upper() == "CAPE":
+        return discharge_port.voyage_days_cape
+    
+    return None
+
+
+def get_voyage_duration_from_port(discharge_port, route: str) -> Optional[int]:
+    """
+    Get voyage duration from a DischargePort model instance.
+    
+    Args:
+        discharge_port: DischargePort model instance
         route: Route name ("SUEZ" or "CAPE")
     
     Returns:
         Number of days for the voyage, or None if not found
     """
-    dest_routes = VOYAGE_DURATIONS.get(destination)
-    if not dest_routes:
+    if not discharge_port:
         return None
-    return dest_routes.get(route)
+    
+    if route.upper() == "SUEZ":
+        return discharge_port.voyage_days_suez
+    elif route.upper() == "CAPE":
+        return discharge_port.voyage_days_cape
+    
+    return None
 
 
 def parse_loading_window_start(loading_window: str, month: int, year: int) -> Optional[date]:
@@ -102,7 +129,8 @@ def calculate_delivery_window(
     destination: str,
     route: str,
     month: int,
-    year: int
+    year: int,
+    db: Session = None
 ) -> Optional[str]:
     """
     Calculate the delivery window based on loading window, destination, and route.
@@ -119,12 +147,13 @@ def calculate_delivery_window(
         route: Route name ("SUEZ" or "CAPE")
         month: Reference month for loading window parsing
         year: Reference year for loading window parsing
+        db: SQLAlchemy database session (optional)
     
     Returns:
         Delivery window string (e.g., "(9-23/2)"), or None if calculation fails
     """
-    # Get voyage duration
-    duration = get_voyage_duration(destination, route)
+    # Get voyage duration from database
+    duration = get_voyage_duration(destination, route, db)
     if duration is None:
         return None
     

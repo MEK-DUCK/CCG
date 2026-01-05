@@ -52,6 +52,7 @@ import {
   Add,
   ManageAccounts,
   DeleteSweep,
+  Anchor,
 } from '@mui/icons-material'
 import client from '../api/client'
 import UserManagement from '../components/UserManagement'
@@ -148,6 +149,18 @@ interface Inspector {
   updated_at?: string
 }
 
+interface DischargePort {
+  id: number
+  name: string
+  restrictions?: string
+  voyage_days_suez?: number
+  voyage_days_cape?: number
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at?: string
+}
+
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -164,6 +177,7 @@ export default function AdminPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loadPorts, setLoadPorts] = useState<LoadPort[]>([])
   const [inspectors, setInspectors] = useState<Inspector[]>([])
+  const [dischargePorts, setDischargePorts] = useState<DischargePort[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
   const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[]>([])
   const [integrityStats, setIntegrityStats] = useState<any>(null)
@@ -214,6 +228,18 @@ export default function AdminPage() {
     code: '',
     name: '',
     description: '',
+    is_active: true,
+    sort_order: 0
+  })
+  const [dischargePortDialog, setDischargePortDialog] = useState<{ open: boolean; editing: DischargePort | null }>({
+    open: false,
+    editing: null
+  })
+  const [dischargePortForm, setDischargePortForm] = useState({
+    name: '',
+    restrictions: '',
+    voyage_days_suez: 0,
+    voyage_days_cape: 0,
     is_active: true,
     sort_order: 0
   })
@@ -331,6 +357,22 @@ export default function AdminPage() {
     }
   }, [])
 
+  const fetchDischargePorts = useCallback(async () => {
+    try {
+      const response = await client.get('/api/discharge-ports?include_inactive=true')
+      // Auto-seed if empty
+      if (response.data.length === 0) {
+        await client.post('/api/discharge-ports/seed-defaults')
+        const seededResponse = await client.get('/api/discharge-ports?include_inactive=true')
+        setDischargePorts(seededResponse.data)
+      } else {
+        setDischargePorts(response.data)
+      }
+    } catch (err: any) {
+      console.error('Error fetching discharge ports:', err)
+    }
+  }, [])
+
   const fetchAuditLogs = useCallback(async () => {
     try {
       const params = logTypeFilter !== 'all' ? { log_type: logTypeFilter } : {}
@@ -365,6 +407,7 @@ export default function AdminPage() {
         fetchProducts(),
         fetchLoadPorts(),
         fetchInspectors(),
+        fetchDischargePorts(),
         fetchAuditLogs(),
         fetchIntegrityCheck()
       ])
@@ -670,6 +713,79 @@ export default function AdminPage() {
       await fetchInspectors()
     } catch (err: any) {
       setError(`Failed to update inspector: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Discharge Port handlers
+  const handleOpenDischargePortDialog = (port?: DischargePort) => {
+    if (port) {
+      setDischargePortForm({
+        name: port.name,
+        restrictions: port.restrictions || '',
+        voyage_days_suez: port.voyage_days_suez || 0,
+        voyage_days_cape: port.voyage_days_cape || 0,
+        is_active: port.is_active,
+        sort_order: port.sort_order
+      })
+      setDischargePortDialog({ open: true, editing: port })
+    } else {
+      setDischargePortForm({
+        name: '',
+        restrictions: '',
+        voyage_days_suez: 0,
+        voyage_days_cape: 0,
+        is_active: true,
+        sort_order: dischargePorts.length + 1
+      })
+      setDischargePortDialog({ open: true, editing: null })
+    }
+  }
+
+  const handleSaveDischargePort = async () => {
+    setLoading(true)
+    try {
+      if (dischargePortDialog.editing) {
+        await client.put(`/api/discharge-ports/${dischargePortDialog.editing.id}`, dischargePortForm)
+        setSuccess('Discharge port updated successfully')
+      } else {
+        await client.post('/api/discharge-ports', dischargePortForm)
+        setSuccess('Discharge port created successfully')
+      }
+      setDischargePortDialog({ open: false, editing: null })
+      await fetchDischargePorts()
+    } catch (err: any) {
+      setError(`Failed to save discharge port: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteDischargePort = async (port: DischargePort) => {
+    if (!confirm(`Are you sure you want to delete "${port.name}"? This cannot be undone.`)) {
+      return
+    }
+    setLoading(true)
+    try {
+      await client.delete(`/api/discharge-ports/${port.id}`)
+      setSuccess('Discharge port deleted successfully')
+      await fetchDischargePorts()
+    } catch (err: any) {
+      setError(`Failed to delete discharge port: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleToggleDischargePortActive = async (port: DischargePort) => {
+    setLoading(true)
+    try {
+      await client.put(`/api/discharge-ports/${port.id}`, { is_active: !port.is_active })
+      setSuccess(`Discharge port ${port.is_active ? 'deactivated' : 'activated'} successfully`)
+      await fetchDischargePorts()
+    } catch (err: any) {
+      setError(`Failed to update discharge port: ${err.response?.data?.detail || err.message}`)
     } finally {
       setLoading(false)
     }
@@ -1900,6 +2016,219 @@ export default function AdminPage() {
     </Box>
   )
 
+  const renderDischargePortsTable = () => (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">
+          Discharge Ports Configuration ({dischargePorts.length} total)
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={() => handleOpenDischargePortDialog()}
+          sx={{ bgcolor: '#8B5CF6', '&:hover': { bgcolor: '#7C3AED' } }}
+        >
+          Add Discharge Port
+        </Button>
+      </Box>
+      
+      <Alert severity="info" sx={{ mb: 2 }}>
+        <Typography variant="body2">
+          Discharge ports defined here are used for CIF contracts. Each port includes TNG restrictions and voyage durations 
+          for delivery window calculations. Deactivated ports won't appear in dropdowns but existing data using them will remain intact.
+        </Typography>
+      </Alert>
+
+      <TableContainer component={Paper} sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <Table size="small" sx={{ minWidth: 900 }}>
+          <TableHead>
+            <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+              <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Port Name</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Suez (days)</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Cape (days)</TableCell>
+              <TableCell sx={{ fontWeight: 600, maxWidth: 300 }}>Restrictions</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {dischargePorts.map((port) => (
+              <TableRow 
+                key={port.id} 
+                hover
+                sx={{ 
+                  bgcolor: port.is_active ? 'white' : '#F8FAFC',
+                  opacity: port.is_active ? 1 : 0.7
+                }}
+              >
+                <TableCell>{port.sort_order}</TableCell>
+                <TableCell>
+                  <Chip 
+                    label={port.name} 
+                    size="small" 
+                    sx={{ 
+                      fontWeight: 600,
+                      bgcolor: '#EDE9FE',
+                      color: '#7C3AED'
+                    }} 
+                  />
+                </TableCell>
+                <TableCell>
+                  <Chip 
+                    label={port.voyage_days_suez || '-'} 
+                    size="small"
+                    sx={{ bgcolor: '#DBEAFE', color: '#1D4ED8', fontWeight: 500 }}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Chip 
+                    label={port.voyage_days_cape || '-'} 
+                    size="small"
+                    sx={{ bgcolor: '#FEF3C7', color: '#92400E', fontWeight: 500 }}
+                  />
+                </TableCell>
+                <TableCell sx={{ 
+                  color: 'text.secondary', 
+                  maxWidth: 300, 
+                  overflow: 'hidden', 
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  <Tooltip title={port.restrictions || 'No restrictions'}>
+                    <span>{port.restrictions ? `${port.restrictions.substring(0, 50)}...` : '-'}</span>
+                  </Tooltip>
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={port.is_active ? 'Active' : 'Inactive'}
+                    size="small"
+                    color={port.is_active ? 'success' : 'default'}
+                    onClick={() => handleToggleDischargePortActive(port)}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                </TableCell>
+                <TableCell align="right">
+                  <Tooltip title="Edit">
+                    <IconButton size="small" onClick={() => handleOpenDischargePortDialog(port)}>
+                      <Edit fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete">
+                    <IconButton size="small" color="error" onClick={() => handleDeleteDischargePort(port)}>
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            ))}
+            {dischargePorts.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                  <Typography color="text.secondary">Loading discharge ports...</Typography>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Discharge Port Edit/Create Dialog */}
+      <Dialog
+        open={dischargePortDialog.open}
+        onClose={() => setDischargePortDialog({ open: false, editing: null })}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          {dischargePortDialog.editing ? 'Edit Discharge Port' : 'Add New Discharge Port'}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Port Name"
+                value={dischargePortForm.name}
+                onChange={(e) => setDischargePortForm({ ...dischargePortForm, name: e.target.value })}
+                helperText="e.g., Shell Haven, Rotterdam"
+                required
+                inputProps={{ maxLength: 100 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Sort Order"
+                type="number"
+                value={dischargePortForm.sort_order}
+                onChange={(e) => setDischargePortForm({ ...dischargePortForm, sort_order: parseInt(e.target.value) || 0 })}
+                helperText="Display order in lists"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Voyage Days (Suez)"
+                type="number"
+                value={dischargePortForm.voyage_days_suez}
+                onChange={(e) => setDischargePortForm({ ...dischargePortForm, voyage_days_suez: parseInt(e.target.value) || 0 })}
+                helperText="Days from loading via Suez route"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Voyage Days (Cape)"
+                type="number"
+                value={dischargePortForm.voyage_days_cape}
+                onChange={(e) => setDischargePortForm({ ...dischargePortForm, voyage_days_cape: parseInt(e.target.value) || 0 })}
+                helperText="Days from loading via Cape route"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Port Restrictions"
+                value={dischargePortForm.restrictions}
+                onChange={(e) => setDischargePortForm({ ...dischargePortForm, restrictions: e.target.value })}
+                helperText="Full restriction text for TNG memo (vessel specs, draft limits, etc.)"
+                multiline
+                rows={8}
+                placeholder="All vessels must be capable of connecting to two 16-inch loading/unloading arms.&#10;Maximum draft on arrival is 14.9 meters.&#10;Max. LOA: 250 M&#10;..."
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={dischargePortForm.is_active ? 'active' : 'inactive'}
+                  label="Status"
+                  onChange={(e) => setDischargePortForm({ ...dischargePortForm, is_active: e.target.value === 'active' })}
+                >
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="inactive">Inactive</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDischargePortDialog({ open: false, editing: null })}>
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSaveDischargePort} 
+            disabled={loading || !dischargePortForm.name}
+          >
+            {dischargePortDialog.editing ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+
   return (
     <Box>
       {/* Header */}
@@ -1958,6 +2287,7 @@ export default function AdminPage() {
           <Tab label="Products" icon={<Inventory />} iconPosition="start" />
           <Tab label="Load Ports" icon={<LocalShipping />} iconPosition="start" />
           <Tab label="Inspectors" icon={<People />} iconPosition="start" />
+          <Tab label="Discharge Ports" icon={<Anchor />} iconPosition="start" />
           <Tab label="Customers" icon={<People />} iconPosition="start" />
           <Tab label="Contracts" icon={<Description />} iconPosition="start" />
           <Tab label="Quarterly Plans" icon={<CalendarMonth />} iconPosition="start" />
@@ -1976,14 +2306,15 @@ export default function AdminPage() {
         {activeTab === 2 && renderProductsTable()}
         {activeTab === 3 && renderLoadPortsTable()}
         {activeTab === 4 && renderInspectorsTable()}
-        {activeTab === 5 && renderCustomersTable()}
-        {activeTab === 6 && renderContractsTable()}
-        {activeTab === 7 && renderQuarterlyPlansTable()}
-        {activeTab === 8 && renderMonthlyPlansTable()}
-        {activeTab === 9 && renderCargosTable()}
-        {activeTab === 10 && renderAuditLogs()}
-        {activeTab === 11 && renderIntegrityCheck()}
-        {activeTab === 12 && <RecycleBin />}
+        {activeTab === 5 && renderDischargePortsTable()}
+        {activeTab === 6 && renderCustomersTable()}
+        {activeTab === 7 && renderContractsTable()}
+        {activeTab === 8 && renderQuarterlyPlansTable()}
+        {activeTab === 9 && renderMonthlyPlansTable()}
+        {activeTab === 10 && renderCargosTable()}
+        {activeTab === 11 && renderAuditLogs()}
+        {activeTab === 12 && renderIntegrityCheck()}
+        {activeTab === 13 && <RecycleBin />}
       </Box>
 
       {/* Edit Dialog */}

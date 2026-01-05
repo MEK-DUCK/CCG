@@ -119,6 +119,25 @@ class Inspector(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class DischargePort(Base):
+    """
+    Discharge port configuration for CIF contracts.
+    Stores port restrictions for TNG memos and voyage durations for delivery window calculation.
+    Admin can add/edit/delete discharge ports through the admin interface.
+    """
+    __tablename__ = "discharge_ports"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False, index=True)  # Port name e.g., "Shell Haven", "Rotterdam"
+    restrictions = Column(Text, nullable=True)  # Full restriction text for TNG memo
+    voyage_days_suez = Column(Integer, nullable=True)  # Voyage duration via Suez route (days from loading)
+    voyage_days_cape = Column(Integer, nullable=True)  # Voyage duration via Cape route (days from loading)
+    is_active = Column(Boolean, default=True, nullable=False)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 # =============================================================================
 # USER/AUTH MODELS
 # =============================================================================

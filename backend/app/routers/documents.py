@@ -18,36 +18,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Disport restrictions per destination - fixed text for each port
-DISPORT_RESTRICTIONS = {
-    "Shell Haven": """All vessels must be capable of connecting to two 16-inch Woodfield loading/unloading arms.
-All vessels must be capable of discharging at a rate of 2500 Cubic meters per hour, or of maintaining a discharge pressure at the vessel's manifold of at least 100PSIG (7.5Bar).
-It is Seller's responsibility to provide vessels which do not exceed the Maximum Limitations as follows: -
-Maximum draft on arrival at S Jetty is 14.9 meters.
-Max. LOA: 250 M
-Max displacement of 135,000 MT
-SDWT maximum 116,000 MT""",
-    "Milford Haven": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 14.5 meters.
-Max. LOA: 274 M
-Max displacement of 150,000 MT
-SDWT maximum 125,000 MT""",
-    "Rotterdam": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 15.2 meters.
-Max. LOA: 280 M
-Max displacement of 160,000 MT
-SDWT maximum 130,000 MT""",
-    "Le Havre": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 14.0 meters.
-Max. LOA: 260 M
-Max displacement of 140,000 MT
-SDWT maximum 115,000 MT""",
-    "Naples": """All vessels must be capable of connecting to standard loading/unloading arms.
-Maximum draft on arrival is 13.5 meters.
-Max. LOA: 245 M
-Max displacement of 130,000 MT
-SDWT maximum 110,000 MT""",
-}
+def get_disport_restrictions(db: Session, port_name: str) -> str:
+    """
+    Get discharge port restrictions from the database.
+    Falls back to a generic message if port is not found.
+    """
+    discharge_port = db.query(models.DischargePort).filter(
+        models.DischargePort.name == port_name
+    ).first()
+    
+    if discharge_port and discharge_port.restrictions:
+        return discharge_port.restrictions
+    
+    # Fallback message if port not in database
+    return "Contact operations for vessel requirements."
 
 def get_sheet_name_for_product(product_name: str, customer_name: str) -> str:
     """Determine which sheet to use based on product and customer"""
@@ -475,9 +459,9 @@ def generate_tng_document(
             "quantity": quantity
         })
     
-    # Get discharge port and restrictions
+    # Get discharge port and restrictions from database
     discharge_port = contract.cif_destination or "TBA"
-    disport_restrictions = DISPORT_RESTRICTIONS.get(discharge_port, "Contact operations for vessel requirements.")
+    disport_restrictions = get_disport_restrictions(db, discharge_port)
     
     # Load template
     template_path = Path(__file__).parent.parent.parent / "templates" / "tng_template.docx"

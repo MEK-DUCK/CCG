@@ -3,30 +3,96 @@
  * 
  * Trip durations are from first day of loading window to destination,
  * including 2-day laycan allowance.
+ * 
+ * Voyage durations are now fetched from the database via the discharge ports API.
  */
 
-// Voyage duration lookup table (days including 2-day laycan)
-export const VOYAGE_DURATIONS: Record<string, Record<string, number>> = {
-  "Rotterdam": { "SUEZ": 24, "CAPE": 40 },
-  "Le Havre": { "SUEZ": 24, "CAPE": 40 },
-  "Shell Haven": { "SUEZ": 24, "CAPE": 40 },
-  "Naples": { "SUEZ": 17, "CAPE": 40 },
-  "Milford Haven": { "SUEZ": 23, "CAPE": 39 },
-}
-
-// List of valid destinations for dropdowns
-export const CIF_DESTINATIONS = Object.keys(VOYAGE_DURATIONS)
+// Cache for voyage durations fetched from API
+let voyageDurationsCache: Record<string, { suez: number | null, cape: number | null }> = {}
+let cacheLoaded = false
 
 // List of valid routes
 export const CIF_ROUTES = ["SUEZ", "CAPE"]
 
 /**
+ * Interface for discharge port data from API
+ */
+export interface DischargePort {
+  id: number
+  name: string
+  restrictions?: string
+  voyage_days_suez?: number
+  voyage_days_cape?: number
+  is_active: boolean
+  sort_order: number
+}
+
+/**
+ * Load voyage durations from the API into the cache.
+ * This should be called once when the app initializes or when discharge ports are updated.
+ */
+export async function loadVoyageDurations(): Promise<void> {
+  try {
+    const response = await fetch('/api/discharge-ports')
+    if (response.ok) {
+      const ports: DischargePort[] = await response.json()
+      voyageDurationsCache = {}
+      ports.forEach(port => {
+        voyageDurationsCache[port.name] = {
+          suez: port.voyage_days_suez ?? null,
+          cape: port.voyage_days_cape ?? null
+        }
+      })
+      cacheLoaded = true
+    }
+  } catch (error) {
+    console.error('Failed to load voyage durations from API:', error)
+  }
+}
+
+/**
+ * Get the list of valid CIF destinations from the cache.
+ */
+export function getCifDestinations(): string[] {
+  return Object.keys(voyageDurationsCache)
+}
+
+/**
  * Get voyage duration in days for a destination and route.
+ * Uses cached data from the database.
  */
 export function getVoyageDuration(destination: string, route: string): number | null {
-  const destRoutes = VOYAGE_DURATIONS[destination]
-  if (!destRoutes) return null
-  return destRoutes[route] ?? null
+  const portData = voyageDurationsCache[destination]
+  if (!portData) return null
+  
+  if (route.toUpperCase() === 'SUEZ') {
+    return portData.suez
+  } else if (route.toUpperCase() === 'CAPE') {
+    return portData.cape
+  }
+  
+  return null
+}
+
+/**
+ * Set voyage durations directly (used when ports are fetched elsewhere).
+ */
+export function setVoyageDurations(ports: DischargePort[]): void {
+  voyageDurationsCache = {}
+  ports.forEach(port => {
+    voyageDurationsCache[port.name] = {
+      suez: port.voyage_days_suez ?? null,
+      cape: port.voyage_days_cape ?? null
+    }
+  })
+  cacheLoaded = true
+}
+
+/**
+ * Check if voyage durations have been loaded.
+ */
+export function isVoyageDurationsLoaded(): boolean {
+  return cacheLoaded
 }
 
 /**

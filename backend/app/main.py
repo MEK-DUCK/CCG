@@ -10,7 +10,7 @@ from threading import Lock
 
 from app.database import engine, Base, ensure_schema
 from app.routers import customers, contracts, quarterly_plans, monthly_plans, cargos, audit_logs, documents
-from app.routers import config_router, admin, products, load_ports, inspectors
+from app.routers import config_router, admin, products, load_ports, inspectors, discharge_ports
 from app.routers import auth_router, users, presence_router, version_history_router
 from app.errors import AppError, handle_app_error, handle_unexpected_error
 from app.rate_limiter import limiter, rate_limit_exceeded_handler
@@ -254,6 +254,7 @@ app.include_router(config_router.router, prefix="/api/config", tags=["config"])
 app.include_router(products.router, prefix="/api/products", tags=["products"])
 app.include_router(load_ports.router, prefix="/api/load-ports", tags=["load-ports"])
 app.include_router(inspectors.router, prefix="/api/inspectors", tags=["inspectors"])
+app.include_router(discharge_ports.router, prefix="/api/discharge-ports", tags=["discharge-ports"])
 app.include_router(version_history_router.router, prefix="/api", tags=["version-history"])
 app.include_router(admin.router)
 

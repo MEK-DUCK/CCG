@@ -33,7 +33,8 @@ import { MonthlyPlanStatus } from '../types'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 import { VersionHistoryDialog } from './VersionHistory'
-import { CIF_ROUTES, calculateDeliveryWindow, calculateETA } from '../utils/voyageDuration'
+import { CIF_ROUTES, calculateDeliveryWindow, calculateETA, setVoyageDurations, isVoyageDurationsLoaded, type DischargePort } from '../utils/voyageDuration'
+import client from '../api/client'
 import { BADGE_COLORS } from '../utils/chipColors'
 
 // Simple UUID generator
@@ -402,6 +403,23 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         console.error('Error autosaving monthly plan field:', error)
       }
     }, 120000)  // 120 second (2 min) delay to allow batching multiple field changes
+  }, [])
+
+  // Load discharge ports for voyage duration calculations (if not already loaded)
+  useEffect(() => {
+    const loadDischargePorts = async () => {
+      if (!isVoyageDurationsLoaded()) {
+        try {
+          const response = await client.get<DischargePort[]>('/api/discharge-ports')
+          if (response.data && response.data.length > 0) {
+            setVoyageDurations(response.data)
+          }
+        } catch (error) {
+          console.error('Error loading discharge ports:', error)
+        }
+      }
+    }
+    loadDischargePorts()
   }, [])
 
   // Load contract

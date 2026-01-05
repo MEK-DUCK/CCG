@@ -24,6 +24,7 @@ from app.models import (
     Product,
     LoadPort,
     Inspector,
+    DischargePort,
     User,
     Base
 )
@@ -63,6 +64,7 @@ def clear_database():
                 "products",
                 "load_ports",
                 "inspectors",
+                "discharge_ports",
                 # Users (usually keep admin, but include for completeness)
                 # "users"  # Commented out - don't delete users by default
             ]
@@ -140,6 +142,9 @@ def clear_database():
             
             db.query(Inspector).delete()
             print("  ✓ Cleared inspectors")
+            
+            db.query(DischargePort).delete()
+            print("  ✓ Cleared discharge_ports")
             
             # Note: Users are NOT deleted by default to preserve admin account
             # Uncomment below to also clear users:

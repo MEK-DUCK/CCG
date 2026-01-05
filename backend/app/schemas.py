@@ -86,6 +86,35 @@ class Inspector(InspectorBase):
         from_attributes = True
 
 
+# Discharge Port Schemas (for admin-managed CIF discharge port configuration)
+class DischargePortBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100, description="Port name e.g., Shell Haven, Rotterdam")
+    restrictions: Optional[str] = Field(None, description="Full restriction text for TNG memo")
+    voyage_days_suez: Optional[int] = Field(None, ge=0, description="Voyage duration via Suez route (days)")
+    voyage_days_cape: Optional[int] = Field(None, ge=0, description="Voyage duration via Cape route (days)")
+    is_active: bool = Field(True, description="Whether port is available for selection")
+    sort_order: int = Field(0, ge=0, description="Display order in dropdowns")
+
+class DischargePortCreate(DischargePortBase):
+    pass
+
+class DischargePortUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    restrictions: Optional[str] = None
+    voyage_days_suez: Optional[int] = Field(None, ge=0)
+    voyage_days_cape: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+
+class DischargePort(DischargePortBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
 # Customer Schemas
 class CustomerBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)

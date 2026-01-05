@@ -40,7 +40,7 @@ import { format } from 'date-fns'
 import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, documentsAPI } from '../api/client'
 import type { Cargo, Customer, Contract, MonthlyPlan, CargoStatus, ContractProduct, LCStatus, CargoPortOperation, PortOperationStatus } from '../types'
 import { parseLaycanDate } from '../utils/laycanParser'
-import { calculateETADate } from '../utils/voyageDuration'
+import { calculateETADate, setVoyageDurations, type DischargePort } from '../utils/voyageDuration'
 import { getLaycanAlertSeverity, getAlertColor, getAlertMessage } from '../utils/alertUtils'
 import { 
   getProductColor, 
@@ -923,7 +923,7 @@ export default function HomePage() {
     try {
       setLoading(true)
       // Load customers, contracts, and config data in parallel - they're independent
-      const [customersRes, contractsRes, completedRes, inRoadRes, completedInRoadRes, loadPortsRes, inspectorsRes] = await Promise.all([
+      const [customersRes, contractsRes, completedRes, inRoadRes, completedInRoadRes, loadPortsRes, inspectorsRes, dischargePortsRes] = await Promise.all([
         customerAPI.getAll().catch(() => ({ data: [] })),
         contractAPI.getAll().catch(() => ({ data: [] })),
         cargoAPI.getCompletedCargos(completedMonth || undefined, completedYear || undefined).catch(() => ({ data: [] })),
@@ -931,7 +931,13 @@ export default function HomePage() {
         cargoAPI.getCompletedInRoadCIF().catch(() => ({ data: [] })),
         client.get('/api/load-ports/codes').catch(() => ({ data: ['MAA', 'MAB', 'SHU'] })),
         client.get('/api/inspectors/names').catch(() => ({ data: ['SGS', 'Intertek', 'Saybolt'] })),
+        client.get<DischargePort[]>('/api/discharge-ports').catch(() => ({ data: [] })),
       ])
+      
+      // Load discharge ports for voyage duration calculations
+      if (dischargePortsRes.data && dischargePortsRes.data.length > 0) {
+        setVoyageDurations(dischargePortsRes.data)
+      }
       
       setCustomers(customersRes.data || [])
       setContracts(contractsRes.data || [])

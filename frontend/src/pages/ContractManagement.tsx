@@ -36,7 +36,7 @@ import {
 import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-material'
 import client, { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity, AuthorityAmendment } from '../types'
-import { CIF_DESTINATIONS } from '../utils/voyageDuration'
+import { setVoyageDurations, getCifDestinations, type DischargePort } from '../utils/voyageDuration'
 import { getContractTypeColor, getPaymentColor } from '../utils/chipColors'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
@@ -86,6 +86,7 @@ export default function ContractManagement() {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [productOptions, setProductOptions] = useState<string[]>(DEFAULT_PRODUCT_OPTIONS)
+  const [cifDestinations, setCifDestinations] = useState<string[]>([])
   const [dataChangedNotification, setDataChangedNotification] = useState<string | null>(null)
 
   // Conflict handler for optimistic locking - loadData is defined below
@@ -159,11 +160,12 @@ export default function ContractManagement() {
 
   const loadData = async () => {
     try {
-      // Load contracts, customers, and products in parallel - they're independent
-      const [contractsRes, customersRes, productsRes] = await Promise.all([
+      // Load contracts, customers, products, and discharge ports in parallel
+      const [contractsRes, customersRes, productsRes, dischargePortsRes] = await Promise.all([
         contractAPI.getAll(),
         customerAPI.getAll(),
         client.get('/api/products/names').catch(() => ({ data: DEFAULT_PRODUCT_OPTIONS })),
+        client.get<DischargePort[]>('/api/discharge-ports').catch(() => ({ data: [] })),
       ])
       const loadedContracts = contractsRes.data || []
       
@@ -171,6 +173,13 @@ export default function ContractManagement() {
       if (productsRes.data && productsRes.data.length > 0) {
         setProductOptions(productsRes.data)
       }
+      
+      // Update CIF destinations from discharge ports
+      if (dischargePortsRes.data && dischargePortsRes.data.length > 0) {
+        setVoyageDurations(dischargePortsRes.data)
+        setCifDestinations(getCifDestinations())
+      }
+      
       const loadedCustomers = customersRes.data || []
       
       setContracts(loadedContracts)
@@ -1306,7 +1315,7 @@ export default function ContractManagement() {
                   <MenuItem value="">
                     <em>Select destination</em>
                   </MenuItem>
-                  {CIF_DESTINATIONS.map((dest) => (
+                  {cifDestinations.map((dest) => (
                     <MenuItem key={dest} value={dest}>{dest}</MenuItem>
                   ))}
                 </TextField>
