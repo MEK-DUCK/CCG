@@ -15,8 +15,12 @@ from app.errors import (
     monthly_exceeds_quarterly,
     to_http_exception,
 )
-
 from app.config import get_fiscal_quarter_months
+from app.utils.quantity import (
+    parse_contract_products,
+    get_contract_quantity_limits,
+    get_authority_topup_for_product,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -55,33 +59,7 @@ def _validate_monthly_plans_fit_quarterly(db: Session, plan_id: int, new_quantit
             raise to_http_exception(monthly_exceeds_quarterly(quarter, monthly_total, new_qty))
 
 
-def _get_authority_topup_quantity(contract, product_name: str = None) -> float:
-    """
-    Get total authority top-up quantity for a contract/product.
-    
-    Args:
-        contract: Contract model instance
-        product_name: If specified, get top-ups for this product only
-        
-    Returns:
-        Total top-up quantity in KT
-    """
-    if not contract.authority_topups:
-        return 0.0
-    
-    try:
-        topups = json.loads(contract.authority_topups) if isinstance(contract.authority_topups, str) else contract.authority_topups
-        if not topups:
-            return 0.0
-        
-        if product_name:
-            # Sum top-ups for specific product
-            return sum(t.get('quantity', 0) for t in topups if t.get('product_name') == product_name)
-        else:
-            # Sum all top-ups
-            return sum(t.get('quantity', 0) for t in topups)
-    except (json.JSONDecodeError, TypeError):
-        return 0.0
+## _get_authority_topup_quantity moved to app.utils.quantity as get_authority_topup_for_product
 
 
 @router.post("/", response_model=schemas.QuarterlyPlan)
@@ -121,39 +99,24 @@ def create_quarterly_plan(plan: schemas.QuarterlyPlanCreate, db: Session = Depen
     # Calculate total quarterly quantity
     total_quarterly = plan.q1_quantity + plan.q2_quantity + plan.q3_quantity + plan.q4_quantity
     
-    # Calculate target quantities based on whether this is a product-specific plan or contract-wide
-    if plan.product_name and is_multi_product:
-        product = next((p for p in contract_products if p.get('name') == plan.product_name), None)
-        if not product:
-            raise HTTPException(status_code=400, detail=f"Product '{plan.product_name}' not found in contract")
-        total_contract_quantity = product.get('total_quantity', 0)
-        total_optional_quantity = product.get('optional_quantity', 0)
-        # Add authority top-ups for this specific product
-        authority_topup_quantity = _get_authority_topup_quantity(contract, plan.product_name)
-    else:
-        total_contract_quantity = sum(p.get('total_quantity', 0) for p in contract_products)
-        total_optional_quantity = sum(p.get('optional_quantity', 0) for p in contract_products)
-        # Add all authority top-ups
-        authority_topup_quantity = _get_authority_topup_quantity(contract)
+    # Use unified quantity utility for validation
+    product_name_for_limits = plan.product_name if (plan.product_name and is_multi_product) else None
+    authority_topup = get_authority_topup_for_product(db, contract.id, product_name_for_limits)
+    limits = get_contract_quantity_limits(contract_products, product_name_for_limits, authority_topup)
     
-    # Max allowed = total + optional + authority top-ups
-    max_allowed = total_contract_quantity + total_optional_quantity + authority_topup_quantity
-    
-    # Validate total must equal contract/product total (or total + optional + topups if using them)
+    # Validate total must equal contract/product total (or up to max with optional/topups)
     target_label = plan.product_name if (plan.product_name and is_multi_product) else "contract"
-    if total_quarterly < total_contract_quantity:
+    if total_quarterly < limits['min_quantity']:
         raise HTTPException(
             status_code=400,
-            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) is less than the {target_label} total quantity ({total_contract_quantity:,.0f} KT). The quarterly plan total must equal the {target_label} total."
+            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) is less than the {target_label} minimum ({limits['min_quantity']:,.0f} KT). The quarterly plan total must at least equal the minimum."
         )
-    elif total_quarterly > max_allowed:
-        topup_msg = f" + {authority_topup_quantity:,.0f} KT authority top-up" if authority_topup_quantity > 0 else ""
+    elif total_quarterly > limits['max_with_topup']:
+        topup_msg = f" + {authority_topup:,.0f} KT authority top-up" if authority_topup > 0 else ""
         raise HTTPException(
             status_code=400,
-            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) exceeds maximum allowed ({max_allowed:,.0f} KT = {total_contract_quantity:,.0f} KT total + {total_optional_quantity:,.0f} KT optional{topup_msg})"
+            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) exceeds maximum allowed ({limits['max_with_topup']:,.0f} KT = {limits['max_quantity']:,.0f} KT base + {limits['optional_quantity']:,.0f} KT optional{topup_msg})"
         )
-    # Allow any value between total_contract_quantity and max_allowed (more flexible validation)
-    # This allows partial use of optional and top-up quantities
     
     # Determine the product_name to use
     if plan.product_name and is_multi_product:
@@ -264,43 +227,27 @@ def update_quarterly_plan(plan_id: int, plan: schemas.QuarterlyPlanUpdate, db: S
         'q4_quantity': q4,
     }, fiscal_start_month)
     
-    # Parse contract products
-    contract_products = json.loads(contract.products) if contract.products else []
+    # Use unified quantity utility for validation
+    contract_products = parse_contract_products(contract)
     is_multi_product = len(contract_products) > 1
+    product_name_for_limits = db_plan.product_name if (db_plan.product_name and is_multi_product) else None
+    authority_topup = get_authority_topup_for_product(db, contract.id, product_name_for_limits)
+    limits = get_contract_quantity_limits(contract_products, product_name_for_limits, authority_topup)
     
-    # Calculate target quantities based on whether this is a product-specific plan
-    if db_plan.product_name and is_multi_product:
-        product = next((p for p in contract_products if p.get('name') == db_plan.product_name), None)
-        if not product:
-            raise HTTPException(status_code=400, detail=f"Product '{db_plan.product_name}' not found in contract")
-        total_contract_quantity = product.get('total_quantity', 0)
-        total_optional_quantity = product.get('optional_quantity', 0)
-        target_label = db_plan.product_name
-        # Add authority top-ups for this specific product
-        authority_topup_quantity = _get_authority_topup_quantity(contract, db_plan.product_name)
-    else:
-        total_contract_quantity = sum(p.get('total_quantity', 0) for p in contract_products)
-        total_optional_quantity = sum(p.get('optional_quantity', 0) for p in contract_products)
-        target_label = "contract"
-        # Add all authority top-ups
-        authority_topup_quantity = _get_authority_topup_quantity(contract)
+    target_label = db_plan.product_name if (db_plan.product_name and is_multi_product) else "contract"
     
-    # Max allowed = total + optional + authority top-ups
-    max_allowed = total_contract_quantity + total_optional_quantity + authority_topup_quantity
-    
-    # Validate total must equal contract/product total (or up to max allowed if using optional/topups)
-    if total_quarterly < total_contract_quantity:
+    # Validate total must equal contract/product total (or up to max with optional/topups)
+    if total_quarterly < limits['min_quantity']:
         raise HTTPException(
             status_code=400,
-            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) is less than the {target_label} total quantity ({total_contract_quantity:,.0f} KT). The quarterly plan total must equal the {target_label} total."
+            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) is less than the {target_label} minimum ({limits['min_quantity']:,.0f} KT). The quarterly plan total must at least equal the minimum."
         )
-    elif total_quarterly > max_allowed:
-        topup_msg = f" + {authority_topup_quantity:,.0f} KT authority top-up" if authority_topup_quantity > 0 else ""
+    elif total_quarterly > limits['max_with_topup']:
+        topup_msg = f" + {authority_topup:,.0f} KT authority top-up" if authority_topup > 0 else ""
         raise HTTPException(
             status_code=400,
-            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) exceeds maximum allowed ({max_allowed:,.0f} KT = {total_contract_quantity:,.0f} KT total + {total_optional_quantity:,.0f} KT optional{topup_msg})"
+            detail=f"Total quarterly quantity ({total_quarterly:,.0f} KT) exceeds maximum allowed ({limits['max_with_topup']:,.0f} KT = {limits['max_quantity']:,.0f} KT base + {limits['optional_quantity']:,.0f} KT optional{topup_msg})"
         )
-    # Allow any value between total_contract_quantity and max_allowed (more flexible validation)
     
     # Store old values for audit logging
     old_values = {}

@@ -113,7 +113,7 @@ export interface MonthlyPlan {
   delivery_window?: string  // For CIF contracts only
   delivery_window_remark?: string
   combi_group_id?: string  // UUID to link combi monthly plans (multiple products, same vessel/laycan)
-  product_name?: string  // Product name for SPOT contracts
+  product_name?: string  // Product name - stored for ALL contract types (TERM, SPOT, SEMI_TERM)
   quarterly_plan_id?: number  // Optional - only set for TERM contracts
   contract_id: number  // Required - ALL monthly plans must have a contract
   contract?: Contract  // Embedded contract object (from bulk endpoint)

@@ -270,7 +270,7 @@ export default function LiftingPlanPage() {
         qpMonthlyPlans.forEach(mp => {
           allContractMonthlyPlans.push({
             ...mp,
-            productName: qp.product_name || undefined
+            productName: mp.product_name || undefined
           })
         })
       })

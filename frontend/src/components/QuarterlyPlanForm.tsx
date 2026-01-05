@@ -14,6 +14,7 @@ import { Save, CalendarMonth, Add } from '@mui/icons-material'
 import { quarterlyPlanAPI, contractAPI } from '../api/client'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
+import { getQuarterDisplayLabel } from '../utils/fiscalYear'
 
 interface QuarterlyPlanFormProps {
   contractId: number
@@ -22,56 +23,6 @@ interface QuarterlyPlanFormProps {
   existingPlans?: any[]  // Existing quarterly plans for this contract
   onPlanCreated: () => void
   onCancel?: () => void
-}
-
-// Month names for display
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-// Quarters are always in order Q1-Q4, but their calendar months are determined by fiscal_start_month
-// This function is kept for backward compatibility but no longer reorders quarters
-// const getQuarterOrder = (_startMonth: number): ('Q1' | 'Q2' | 'Q3' | 'Q4')[] => {
-//   return ['Q1', 'Q2', 'Q3', 'Q4']
-// }
-
-// Get the month range for a quarter based on fiscal start month
-const getQuarterMonths = (fiscalStartMonth: number, quarter: number): { months: [number, number, number], label: string } => {
-  // Calculate the first month of this quarter
-  const baseMonth = fiscalStartMonth + (quarter - 1) * 3
-  const month1 = ((baseMonth - 1) % 12) + 1
-  const month2 = (baseMonth % 12) + 1
-  const month3 = ((baseMonth + 1) % 12) + 1
-  
-  const label = `${MONTH_NAMES[month1 - 1]}-${MONTH_NAMES[month3 - 1]}`
-  return { months: [month1, month2, month3], label }
-}
-
-// Get quarter label with actual months based on fiscal year
-// const getQuarterLabel = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', fiscalStartMonth: number = 1): string => {
-//   const quarterNum = parseInt(quarter.replace('Q', ''))
-//   const { label } = getQuarterMonths(fiscalStartMonth, quarterNum)
-//   return label
-// }
-
-// Get display label for quarter (e.g., "Q1 (Jul-Sep 2025)")
-const getQuarterDisplayLabel = (
-  quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', 
-  fiscalStartMonth: number = 1,
-  contractStartYear?: number,
-  contractYear: number = 1
-): string => {
-  const quarterNum = parseInt(quarter.replace('Q', ''))
-  const { label } = getQuarterMonths(fiscalStartMonth, quarterNum)
-  
-  // If we have start year info, include the calendar year
-  if (contractStartYear) {
-    // Calculate which calendar year this quarter falls in
-    const baseYear = contractStartYear + (contractYear - 1)
-    const quarterStartMonth = fiscalStartMonth + (quarterNum - 1) * 3
-    const calendarYear = quarterStartMonth > 12 ? baseYear + 1 : baseYear
-    return `${quarter} (${label} ${calendarYear})`
-  }
-  
-  return `${quarter} (${label})`
 }
 
 interface ProductPlanData {
@@ -85,11 +36,6 @@ interface ProductPlanData {
   q2: string
   q3: string
   q4: string
-  // Top-up amounts per quarter
-  q1_topup: number
-  q2_topup: number
-  q3_topup: number
-  q4_topup: number
 }
 
 // Calculate contract duration in years
@@ -100,26 +46,6 @@ const getContractYears = (startPeriod: string, endPeriod: string): number => {
   const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1
   return Math.max(1, Math.ceil(months / 12))
 }
-
-// Get calendar year for a contract year
-// const getCalendarYear = (startPeriod: string, fiscalStartMonth: number, contractYear: number, quarter: number): number => {
-//   if (!startPeriod) return new Date().getFullYear()
-//   const startDate = new Date(startPeriod)
-//   const startYear = startDate.getFullYear()
-//   
-//   // Base year from contract year
-//   let year = startYear + (contractYear - 1)
-//   
-//   // Calculate which quarter's months we're looking at
-//   const quarterStartMonth = fiscalStartMonth + (quarter - 1) * 3
-//   
-//   // If the quarter months wrap to next calendar year
-//   if (quarterStartMonth > 12) {
-//     year += 1
-//   }
-//   
-//   return year
-// }
 
 export default function QuarterlyPlanForm({ contractId, contract, existingPlans = [], onPlanCreated, onCancel }: QuarterlyPlanFormProps) {
   const [contractData, setContractData] = useState<any>(contract)
@@ -196,17 +122,13 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
         
         // Load quantities from existing plan or default to empty
         let q1 = '', q2 = '', q3 = '', q4 = ''
-        let q1_topup = 0, q2_topup = 0, q3_topup = 0, q4_topup = 0
         
         if (existingPlan) {
           q1 = (existingPlan.q1_quantity || 0).toString()
           q2 = (existingPlan.q2_quantity || 0).toString()
           q3 = (existingPlan.q3_quantity || 0).toString()
           q4 = (existingPlan.q4_quantity || 0).toString()
-          q1_topup = existingPlan.q1_topup || 0
-          q2_topup = existingPlan.q2_topup || 0
-          q3_topup = existingPlan.q3_topup || 0
-          q4_topup = existingPlan.q4_topup || 0
+          // Top-up amounts are now tracked at MonthlyPlan level only
         }
         
         // Get year-specific quantity if available, otherwise use total
@@ -225,10 +147,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
           q2,
           q3,
           q4,
-          q1_topup,
-          q2_topup,
-          q3_topup,
-          q4_topup,
+          // Top-up amounts are now tracked at MonthlyPlan level only
         })
       }
     }
@@ -442,10 +361,6 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map((quarter) => {
                       const fieldKey = `q${['Q1', 'Q2', 'Q3', 'Q4'].indexOf(quarter) + 1}` as 'q1' | 'q2' | 'q3' | 'q4'
-                      const topupKey = `${fieldKey}_topup` as 'q1_topup' | 'q2_topup' | 'q3_topup' | 'q4_topup'
-                      const topupQty = plan[topupKey] || 0
-                      const totalQty = parseFloat(plan[fieldKey]) || 0
-                      const originalQty = totalQty - topupQty
                       const contractStartYear = contractData?.start_period ? new Date(contractData.start_period).getFullYear() : undefined
                       
                       return (
@@ -462,13 +377,6 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                             endAdornment: <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>KT</Typography>
                           }}
                         />
-                          {topupQty > 0 && (
-                            <Box sx={{ mt: 0.5, ml: 1, p: 0.5, bgcolor: '#F0FDF4', borderRadius: 0.5, border: '1px solid #D1FAE5' }}>
-                              <Typography variant="caption" sx={{ color: '#166534' }}>
-                                📊 {originalQty.toLocaleString()} original + <span style={{ color: '#10B981', fontWeight: 600 }}>{topupQty.toLocaleString()} top-up</span>
-                              </Typography>
-                            </Box>
-                          )}
                         </Box>
                       )
                     })}
@@ -476,23 +384,12 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
 
                   {/* Total for this year */}
                   <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-                    {(() => {
-                      const totalTopup = (plan.q1_topup || 0) + (plan.q2_topup || 0) + (plan.q3_topup || 0) + (plan.q4_topup || 0)
-                      const originalTotal = total - totalTopup
-                      return (
-                        <Typography 
-                          variant="body1" 
-                          sx={{ fontWeight: 'bold', color: total > 0 ? 'success.main' : 'text.secondary' }}
-                        >
-                          Year {plan.contractYear} Total: {total.toLocaleString()} KT
-                          {totalTopup > 0 && (
-                            <span style={{ color: '#10B981', fontWeight: 500, marginLeft: 8 }}>
-                              ({originalTotal.toLocaleString()} + {totalTopup.toLocaleString()} top-up)
-                            </span>
-                          )}
-                        </Typography>
-                      )
-                    })()}
+                    <Typography 
+                      variant="body1" 
+                      sx={{ fontWeight: 'bold', color: total > 0 ? 'success.main' : 'text.secondary' }}
+                    >
+                      Year {plan.contractYear} Total: {total.toLocaleString()} KT
+                    </Typography>
                   </Box>
                 </Paper>
               </Grid>

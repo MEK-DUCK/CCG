@@ -33,7 +33,6 @@ def get_contract_snapshot(contract: Contract) -> dict:
         "end_period": str(contract.end_period) if contract.end_period else None,
         "fiscal_start_month": contract.fiscal_start_month,
         "products": contract.products,
-        "authority_topups": contract.authority_topups,
         "discharge_ranges": contract.discharge_ranges,
         "additives_required": getattr(contract, "additives_required", None),
         "fax_received": contract.fax_received,
@@ -139,7 +138,7 @@ def log_contract_field_changes(
     tracked_fields = [
         'contract_number', 'contract_type', 'contract_category', 'payment_method',
         'start_period', 'end_period', 'fiscal_start_month', 'products',
-        'authority_topups', 'discharge_ranges', 'additives_required',
+        'discharge_ranges', 'additives_required',
         'fax_received', 'fax_received_date', 'concluded_memo_received',
         'concluded_memo_received_date', 'remarks', 'customer_id'
     ]

@@ -228,7 +228,6 @@ class ContractBase(BaseModel):
     end_period: date
     fiscal_start_month: Optional[int] = Field(1, ge=1, le=12)  # When Q1 starts (1=Jan, 7=Jul, etc.)
     products: List[ContractProduct]  # List of products with quantities (fixed or min/max)
-    authority_topups: Optional[List[AuthorityTopUp]] = None  # Authorized top-ups beyond contract (legacy)
     authority_amendments: Optional[List[AuthorityAmendment]] = None  # Mid-contract min/max adjustments
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
     additives_required: Optional[bool] = None
@@ -259,16 +258,6 @@ class ContractBase(BaseModel):
                 # Auto-align to start_period month if using default
                 pass  # Allow default, will be set in backend if needed
         return self
-    
-    @model_validator(mode="after")
-    def _validate_topup_products(self):
-        """Ensure top-up product names match contract products."""
-        if self.authority_topups:
-            product_names = {p.name for p in self.products}
-            for topup in self.authority_topups:
-                if topup.product_name not in product_names:
-                    raise ValueError(f"Top-up product '{topup.product_name}' not found in contract products: {product_names}")
-        return self
 
 class ContractCreate(ContractBase):
     customer_id: int
@@ -282,7 +271,6 @@ class ContractUpdate(BaseModel):
     end_period: Optional[date] = None
     fiscal_start_month: Optional[int] = Field(None, ge=1, le=12)
     products: Optional[List[ContractProduct]] = None
-    authority_topups: Optional[List[AuthorityTopUp]] = None  # Can add/update top-ups (legacy)
     authority_amendments: Optional[List[AuthorityAmendment]] = None  # Mid-contract min/max adjustments
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
     additives_required: Optional[bool] = None
@@ -323,11 +311,6 @@ class QuarterlyPlanBase(BaseModel):
     q2_quantity: float = Field(0, ge=0)
     q3_quantity: float = Field(0, ge=0)
     q4_quantity: float = Field(0, ge=0)
-    # Authority top-up quantities (tracked separately from original allocation)
-    q1_topup: float = Field(0, ge=0)
-    q2_topup: float = Field(0, ge=0)
-    q3_topup: float = Field(0, ge=0)
-    q4_topup: float = Field(0, ge=0)
 
 class QuarterlyPlanCreate(QuarterlyPlanBase):
     contract_id: int
@@ -339,10 +322,6 @@ class QuarterlyPlanUpdate(BaseModel):
     q2_quantity: Optional[float] = Field(None, ge=0)
     q3_quantity: Optional[float] = Field(None, ge=0)
     q4_quantity: Optional[float] = Field(None, ge=0)
-    q1_topup: Optional[float] = Field(None, ge=0)
-    q2_topup: Optional[float] = Field(None, ge=0)
-    q3_topup: Optional[float] = Field(None, ge=0)
-    q4_topup: Optional[float] = Field(None, ge=0)
     version: Optional[int] = None  # Optimistic locking - send to detect conflicts
 
 class QuarterlyPlan(QuarterlyPlanBase):
@@ -372,7 +351,7 @@ class MonthlyPlanBase(BaseModel):
     delivery_window: Optional[str] = None  # For CIF contracts only
     delivery_window_remark: Optional[str] = Field(None, max_length=10000)
     combi_group_id: Optional[str] = None  # UUID to link combi monthly plans (multiple products, same vessel/laycan)
-    product_name: Optional[str] = None  # Product name for SPOT contracts (when no quarterly plan)
+    product_name: Optional[str] = None  # Product name - stored for ALL contract types (TERM, SPOT, SEMI_TERM)
     # Authority Top-Up fields
     authority_topup_quantity: Optional[float] = Field(None, ge=0)  # Additional KT authorized
     authority_topup_reference: Optional[str] = Field(None, max_length=100)  # Reference number
@@ -533,10 +512,6 @@ class QuarterlyPlanEmbedded(BaseModel):
     q2_quantity: float = 0
     q3_quantity: float = 0
     q4_quantity: float = 0
-    q1_topup: float = 0
-    q2_topup: float = 0
-    q3_topup: float = 0
-    q4_topup: float = 0
     contract_id: int
     contract: Optional[ContractEmbedded] = None
     
@@ -549,7 +524,7 @@ class MonthlyPlanEnriched(MonthlyPlanBase):
     id: int
     quarterly_plan_id: Optional[int] = None  # Optional - only set for TERM contracts
     contract_id: int  # Required - ALL monthly plans must have a contract
-    product_name: Optional[str] = None  # Product name for SPOT contracts
+    product_name: Optional[str] = None  # Product name - stored for ALL contract types
     version: int = 1  # Optimistic locking version
     created_at: datetime
     updated_at: Optional[datetime] = None

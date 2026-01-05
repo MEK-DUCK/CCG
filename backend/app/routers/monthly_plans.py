@@ -21,6 +21,12 @@ from app.errors import (
 )
 from app.config import MIN_YEAR, MAX_YEAR, get_fiscal_quarter_field
 from app.auth import get_current_user
+from app.utils.quantity import (
+    parse_contract_products,
+    get_contract_quantity_limits,
+    get_authority_topup_for_product,
+    validate_quantity_against_limits,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -59,52 +65,35 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
     is_spot_contract = plan.contract_id is not None and plan.quarterly_plan_id is None
     
     if is_spot_contract:
-        # SPOT contract - verify contract exists
+        # SPOT/Range contract - verify contract exists
         contract = db.query(models.Contract).filter(models.Contract.id == plan.contract_id).first()
         if not contract:
             raise HTTPException(status_code=404, detail=f"Contract {plan.contract_id} not found")
         
-        # For SPOT contracts, validate against contract quantity from products JSON
-        # Products support both fixed mode and min/max mode:
-        # Fixed: {"name": "JET A-1", "total_quantity": 1000, "optional_quantity": 200}
-        # Min/Max: {"name": "JET A-1", "min_quantity": 800, "max_quantity": 1200}
-        products = json.loads(contract.products) if contract.products else []
+        # Use unified quantity utility for validation
+        products = parse_contract_products(contract)
+        product_name = getattr(plan, "product_name", None)
+        authority_topup = get_authority_topup_for_product(db, contract.id, product_name)
+        limits = get_contract_quantity_limits(products, product_name, authority_topup)
         
-        # Calculate max allowed quantity - supports both fixed and min/max modes
-        max_allowed = 0
-        min_required = 0
-        is_min_max_mode = False
-        
-        for p in products:
-            if p.get('min_quantity') is not None or p.get('max_quantity') is not None:
-                # Min/Max mode
-                is_min_max_mode = True
-                max_allowed += p.get('max_quantity', 0) or 0
-                min_required += p.get('min_quantity', 0) or 0
-            else:
-                # Fixed quantity mode
-                max_allowed += (p.get('total_quantity', 0) or 0) + (p.get('optional_quantity', 0) or 0)
-        
-        # Get existing monthly plans for this SPOT contract
+        # Get existing monthly plans for this contract (direct link, no quarterly plan)
         existing_monthly_plans = db.query(models.MonthlyPlan).filter(
             models.MonthlyPlan.contract_id == plan.contract_id,
-            models.MonthlyPlan.quarterly_plan_id.is_(None)  # Only SPOT monthly plans
+            models.MonthlyPlan.quarterly_plan_id.is_(None)
         ).all()
         
-        used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans)
-        remaining_quantity = max_allowed - used_quantity
+        # If product-specific, only count plans for that product
+        if product_name:
+            used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans if mp.product_name == product_name)
+        else:
+            used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans)
         
-        if plan.month_quantity > remaining_quantity:
-            if is_min_max_mode:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Monthly quantity ({plan.month_quantity:,.0f} KT) exceeds remaining contract max ({remaining_quantity:,.0f} KT). Contract range: {min_required:,.0f} - {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
-                )
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Monthly quantity ({plan.month_quantity:,.0f} KT) exceeds remaining contract quantity ({remaining_quantity:,.0f} KT). Contract total: {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
-                )
+        # Validate using unified utility
+        is_valid, error_msg = validate_quantity_against_limits(
+            plan.month_quantity, limits, used_quantity, product_name or "contract"
+        )
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_msg)
         
         db_plan = models.MonthlyPlan(
             month=plan.month,
@@ -121,9 +110,9 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
             delivery_window=getattr(plan, "delivery_window", None),
             delivery_window_remark=getattr(plan, "delivery_window_remark", None),
             combi_group_id=getattr(plan, "combi_group_id", None),
-            quarterly_plan_id=None,  # No quarterly plan for SPOT
+            quarterly_plan_id=None,  # No quarterly plan for SPOT/Range contracts
             contract_id=plan.contract_id,
-            product_name=getattr(plan, "product_name", None),
+            product_name=getattr(plan, "product_name", None),  # Product name for ALL contract types
         )
     else:
         # Regular contract - verify quarterly plan exists
@@ -163,6 +152,7 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
             combi_group_id=getattr(plan, "combi_group_id", None),
             quarterly_plan_id=plan.quarterly_plan_id,
             contract_id=quarterly_plan.contract_id,  # Always set contract_id from quarterly plan
+            product_name=getattr(plan, "product_name", None),  # Product name for ALL contract types
         )
     
     db.add(db_plan)
@@ -417,54 +407,12 @@ async def update_monthly_plan(
     # Validate quantity against plan limits
     new_month_quantity = plan.month_quantity if plan.month_quantity is not None else db_plan.month_quantity
     
-    # Check if this is a SPOT contract (no quarterly_plan_id, has contract_id)
-    is_spot_contract = db_plan.quarterly_plan_id is None and db_plan.contract_id is not None
+    # Determine validation path: quarterly plan or direct contract
+    # Note: ALL monthly plans have contract_id set, but only TERM contracts have quarterly_plan_id
+    has_quarterly_plan = db_plan.quarterly_plan_id is not None
     
-    if is_spot_contract:
-        # SPOT contract - validate against contract quantity from products JSON
-        # Supports both fixed mode and min/max mode
-        contract = db.query(models.Contract).filter(models.Contract.id == db_plan.contract_id).first()
-        if contract:
-            products = json.loads(contract.products) if contract.products else []
-            
-            # Calculate max allowed quantity - supports both fixed and min/max modes
-            max_allowed = 0
-            min_required = 0
-            is_min_max_mode = False
-            
-            for p in products:
-                if p.get('min_quantity') is not None or p.get('max_quantity') is not None:
-                    # Min/Max mode
-                    is_min_max_mode = True
-                    max_allowed += p.get('max_quantity', 0) or 0
-                    min_required += p.get('min_quantity', 0) or 0
-                else:
-                    # Fixed quantity mode
-                    max_allowed += (p.get('total_quantity', 0) or 0) + (p.get('optional_quantity', 0) or 0)
-            
-            # Get existing monthly plans for this SPOT contract (excluding current plan)
-            existing_monthly_plans = db.query(models.MonthlyPlan).filter(
-                models.MonthlyPlan.contract_id == db_plan.contract_id,
-                models.MonthlyPlan.quarterly_plan_id.is_(None),
-                models.MonthlyPlan.id != plan_id  # Exclude current plan!
-            ).all()
-            
-            used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans)
-            remaining_quantity = max_allowed - used_quantity
-            
-            if new_month_quantity > remaining_quantity:
-                if is_min_max_mode:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Monthly quantity ({new_month_quantity:,.0f} KT) exceeds remaining contract max ({remaining_quantity:,.0f} KT). Contract range: {min_required:,.0f} - {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
-                    )
-                else:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Monthly quantity ({new_month_quantity:,.0f} KT) exceeds remaining contract quantity ({remaining_quantity:,.0f} KT). Contract total: {max_allowed:,.0f} KT, Already planned: {used_quantity:,.0f} KT"
-                    )
-    else:
-        # Term contract - validate against quarterly plan
+    if has_quarterly_plan:
+        # TERM contract - validate against quarterly plan allocation
         quarterly_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == db_plan.quarterly_plan_id).first()
         if not quarterly_plan:
             raise to_http_exception(quarterly_plan_not_found(db_plan.quarterly_plan_id))
@@ -483,6 +431,35 @@ async def update_monthly_plan(
         
         if new_month_quantity > remaining_quantity:
             raise to_http_exception(quantity_exceeds_plan(new_month_quantity, remaining_quantity, quarterly_total))
+    else:
+        # SPOT/Range contract - validate against contract quantity using unified utility
+        # Always use contract_id directly (it's always set on all monthly plans)
+        contract = db.query(models.Contract).filter(models.Contract.id == db_plan.contract_id).first()
+        if contract:
+            products = parse_contract_products(contract)
+            product_name = db_plan.product_name
+            authority_topup = get_authority_topup_for_product(db, contract.id, product_name)
+            limits = get_contract_quantity_limits(products, product_name, authority_topup)
+            
+            # Get existing monthly plans for this contract (excluding current plan)
+            existing_monthly_plans = db.query(models.MonthlyPlan).filter(
+                models.MonthlyPlan.contract_id == db_plan.contract_id,
+                models.MonthlyPlan.quarterly_plan_id.is_(None),
+                models.MonthlyPlan.id != plan_id
+            ).all()
+            
+            # If product-specific, only count plans for that product
+            if product_name:
+                used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans if mp.product_name == product_name)
+            else:
+                used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans)
+            
+            # Validate using unified utility
+            is_valid, error_msg = validate_quantity_against_limits(
+                new_month_quantity, limits, used_quantity, product_name or "contract"
+            )
+            if not is_valid:
+                raise HTTPException(status_code=400, detail=error_msg)
     
     # Store old values for audit logging
     old_values = {}
@@ -800,16 +777,13 @@ def get_monthly_plan_status(plan_id: int, db: Session = Depends(get_db)):
 @router.post("/{plan_id}/authority-topup", response_model=schemas.MonthlyPlan)
 def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: Session = Depends(get_db)):
     """
-    Add an authority top-up to a specific monthly plan cargo.
-    This CASCADE updates quantities at all levels:
-    - Monthly Plan: increases month_quantity
-    - Quarterly Plan: increases the relevant quarter's quantity AND tracks top-up separately
-    - Contract: adds to authority_topups JSON array
+    Add an authority top-up to a specific monthly plan.
+    
+    Authority top-ups are tracked ONLY at the monthly plan level.
+    The system aggregates from monthly plans when contract/quarterly totals are needed.
     
     Example: March cargo was 100 KT, got authority to load 120 KT -> add 20 KT top-up
     """
-    import json
-    
     # Lock the monthly plan row to prevent concurrent modifications
     db_plan = db.query(models.MonthlyPlan).filter(
         models.MonthlyPlan.id == plan_id
@@ -817,33 +791,20 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
     if db_plan is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
     
-    # Get quarterly plan and contract for cascading updates - also lock them
-    quarterly_plan = db.query(models.QuarterlyPlan).filter(
-        models.QuarterlyPlan.id == db_plan.quarterly_plan_id
-    ).with_for_update().first()
-    
-    if not quarterly_plan:
-        raise HTTPException(status_code=400, detail="Monthly plan has no associated quarterly plan")
-    
-    # Lock the contract row as well
+    # Get contract for audit log
     contract = db.query(models.Contract).filter(
-        models.Contract.id == quarterly_plan.contract_id
-    ).with_for_update().first()
+        models.Contract.id == db_plan.contract_id
+    ).first()
     
     if not contract:
-        raise HTTPException(status_code=400, detail="Quarterly plan has no associated contract")
+        raise HTTPException(status_code=400, detail="Monthly plan has no associated contract")
     
     customer = db.query(models.Customer).filter(
         models.Customer.id == contract.customer_id
     ).first()
     
-    # Determine which fiscal quarter this month belongs to
-    # Use contract's fiscal_start_month (defaults to 1 = January)
-    fiscal_start_month = contract.fiscal_start_month or 1
-    quarter, quarter_field, topup_field = get_fiscal_quarter_field(db_plan.month, fiscal_start_month)
-    
     # ========================
-    # 1. UPDATE MONTHLY PLAN
+    # UPDATE MONTHLY PLAN (single source of truth for top-ups)
     # ========================
     old_topup_qty = db_plan.authority_topup_quantity or 0
     old_month_qty = db_plan.month_quantity
@@ -855,7 +816,7 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
     db_plan.month_quantity = old_month_qty + topup.quantity
     
     month_str = month_name[db_plan.month]
-    product_name = quarterly_plan.product_name or "Unknown"
+    product_name = db_plan.product_name or "Unknown"
     
     # Log monthly plan changes
     log_monthly_plan_action(
@@ -868,65 +829,12 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
         description=f"Authority top-up: +{topup.quantity:,.0f} KT for {month_str} {db_plan.year} {product_name} (Ref: {topup.authority_reference})"
     )
     
-    # ========================
-    # 2. UPDATE QUARTERLY PLAN
-    # ========================
-    old_quarter_qty = getattr(quarterly_plan, quarter_field) or 0
-    old_quarter_topup = getattr(quarterly_plan, topup_field) or 0
-    
-    # Increase both the quarter quantity AND track the top-up separately
-    setattr(quarterly_plan, quarter_field, old_quarter_qty + topup.quantity)
-    setattr(quarterly_plan, topup_field, old_quarter_topup + topup.quantity)
-    
-    logger.info(f"Quarterly plan {quarterly_plan.id} {quarter} updated: {old_quarter_qty} -> {old_quarter_qty + topup.quantity} KT (top-up: {old_quarter_topup + topup.quantity} KT)")
-    
-    # ========================
-    # 3. UPDATE CONTRACT
-    # ========================
-    # Parse existing authority_topups or create new array
-    existing_topups = []
-    if contract.authority_topups:
-        try:
-            existing_topups = json.loads(contract.authority_topups)
-        except (json.JSONDecodeError, TypeError):
-            existing_topups = []
-    
-    # Add new top-up entry
-    new_topup_entry = {
-        "product_name": product_name,
-        "quantity": topup.quantity,
-        "authority_reference": topup.authority_reference,
-        "reason": topup.reason,
-        "authorization_date": str(topup.authorization_date) if topup.authorization_date else None,
-        "month": db_plan.month,
-        "year": db_plan.year,
-        "monthly_plan_id": db_plan.id
-    }
-    existing_topups.append(new_topup_entry)
-    
-    contract.authority_topups = json.dumps(existing_topups)
-    
-    # Also update the product's total_quantity in the products JSON
-    try:
-        products = json.loads(contract.products) if contract.products else []
-        for product in products:
-            if product.get('name') == product_name:
-                old_product_qty = product.get('total_quantity', 0)
-                product['total_quantity'] = old_product_qty + topup.quantity
-                # Track top-up amount in product
-                product['topup_quantity'] = product.get('topup_quantity', 0) + topup.quantity
-                logger.info(f"Contract {contract.contract_number} product {product_name}: {old_product_qty} -> {product['total_quantity']} KT (top-up: {product['topup_quantity']} KT)")
-                break
-        contract.products = json.dumps(products)
-    except (json.JSONDecodeError, TypeError) as e:
-        logger.warning(f"Could not update contract products JSON: {e}")
-    
-    # Log contract authority top-up
+    # Log to contract audit log for visibility
     contract_audit = models.ContractAuditLog(
         contract_id=contract.id,
         contract_db_id=contract.id,
         action='AUTHORITY_TOPUP',
-        field_name='authority_topups',
+        field_name='monthly_plan_topup',
         product_name=product_name,
         topup_quantity=topup.quantity,
         authority_reference=topup.authority_reference,
@@ -940,5 +848,5 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
     db.commit()
     db.refresh(db_plan)
     
-    logger.info(f"Authority top-up CASCADE completed: Monthly plan {plan_id}, Quarterly plan {quarterly_plan.id}, Contract {contract.contract_number}: +{topup.quantity} KT {product_name}")
+    logger.info(f"Authority top-up completed: Monthly plan {plan_id}, Contract {contract.contract_number}: +{topup.quantity} KT {product_name}")
     return db_plan

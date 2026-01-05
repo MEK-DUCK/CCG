@@ -218,10 +218,6 @@ class Contract(Base):
     # Using Text for SQLite compatibility, but PostgreSQL can use JSONB natively
     products = Column(Text, nullable=False)
     
-    # Authority Top-Up: Additional quantity authorized beyond contract total + optional (legacy)
-    # JSON array: [{"product_name": "GASOIL", "quantity": 50, "authority_reference": "AUTH-2024-001", "reason": "Customer request", "date": "2024-12-25"}]
-    authority_topups = Column(Text, nullable=True)
-    
     # Authority Amendments: Mid-contract adjustments to min/max quantities
     # JSON array: [{"product_name": "GASOIL", "amendment_type": "increase_max", "quantity_change": 50, "authority_reference": "AUTH-2024-002", "effective_date": "2024-06-15"}]
     authority_amendments = Column(Text, nullable=True)
@@ -276,11 +272,6 @@ class QuarterlyPlan(Base):
     q2_quantity = Column(Float, default=0)
     q3_quantity = Column(Float, default=0)
     q4_quantity = Column(Float, default=0)
-    # Authority top-up quantities per quarter (tracked separately from original allocation)
-    q1_topup = Column(Float, default=0)
-    q2_topup = Column(Float, default=0)
-    q3_topup = Column(Float, default=0)
-    q4_topup = Column(Float, default=0)
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
     
     # Optimistic locking - prevents lost updates in concurrent edits
@@ -348,7 +339,8 @@ class MonthlyPlan(Base):
     # For SPOT/RANGE contracts: set directly
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
     
-    # Product name for SPOT contracts (when no quarterly plan to get it from)
+    # Product name - stored for ALL contract types (TERM, SPOT, SEMI_TERM)
+    # For multi-product contracts, identifies which product this monthly plan is for
     product_name = Column(String, nullable=True)
     
     # Optimistic locking - prevents lost updates in concurrent edits

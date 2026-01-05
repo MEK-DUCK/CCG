@@ -1015,15 +1015,7 @@ export default function AdminPage() {
                   ))}
                 </Box>
               </TableCell>
-              <TableCell>
-                {contract.authority_topups?.length > 0 ? (
-                  <Chip 
-                    label={`${contract.authority_topups.length} top-up(s)`} 
-                    size="small" 
-                    color="success"
-                  />
-                ) : '-'}
-              </TableCell>
+              <TableCell>-</TableCell>
               <TableCell align="right">
                 <Tooltip title="Edit">
                   <IconButton size="small" onClick={() => handleEdit('contracts', contract)}>

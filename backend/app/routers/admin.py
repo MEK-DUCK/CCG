@@ -72,11 +72,9 @@ def get_database_stats(db: Session = Depends(get_db)):
     if zero_qty_mp > 0:
         issues.append({"type": "zero_quantity_monthly_plans", "count": zero_qty_mp, "severity": "info"})
     
-    # Check for contracts with authority topups
-    contracts_with_topups = db.query(Contract).filter(
-        Contract.authority_topups.isnot(None),
-        Contract.authority_topups != '[]',
-        Contract.authority_topups != ''
+    # Check for monthly plans with authority topups
+    monthly_plans_with_topups = db.query(MonthlyPlan).filter(
+        MonthlyPlan.authority_topup_quantity > 0
     ).count()
     
     return {
@@ -287,7 +285,6 @@ def get_all_contracts_admin(
     for c in contracts:
         customer = db.query(Customer).filter(Customer.id == c.customer_id).first()
         products = json.loads(c.products) if c.products else []
-        authority_topups = json.loads(c.authority_topups) if c.authority_topups else []
         
         result.append({
             "id": c.id,
@@ -298,7 +295,6 @@ def get_all_contracts_admin(
             "start_period": c.start_period.isoformat() if c.start_period else None,
             "end_period": c.end_period.isoformat() if c.end_period else None,
             "products": products,
-            "authority_topups": authority_topups,
             "customer_id": c.customer_id,
             "customer_name": customer.name if customer else "Unknown",
             "remarks": c.remarks,
@@ -332,7 +328,7 @@ def update_contract_admin(
     # Update allowed fields
     allowed_fields = [
         "contract_number", "contract_type", "payment_method", 
-        "start_period", "end_period", "products", "authority_topups",
+        "start_period", "end_period", "products",
         "remarks", "discharge_ranges", "additives_required",
         "fax_received", "concluded_memo_received"
     ]
@@ -341,7 +337,7 @@ def update_contract_admin(
         if field in data:
             value = data[field]
             # Handle JSON fields
-            if field in ["products", "authority_topups"] and isinstance(value, (list, dict)):
+            if field in ["products"] and isinstance(value, (list, dict)):
                 value = json.dumps(value)
             # Handle date fields
             if field in ["start_period", "end_period"] and value:

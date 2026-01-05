@@ -36,6 +36,7 @@ import { VersionHistoryDialog } from './VersionHistory'
 import { CIF_ROUTES, calculateDeliveryWindow, calculateETA, setVoyageDurations, isVoyageDurationsLoaded, type DischargePort } from '../utils/voyageDuration'
 import client from '../api/client'
 import { BADGE_COLORS } from '../utils/chipColors'
+import { getContractYearMonths } from '../utils/fiscalYear'
 
 // Simple UUID generator
 const generateUUID = (): string => {
@@ -241,8 +242,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   }
   
   // Filter contract months for the selected contract year
-  // A contract year runs from fiscal_start_month for 12 months
-  // Example: Feb start -> Year 1 = Feb 2026 to Jan 2027, Year 2 = Feb 2027 to Jan 2028
+  // Uses centralized fiscal year utility from utils/fiscalYear.ts
   // For CIF contracts in Year 1, also include the pre-month (month before contract start)
   const getYearContractMonths = (): Array<{ month: number, year: number }> => {
     if (!contract?.start_period || contractMonths.length === 0) return contractMonths
@@ -250,24 +250,12 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     const fiscalStartMonth = contract.fiscal_start_month || new Date(contract.start_period).getMonth() + 1
     const contractStartYear = new Date(contract.start_period).getFullYear()
     
-    // For the selected contract year, calculate which 12 calendar months it covers
-    // Year 1 starts at contract start, Year 2 starts 12 months later, etc.
-    const baseYear = contractStartYear + (selectedYear - 1)
-    
-    // Generate the 12 months for this contract year
-    const yearMonths: Array<{ month: number, year: number }> = []
-    for (let i = 0; i < 12; i++) {
-      let month = fiscalStartMonth + i
-      let year = baseYear
-      if (month > 12) {
-        month -= 12
-        year += 1
-      }
-      yearMonths.push({ month, year })
-    }
+    // Use centralized utility to get the 12 months for this contract year
+    const yearMonths = getContractYearMonths(fiscalStartMonth, contractStartYear, selectedYear)
     
     // For CIF contracts in Year 1, also include the pre-month (for loadings that deliver in first month)
     if (contractType === 'CIF' && selectedYear === 1) {
+      const baseYear = contractStartYear + (selectedYear - 1)
       let preMonth = fiscalStartMonth - 1
       let preYear = baseYear
       if (preMonth < 1) {
@@ -469,10 +457,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         try {
           const monthlyRes = await monthlyPlanAPI.getByContractId(contractId)
           console.log('Loaded SPOT monthly plans for contract', contractId, ':', monthlyRes.data)
-          const allPlans = (monthlyRes.data || []).map((p: any) => ({
-            ...p,
-            product_name: p.product_name || products[0]?.name || 'Unknown'
-          }))
+          // product_name is stored directly on monthly plans
+          const allPlans = monthlyRes.data || []
           console.log('All loaded SPOT plans:', allPlans.map((p: any) => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
           setExistingMonthlyPlans(allPlans)
           
@@ -625,11 +611,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         for (const qp of quarterlyPlans) {
           const monthlyRes = await monthlyPlanAPI.getAll(qp.id)
           console.log('Loaded monthly plans for QP', qp.id, ':', monthlyRes.data)
-          const plans = (monthlyRes.data || []).map((p: any) => ({
-            ...p,
-            product_name: qp.product_name || products[0]?.name || 'Unknown'
-          }))
-          allPlans.push(...plans)
+          // product_name is stored directly on monthly plans
+          allPlans.push(...(monthlyRes.data || []))
         }
         console.log('All loaded plans:', allPlans.map(p => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
         setExistingMonthlyPlans(allPlans)
@@ -1232,26 +1215,6 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     return quantities[quarterPosition] || 0
   }
 
-  // Get quarterly top-up amount for a product and quarter position
-  const getQuarterlyTopup = (productName: string, quarterPosition: number): number => {
-    const qp = productQuarterlyPlanMap.get(productName)
-    if (!qp) return 0
-    
-    const topups = [
-      (qp as any).q1_topup || 0,
-      (qp as any).q2_topup || 0,
-      (qp as any).q3_topup || 0,
-      (qp as any).q4_topup || 0,
-    ]
-    
-    return topups[quarterPosition] || 0
-  }
-
-  // Get original quarterly quantity (total - topup)
-  const getQuarterlyOriginal = (productName: string, quarterPosition: number): number => {
-    return getQuarterlyQuantity(productName, quarterPosition) - getQuarterlyTopup(productName, quarterPosition)
-  }
-
   // Parse delivery month string (e.g., "February 2025") into { month, year }
   const parseDeliveryMonth = (deliveryMonth: string): { month: number, year: number } | null => {
     if (!deliveryMonth) return null
@@ -1261,6 +1224,54 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     const year = parseInt(parts[1], 10)
     if (monthIndex === -1 || isNaN(year)) return null
     return { month: monthIndex + 1, year }
+  }
+
+  // Get quarterly top-up amount for a product and quarter position
+  // Calculated by summing authority_topup_quantity from monthly plans in that quarter
+  const getQuarterlyTopup = (productName: string, quarterPosition: number): number => {
+    const quarter = quarterOrder[quarterPosition]
+    if (!quarter) return 0
+    
+    const quarterMonths = getQuarterMonths(quarter)
+    
+    if (contractType === 'CIF') {
+      // For CIF, sum top-ups where delivery_month falls in this quarter
+      let total = 0
+      Object.keys(monthEntries).forEach(key => {
+        const entries = monthEntries[key] || []
+        entries.forEach(entry => {
+          const deliveryMonthParsed = parseDeliveryMonth(entry.delivery_month)
+          if (!deliveryMonthParsed) return
+          
+          const isInQuarter = quarterMonths.some(qm => 
+            qm.month === deliveryMonthParsed.month && qm.year === deliveryMonthParsed.year
+          )
+          if (!isInQuarter) return
+          
+          if (entry.product_name === productName || (entry.is_combi && entry.combi_quantities[productName])) {
+            total += entry.authority_topup_quantity || 0
+          }
+        })
+      })
+      return total
+    }
+    
+    // For FOB, use loading month
+    return quarterMonths.reduce((sum, { month, year }) => {
+      const key = `${month}-${year}`
+      const entries = monthEntries[key] || []
+      return sum + entries.reduce((entrySum, entry) => {
+        if (entry.product_name === productName || (entry.is_combi && entry.combi_quantities[productName])) {
+          return entrySum + (entry.authority_topup_quantity || 0)
+        }
+        return entrySum
+      }, 0)
+    }, 0)
+  }
+
+  // Get original quarterly quantity (total - topup)
+  const getQuarterlyOriginal = (productName: string, quarterPosition: number): number => {
+    return getQuarterlyQuantity(productName, quarterPosition) - getQuarterlyTopup(productName, quarterPosition)
   }
 
   // Get total entered for a quarter for a specific product
@@ -1526,6 +1537,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             
             createPromises.push(monthlyPlanAPI.create({
               quarterly_plan_id: qp.id,
+              product_name: productName,  // Always include product_name for all contract types
               month: month,
               year: year,
               month_quantity: productQty,
@@ -1562,10 +1574,12 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             delivery_window_remark: contractType === 'CIF' && totalQuantity > 0 ? (entry.delivery_window_remark || undefined) : undefined,
           }
           
+          // Always include product_name for all contract types
+          createPayload.product_name = entry.product_name
+          
           // For SPOT/Range contracts, use contract_id instead of quarterly_plan_id
           if (skipQuarterlyPlan) {
             createPayload.contract_id = contractId
-            createPayload.product_name = entry.product_name
           } else {
             createPayload.quarterly_plan_id = entry.quarterly_plan_id
           }
@@ -2425,10 +2439,12 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
               {quarterOrder.map((q, idx) => {
                   const quarterLabel = QUARTER_MONTHS[q].labels.join(', ')
-                const qty = getQuarterlyQuantity(product.name, idx)
+                const originalQty = getQuarterlyQuantity(product.name, idx)  // Original quarterly allocation
+                const topupQty = getQuarterlyTopup(product.name, idx)  // Top-ups from monthly plans
+                const totalAllowed = originalQty + topupQty  // Total allowed = original + top-ups
                 const entered = getTotalEntered(q, product.name)
-                const isComplete = entered === qty
-                  const percentage = qty > 0 ? Math.round((entered / qty) * 100) : 0
+                const isComplete = entered === totalAllowed && totalAllowed > 0
+                  const percentage = totalAllowed > 0 ? Math.round((entered / totalAllowed) * 100) : 0
                   
                 return (
                     <Box 
@@ -2445,7 +2461,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                         <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
                           {q}
                         </Typography>
-                        {isComplete && qty > 0 && (
+                        {isComplete && totalAllowed > 0 && (
                           <Chip 
                             label="Allocated" 
                             size="small" 
@@ -2460,14 +2476,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                         )}
                       </Box>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B', mb: 0.5 }}>
-                        {entered.toLocaleString()} / {qty.toLocaleString()} KT
+                        {entered.toLocaleString()} / {originalQty.toLocaleString()} KT
+                        {topupQty > 0 && (
+                          <Typography component="span" sx={{ color: '#10B981', fontWeight: 500, ml: 0.5, fontSize: '0.85em' }}>
+                            (+{topupQty.toLocaleString()} top-up)
+                          </Typography>
+                        )}
                       </Typography>
                       <Box sx={{ width: '100%', height: 4, bgcolor: '#E2E8F0', borderRadius: 2, overflow: 'hidden' }}>
                         <Box 
                           sx={{ 
-                            width: `${percentage}%`, 
+                            width: `${Math.min(percentage, 100)}%`, 
                             height: '100%', 
-                            bgcolor: isComplete ? '#22C55E' : '#3B82F6',
+                            bgcolor: isComplete ? '#22C55E' : percentage > 100 ? '#EF4444' : '#3B82F6',
                             borderRadius: 2,
                             transition: 'width 0.3s ease',
                           }} 
@@ -2556,9 +2577,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           <Typography variant="caption" sx={{ color: '#64748B' }}>{entry.product_name}</Typography>
                         )}
                       </Box>
-                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B' }}>
-                        {quantity.toLocaleString()} KT
-                      </Typography>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                          {quantity.toLocaleString()} KT
+                        </Typography>
+                        {(entry.authority_topup_quantity || 0) > 0 && (
+                          <Typography variant="caption" sx={{ color: '#10B981', display: 'block' }}>
+                            (incl. {entry.authority_topup_quantity?.toLocaleString()} top-up)
+                          </Typography>
+                        )}
+                      </Box>
                       {contractType === 'FOB' ? (
                         <>
                           <Typography variant="body2" sx={{ color: entry.laycan_5_days ? '#1E293B' : '#94A3B8' }}>
@@ -2871,9 +2899,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                   fullWidth
                                   disabled={isLocked}
                                   helperText={
-                                    entry.id 
-                                      ? `${isLocked ? '(Locked)' : hasCargos ? '(Has cargos)' : ''}`
-                                      : ''
+                                    (entry.authority_topup_quantity || 0) > 0
+                                      ? <span style={{ color: '#10B981' }}>(incl. {entry.authority_topup_quantity?.toLocaleString()} top-up)</span>
+                                      : entry.id 
+                                        ? `${isLocked ? '(Locked)' : hasCargos ? '(Has cargos)' : ''}`
+                                        : ''
                                   }
                                   InputProps={{
                                     endAdornment: (

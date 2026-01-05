@@ -137,6 +137,12 @@ export default function CalendarPage() {
     return contracts.find(c => c.id === contractId)
   }, [contracts])
 
+  // Get product name for a monthly plan
+  // product_name is stored on ALL monthly plans (TERM, SPOT, SEMI_TERM)
+  const getProductNameForMonthlyPlan = useCallback((monthlyPlan: MonthlyPlan): string => {
+    return monthlyPlan.product_name || 'Unknown Product'
+  }, [])
+
   // Transform data into calendar events
   const calendarEvents = useMemo((): CalendarEvent[] => {
     const events: CalendarEvent[] = []
@@ -330,7 +336,7 @@ export default function CalendarPage() {
         if (!selectedEventTypes.includes(eventType)) return
 
         const colors = TBA_COLORS[eventType] || EVENT_COLORS[eventType]
-        const productName = plan.product_name || 'Unknown Product'
+        const productName = getProductNameForMonthlyPlan(plan)
 
         // Use only the first day of the laycan/loading window
         const eventStart = parsed.startDate
@@ -366,7 +372,7 @@ export default function CalendarPage() {
     }
 
     return events
-  }, [cargos, monthlyPlans, contracts, customers, selectedCustomers, selectedContractTypes, selectedEventTypes, showTBA, showOverdueOnly, getCustomerName, getContract])
+  }, [cargos, monthlyPlans, contracts, customers, selectedCustomers, selectedContractTypes, selectedEventTypes, showTBA, showOverdueOnly, getCustomerName, getContract, getProductNameForMonthlyPlan])
 
   // Handle event click
   const handleEventClick = (clickInfo: EventClickArg) => {

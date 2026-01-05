@@ -1377,16 +1377,10 @@ export default function HomePage() {
     return quarterlyPlan?.contract
   }
 
-  // Get product name for a monthly plan (handles both SPOT and regular contracts)
-  const getProductNameForMonthlyPlan = (monthlyPlan: MonthlyPlan & { quarterlyPlanId?: number }): string => {
-    // SPOT contracts have product_name directly on the plan
-    if (monthlyPlan.product_name) {
-      return monthlyPlan.product_name
-    }
-    // Regular contracts - get from quarterly plan
-    const qpId = monthlyPlan.quarterly_plan_id || (monthlyPlan as any).quarterlyPlanId
-    const quarterlyPlan = quarterlyPlansMap.get(qpId)
-    return quarterlyPlan?.product_name || '-'
+  // Get product name for a monthly plan
+  // product_name is stored on ALL monthly plans (TERM, SPOT, SEMI_TERM)
+  const getProductNameForMonthlyPlan = (monthlyPlan: MonthlyPlan): string => {
+    return monthlyPlan.product_name || '-'
   }
 
   const handleCargoSubmit = async () => {
@@ -2987,8 +2981,8 @@ export default function HomePage() {
               
               // For combi, combine product names and sum quantities
               const productNames = group.isCombi 
-                ? group.plans.map(p => p.product_name || p.quarterly_plan?.product_name || '-').join(' + ')
-                : primaryPlan.product_name || primaryPlan.quarterly_plan?.product_name || '-'
+                ? group.plans.map(p => p.product_name || '-').join(' + ')
+                : primaryPlan.product_name || '-'
               const totalQuantity = group.plans.reduce((sum, p) => sum + (p.month_quantity || 0), 0)
               
               // Highlight row if TNG is due soon or overdue and not yet issued

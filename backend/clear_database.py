@@ -30,11 +30,12 @@ from app.models import (
 )
 
 def clear_database():
-    """Delete all data from all tables"""
+    """Delete all data from all tables except seed data (products, load_ports, inspectors, discharge_ports, users)"""
     db = SessionLocal()
     
     try:
         print("🗑️  Starting database cleanup...")
+        print("   Preserving: products, load_ports, inspectors, discharge_ports, users")
         
         # Get database type
         is_postgresql = "postgresql" in str(engine.url)
@@ -42,6 +43,7 @@ def clear_database():
         if is_postgresql:
             print("📊 Detected PostgreSQL database")
             # Use TRUNCATE CASCADE for PostgreSQL (faster and handles foreign keys)
+            # NOTE: Excluding seed data tables (products, load_ports, inspectors, discharge_ports, users)
             tables = [
                 # Audit logs first
                 "cargo_audit_logs",
@@ -60,13 +62,7 @@ def clear_database():
                 "quarterly_plans",
                 "contracts",
                 "customers",
-                # Reference data (usually keep these, but include for completeness)
-                "products",
-                "load_ports",
-                "inspectors",
-                "discharge_ports",
-                # Users (usually keep admin, but include for completeness)
-                # "users"  # Commented out - don't delete users by default
+                # PRESERVED: products, load_ports, inspectors, discharge_ports, users
             ]
             
             # Disable foreign key checks temporarily
@@ -133,28 +129,17 @@ def clear_database():
             db.query(Customer).delete()
             print("  ✓ Cleared customers")
             
-            # Delete reference data (optional - usually keep these)
-            db.query(Product).delete()
-            print("  ✓ Cleared products")
-            
-            db.query(LoadPort).delete()
-            print("  ✓ Cleared load_ports")
-            
-            db.query(Inspector).delete()
-            print("  ✓ Cleared inspectors")
-            
-            db.query(DischargePort).delete()
-            print("  ✓ Cleared discharge_ports")
-            
-            # Note: Users are NOT deleted by default to preserve admin account
-            # Uncomment below to also clear users:
-            # db.query(User).delete()
-            # print("  ✓ Cleared users")
+            # PRESERVED: products, load_ports, inspectors, discharge_ports, users
+            print("  ℹ Preserved products (seed data)")
+            print("  ℹ Preserved load_ports (seed data)")
+            print("  ℹ Preserved inspectors (seed data)")
+            print("  ℹ Preserved discharge_ports (seed data)")
+            print("  ℹ Preserved users")
         
         # Commit all changes
         db.commit()
         print("\n✅ Database cleared successfully!")
-        print("   All data has been deleted. Schema structure is preserved.")
+        print("   Business data deleted. Seed data (products, ports, inspectors) preserved.")
         
     except Exception as e:
         db.rollback()
