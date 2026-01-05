@@ -36,6 +36,7 @@ interface ProductPlanData {
   q2: string
   q3: string
   q4: string
+  adjustmentNotes?: string  // Notes about deferred/advanced quantities
 }
 
 // Calculate contract duration in years
@@ -152,6 +153,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
           q2,
           q3,
           q4,
+          adjustmentNotes: existingPlan?.adjustment_notes || '',
           // Top-up amounts are now tracked at MonthlyPlan level only
         })
       }
@@ -395,6 +397,26 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
                     >
                       Year {plan.contractYear} Total: {total.toLocaleString()} KT
                     </Typography>
+                    
+                    {/* Adjustment Notes - show if there are deferred/advanced quantities */}
+                    {plan.adjustmentNotes && (
+                      <Box sx={{ 
+                        mt: 1.5, 
+                        p: 1.5, 
+                        bgcolor: '#FEF3C7', 
+                        borderRadius: 1, 
+                        border: '1px solid #F59E0B' 
+                      }}>
+                        <Typography variant="caption" sx={{ color: '#92400E', fontWeight: 600, display: 'block', mb: 0.5 }}>
+                          📋 Adjustment Notes
+                        </Typography>
+                        {plan.adjustmentNotes.split('\n').map((note, idx) => (
+                          <Typography key={idx} variant="body2" sx={{ color: '#78350F', fontSize: '0.85rem' }}>
+                            {note}
+                          </Typography>
+                        ))}
+                      </Box>
+                    )}
                   </Box>
                 </Paper>
               </Grid>

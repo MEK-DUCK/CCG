@@ -33,6 +33,7 @@ export interface YearQuantity {
 
 export interface ContractProduct {
   name: string  // JET A-1, GASOIL, GASOIL 10PPM, HFO, LSFO
+  product_id?: number  // Product ID for lookups
   // Fixed quantity mode (legacy/simple) - total_quantity = fixed amount, optional_quantity = extra allowed
   total_quantity?: number  // Total fixed quantity in KT (sum of all years)
   optional_quantity?: number  // Optional quantity in KT (on top of total)
@@ -40,6 +41,44 @@ export interface ContractProduct {
   min_quantity?: number  // Minimum contract quantity in KT
   max_quantity?: number  // Maximum contract quantity in KT
   year_quantities?: YearQuantity[]  // Per-year quantities for multi-year contracts
+  // Original quantities (before amendments) - read-only, from backend
+  original_min_quantity?: number  // Original min before any amendments
+  original_max_quantity?: number  // Original max before any amendments
+  original_year_quantities?: YearQuantity[]  // Original per-year quantities
+}
+
+// Effective quantities with amendments and top-ups applied
+export interface EffectiveProductQuantities {
+  name: string
+  product_id: number
+  original_min: number
+  original_max: number
+  effective_min: number  // After amendments
+  effective_max: number  // After amendments
+  max_with_optional: number  // effective_max + optional
+  max_with_topup: number  // max_with_optional + authority top-ups
+  optional_quantity: number
+  authority_topup: number
+  total_amendment_delta_min: number  // Net change from amendments
+  total_amendment_delta_max: number  // Net change from amendments
+  amendment_count: number
+  is_amended: boolean
+}
+
+export interface EffectiveContractQuantities {
+  products: EffectiveProductQuantities[]
+  totals: {
+    original_min: number
+    original_max: number
+    effective_min: number
+    effective_max: number
+    max_with_optional: number
+    max_with_topup: number
+    optional_quantity: number
+    authority_topup: number
+    amendment_count: number
+    is_amended: boolean
+  }
 }
 
 // Authority Amendment for mid-contract min/max adjustments
@@ -67,6 +106,7 @@ export interface Contract {
   fiscal_start_month?: number  // 1-12, when Q1 starts for this contract
   products: ContractProduct[]  // List of products with quantities (fixed or min/max)
   authority_amendments?: AuthorityAmendment[]  // Mid-contract min/max adjustments
+  effective_quantities?: EffectiveContractQuantities  // Calculated quantities with amendments applied
   discharge_ranges?: string
   additives_required?: boolean
   fax_received?: boolean
@@ -92,8 +132,25 @@ export interface QuarterlyPlan {
   q3_quantity: number
   q4_quantity: number
   contract_id: number
+  adjustment_notes?: string  // Notes about deferred/advanced quantities
   created_at: string
   updated_at?: string
+}
+
+export interface QuarterlyPlanAdjustment {
+  id: number
+  quarterly_plan_id: number
+  adjustment_type: 'DEFER_OUT' | 'DEFER_IN' | 'ADVANCE_OUT' | 'ADVANCE_IN'
+  quantity: number
+  from_quarter: number
+  to_quarter: number
+  from_year: number
+  to_year: number
+  authority_reference: string
+  reason?: string
+  monthly_plan_id?: number
+  created_at: string
+  user_initials?: string
 }
 
 export interface MonthlyPlan {
@@ -125,6 +182,13 @@ export interface MonthlyPlan {
   tng_revised_date?: string  // Date TNG was revised
   tng_revised_initials?: string  // Initials of user who revised TNG
   tng_remarks?: string  // Notes about the TNG
+  // Move tracking fields (for deferred/advanced plans)
+  original_month?: number  // Original month before first move
+  original_year?: number  // Original year before first move
+  last_move_authority_reference?: string  // Authority ref for last cross-quarter move
+  last_move_reason?: string  // Reason for last move
+  last_move_date?: string  // Date of last move
+  last_move_action?: 'DEFER' | 'ADVANCE'  // DEFER or ADVANCE
   version?: number  // Optimistic locking version
   created_at: string
   updated_at?: string

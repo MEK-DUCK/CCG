@@ -276,6 +276,24 @@ def ensure_schema():
                         else:
                             conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col_name} {col_type}'))
                     logger.info(f"Added {col_name} column to monthly_plans table")
+            
+            # Add move tracking fields for defer/advance
+            move_cols = [
+                ("original_month", "INTEGER"),
+                ("original_year", "INTEGER"),
+                ("last_move_authority_reference", "VARCHAR(100)"),
+                ("last_move_reason", "TEXT"),
+                ("last_move_date", "DATE"),
+                ("last_move_action", "VARCHAR(10)"),
+            ]
+            for col_name, col_type in move_cols:
+                if col_name not in cols:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS {col_name} {col_type}'))
+                        else:
+                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col_name} {col_type}'))
+                    logger.info(f"Added {col_name} column to monthly_plans table")
         
         # Contracts migrations - add authority_topups for authorized quantity increases (legacy, kept for compatibility)
         if insp.has_table("contracts"):
@@ -302,6 +320,46 @@ def ensure_schema():
                             conn.execute(text(f'ALTER TABLE contracts ADD COLUMN {col_name} {col_type}'))
                     logger.info(f"Added {col_name} column to contracts table")
         
+        # Contract products migrations - add original quantity columns for amendment tracking
+        if insp.has_table("contract_products"):
+            cols = [c.get("name") for c in insp.get_columns("contract_products")]
+            original_qty_cols = [
+                ("original_min_quantity", "FLOAT"),
+                ("original_max_quantity", "FLOAT"),
+                ("original_year_quantities", "TEXT"),
+            ]
+            for col_name, col_type in original_qty_cols:
+                if col_name not in cols:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text(f'ALTER TABLE contract_products ADD COLUMN IF NOT EXISTS {col_name} {col_type}'))
+                        else:
+                            conn.execute(text(f'ALTER TABLE contract_products ADD COLUMN {col_name} {col_type}'))
+                    logger.info(f"Added {col_name} column to contract_products table")
+            
+            # Backfill original quantities from current values for existing records
+            # Only do this once - check if any records have NULL original values but non-NULL current values
+            with engine.begin() as conn:
+                if dialect == "postgresql":
+                    conn.execute(text('''
+                        UPDATE contract_products 
+                        SET original_min_quantity = min_quantity,
+                            original_max_quantity = max_quantity,
+                            original_year_quantities = year_quantities
+                        WHERE (original_min_quantity IS NULL AND min_quantity IS NOT NULL)
+                           OR (original_max_quantity IS NULL AND max_quantity IS NOT NULL)
+                    '''))
+                else:
+                    conn.execute(text('''
+                        UPDATE contract_products 
+                        SET original_min_quantity = min_quantity,
+                            original_max_quantity = max_quantity,
+                            original_year_quantities = year_quantities
+                        WHERE (original_min_quantity IS NULL AND min_quantity IS NOT NULL)
+                           OR (original_max_quantity IS NULL AND max_quantity IS NOT NULL)
+                    '''))
+            logger.info("Backfilled original quantity values for existing contract products")
+        
         # Quarterly plans migrations - add contract_year for multi-year contracts
         if insp.has_table("quarterly_plans"):
             cols = [c.get("name") for c in insp.get_columns("quarterly_plans")]
@@ -312,6 +370,76 @@ def ensure_schema():
                     else:
                         conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN contract_year INTEGER DEFAULT 1'))
                 logger.info("Added contract_year column to quarterly_plans table")
+            
+            # Add adjustment_notes for defer/advance tracking
+            if "adjustment_notes" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN IF NOT EXISTS adjustment_notes TEXT'))
+                    else:
+                        conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN adjustment_notes TEXT'))
+                logger.info("Added adjustment_notes column to quarterly_plans table")
+        
+        # Audit logs migrations - add authority_reference for cross-quarter moves
+        if insp.has_table("monthly_plan_audit_logs"):
+            cols = [c.get("name") for c in insp.get_columns("monthly_plan_audit_logs")]
+            if "authority_reference" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE monthly_plan_audit_logs ADD COLUMN IF NOT EXISTS authority_reference VARCHAR(100)'))
+                    else:
+                        conn.execute(text('ALTER TABLE monthly_plan_audit_logs ADD COLUMN authority_reference VARCHAR(100)'))
+                logger.info("Added authority_reference column to monthly_plan_audit_logs table")
+        
+        if insp.has_table("cargo_audit_logs"):
+            cols = [c.get("name") for c in insp.get_columns("cargo_audit_logs")]
+            if "authority_reference" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE cargo_audit_logs ADD COLUMN IF NOT EXISTS authority_reference VARCHAR(100)'))
+                    else:
+                        conn.execute(text('ALTER TABLE cargo_audit_logs ADD COLUMN authority_reference VARCHAR(100)'))
+                logger.info("Added authority_reference column to cargo_audit_logs table")
+        
+        # Create quarterly_plan_adjustments table for tracking cross-quarter defer/advance
+        if not insp.has_table("quarterly_plan_adjustments"):
+            with engine.begin() as conn:
+                conn.execute(text('''
+                    CREATE TABLE quarterly_plan_adjustments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        quarterly_plan_id INTEGER NOT NULL REFERENCES quarterly_plans(id),
+                        adjustment_type VARCHAR(20) NOT NULL,
+                        quantity FLOAT NOT NULL,
+                        from_quarter INTEGER,
+                        to_quarter INTEGER,
+                        from_year INTEGER,
+                        to_year INTEGER,
+                        authority_reference VARCHAR(100) NOT NULL,
+                        reason TEXT,
+                        monthly_plan_id INTEGER REFERENCES monthly_plans(id),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        user_id INTEGER REFERENCES users(id),
+                        user_initials VARCHAR(4)
+                    )
+                ''' if dialect == "sqlite" else '''
+                    CREATE TABLE IF NOT EXISTS quarterly_plan_adjustments (
+                        id SERIAL PRIMARY KEY,
+                        quarterly_plan_id INTEGER NOT NULL REFERENCES quarterly_plans(id),
+                        adjustment_type VARCHAR(20) NOT NULL,
+                        quantity FLOAT NOT NULL,
+                        from_quarter INTEGER,
+                        to_quarter INTEGER,
+                        from_year INTEGER,
+                        to_year INTEGER,
+                        authority_reference VARCHAR(100) NOT NULL,
+                        reason TEXT,
+                        monthly_plan_id INTEGER REFERENCES monthly_plans(id),
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        user_id INTEGER REFERENCES users(id),
+                        user_initials VARCHAR(4)
+                    )
+                '''))
+            logger.info("Created quarterly_plan_adjustments table")
         
         # Monthly plans migrations - add direct contract link for SPOT contracts
         if insp.has_table("monthly_plans"):

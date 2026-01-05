@@ -47,6 +47,7 @@ def _quarterly_plan_to_schema(plan: models.QuarterlyPlan, db: Session) -> dict:
         "q3_quantity": plan.q3_quantity,
         "q4_quantity": plan.q4_quantity,
         "contract_id": plan.contract_id,
+        "adjustment_notes": plan.adjustment_notes,
         "version": plan.version,
         "created_at": plan.created_at,
         "updated_at": plan.updated_at,
@@ -225,6 +226,79 @@ def read_quarterly_plan(plan_id: int, db: Session = Depends(get_db)):
     if plan is None:
         raise to_http_exception(quarterly_plan_not_found(plan_id))
     return _quarterly_plan_to_schema(plan, db)
+
+
+@router.get("/{plan_id}/adjustments")
+def get_quarterly_plan_adjustments(plan_id: int, db: Session = Depends(get_db)):
+    """
+    Get all authority-approved adjustments for a quarterly plan.
+    Returns the history of cross-quarter defer/advance operations.
+    """
+    plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == plan_id).first()
+    if plan is None:
+        raise to_http_exception(quarterly_plan_not_found(plan_id))
+    
+    adjustments = db.query(models.QuarterlyPlanAdjustment).filter(
+        models.QuarterlyPlanAdjustment.quarterly_plan_id == plan_id
+    ).order_by(models.QuarterlyPlanAdjustment.created_at.desc()).all()
+    
+    return [
+        {
+            "id": adj.id,
+            "adjustment_type": adj.adjustment_type,
+            "quantity": adj.quantity,
+            "from_quarter": adj.from_quarter,
+            "to_quarter": adj.to_quarter,
+            "from_year": adj.from_year,
+            "to_year": adj.to_year,
+            "authority_reference": adj.authority_reference,
+            "reason": adj.reason,
+            "monthly_plan_id": adj.monthly_plan_id,
+            "created_at": adj.created_at.isoformat() if adj.created_at else None,
+            "user_initials": adj.user_initials,
+        }
+        for adj in adjustments
+    ]
+
+
+@router.get("/contract/{contract_id}/adjustments")
+def get_contract_quarterly_adjustments(contract_id: int, db: Session = Depends(get_db)):
+    """
+    Get all authority-approved adjustments for all quarterly plans of a contract.
+    Useful for displaying adjustment history in the quarterly plan view.
+    """
+    # Get all quarterly plans for this contract
+    plans = db.query(models.QuarterlyPlan).filter(
+        models.QuarterlyPlan.contract_id == contract_id
+    ).all()
+    
+    if not plans:
+        return []
+    
+    plan_ids = [p.id for p in plans]
+    
+    adjustments = db.query(models.QuarterlyPlanAdjustment).filter(
+        models.QuarterlyPlanAdjustment.quarterly_plan_id.in_(plan_ids)
+    ).order_by(models.QuarterlyPlanAdjustment.created_at.desc()).all()
+    
+    return [
+        {
+            "id": adj.id,
+            "quarterly_plan_id": adj.quarterly_plan_id,
+            "adjustment_type": adj.adjustment_type,
+            "quantity": adj.quantity,
+            "from_quarter": adj.from_quarter,
+            "to_quarter": adj.to_quarter,
+            "from_year": adj.from_year,
+            "to_year": adj.to_year,
+            "authority_reference": adj.authority_reference,
+            "reason": adj.reason,
+            "monthly_plan_id": adj.monthly_plan_id,
+            "created_at": adj.created_at.isoformat() if adj.created_at else None,
+            "user_initials": adj.user_initials,
+        }
+        for adj in adjustments
+    ]
 
 
 @router.put("/{plan_id}", response_model=schemas.QuarterlyPlan)

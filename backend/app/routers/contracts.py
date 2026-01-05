@@ -34,9 +34,25 @@ def _get_product_by_name(db: Session, name: str) -> models.Product:
     return product
 
 
-def _contract_to_dict(db_contract: models.Contract, has_remarks: bool = True, has_additives_required: bool = True) -> dict:
-    """Convert a Contract model to dict with products and amendments as lists."""
-    return {
+def _contract_to_dict(
+    db_contract: models.Contract, 
+    has_remarks: bool = True, 
+    has_additives_required: bool = True,
+    db: Session = None,
+    include_effective_quantities: bool = False,
+) -> dict:
+    """Convert a Contract model to dict with products and amendments as lists.
+    
+    Args:
+        db_contract: Contract model instance
+        has_remarks: Include remarks field
+        has_additives_required: Include additives_required field
+        db: Database session (required if include_effective_quantities=True)
+        include_effective_quantities: If True, include effective quantities with amendments applied
+    """
+    from app.utils.quantity import get_effective_contract_quantities
+    
+    result = {
         "id": db_contract.id,
         "contract_id": db_contract.contract_id,
         "contract_number": db_contract.contract_number,
@@ -63,14 +79,40 @@ def _contract_to_dict(db_contract: models.Contract, has_remarks: bool = True, ha
         "created_at": db_contract.created_at,
         "updated_at": db_contract.updated_at
     }
+    
+    # Include effective quantities with amendments applied
+    if include_effective_quantities and db:
+        effective = get_effective_contract_quantities(db, db_contract)
+        result["effective_quantities"] = effective
+    
+    return result
 
 
-def _sync_contract_products(db: Session, contract: models.Contract, products_data: list):
+def _sync_contract_products(db: Session, contract: models.Contract, products_data: list, preserve_originals: bool = False):
     """
     Sync contract products - delete existing and create new ones.
     products_data is a list of dicts with product info.
+    
+    Args:
+        db: Database session
+        contract: Contract model instance
+        products_data: List of product dicts or Pydantic models
+        preserve_originals: If True, preserve original quantities from existing products
+                           (used when updating contracts to keep audit trail)
     """
     import json
+    
+    # Get existing products' original quantities before deletion (if preserving)
+    existing_originals = {}
+    if preserve_originals and contract.contract_products:
+        for cp in contract.contract_products:
+            product_name = cp.product.name if cp.product else None
+            if product_name:
+                existing_originals[product_name] = {
+                    'original_min_quantity': cp.original_min_quantity,
+                    'original_max_quantity': cp.original_max_quantity,
+                    'original_year_quantities': cp.original_year_quantities,
+                }
     
     # Delete existing contract products
     db.query(models.ContractProduct).filter(
@@ -107,6 +149,20 @@ def _sync_contract_products(db: Session, contract: models.Contract, products_dat
             else:
                 year_quantities_json = json.dumps(year_quantities)
         
+        # Determine original quantities
+        # If preserving and product existed before, use the stored originals
+        # Otherwise, original = current (new product or new contract)
+        if preserve_originals and product_name in existing_originals:
+            orig = existing_originals[product_name]
+            original_min = orig['original_min_quantity']
+            original_max = orig['original_max_quantity']
+            original_year_qty = orig['original_year_quantities']
+        else:
+            # New product - original equals current
+            original_min = min_qty
+            original_max = max_qty
+            original_year_qty = year_quantities_json
+        
         cp = models.ContractProduct(
             contract_id=contract.id,
             product_id=product.id,
@@ -114,7 +170,11 @@ def _sync_contract_products(db: Session, contract: models.Contract, products_dat
             optional_quantity=optional_qty,
             min_quantity=min_qty,
             max_quantity=max_qty,
-            year_quantities=year_quantities_json
+            year_quantities=year_quantities_json,
+            # Store original quantities for amendment tracking
+            original_min_quantity=original_min,
+            original_max_quantity=original_max,
+            original_year_quantities=original_year_qty,
         )
         db.add(cp)
 
@@ -122,9 +182,16 @@ def _sync_contract_products(db: Session, contract: models.Contract, products_dat
 def _sync_authority_amendments(db: Session, contract: models.Contract, amendments_data: list):
     """
     Sync authority amendments - delete existing and create new ones.
-    Also applies amendments to contract product quantities.
+    
+    NOTE: This function NO LONGER mutates contract product quantities.
+    Effective quantities are calculated dynamically using apply_amendments_to_product()
+    in the quantity.py utility module. This ensures:
+    1. Original contract values are preserved for audit
+    2. Amendments can be added/removed without corrupting base data
+    3. Effective dates can be properly respected in calculations
     """
     from datetime import datetime
+    from app.utils.quantity import apply_amendments_to_product
     
     # Delete existing amendments
     db.query(models.AuthorityAmendment).filter(
@@ -134,8 +201,11 @@ def _sync_authority_amendments(db: Session, contract: models.Contract, amendment
     if not amendments_data:
         return
     
-    # Get contract products for applying amendments
+    # Get contract products for validation
     contract_products = {cp.product.name: cp for cp in contract.contract_products}
+    
+    # Collect amendments by product for validation
+    amendments_by_product = {}
     
     for amendment_data in amendments_data:
         # Handle both dict and Pydantic model
@@ -180,7 +250,7 @@ def _sync_authority_amendments(db: Session, contract: models.Contract, amendment
             else:
                 effective_date = effective_date_str
         
-        # Create amendment record
+        # Create amendment record (stored for audit and dynamic calculation)
         aa = models.AuthorityAmendment(
             contract_id=contract.id,
             product_id=product.id,
@@ -195,30 +265,36 @@ def _sync_authority_amendments(db: Session, contract: models.Contract, amendment
         )
         db.add(aa)
         
-        # Apply amendment to contract product
+        # Collect for validation
+        if product_name not in amendments_by_product:
+            amendments_by_product[product_name] = []
+        amendments_by_product[product_name].append({
+            'amendment_type': amendment_type,
+            'quantity_change': quantity_change,
+            'new_min_quantity': new_min,
+            'new_max_quantity': new_max,
+            'effective_date': effective_date,
+            'year': year,
+        })
+    
+    # Validate that amendments don't result in invalid quantities
+    for product_name, amendments in amendments_by_product.items():
         cp = contract_products[product_name]
-        qty_change = quantity_change or 0
         
-        if amendment_type == 'increase_max':
-            cp.max_quantity = (cp.max_quantity or 0) + qty_change
-        elif amendment_type == 'decrease_max':
-            cp.max_quantity = max(0, (cp.max_quantity or 0) - qty_change)
-        elif amendment_type == 'increase_min':
-            cp.min_quantity = (cp.min_quantity or 0) + qty_change
-        elif amendment_type == 'decrease_min':
-            cp.min_quantity = max(0, (cp.min_quantity or 0) - qty_change)
-        elif amendment_type == 'set_min' and new_min is not None:
-            cp.min_quantity = new_min
-        elif amendment_type == 'set_max' and new_max is not None:
-            cp.max_quantity = new_max
+        # Calculate effective quantities with all amendments applied
+        effective = apply_amendments_to_product(
+            original_min=cp.original_min_quantity or cp.min_quantity or 0,
+            original_max=cp.original_max_quantity or cp.max_quantity or 0,
+            amendments=amendments,
+            as_of_date=None,  # Validate all amendments regardless of date
+            contract_year=None,  # Validate all years
+        )
         
         # Validate min <= max
-        min_qty = cp.min_quantity or 0
-        max_qty = cp.max_quantity or 0
-        if min_qty > max_qty and max_qty > 0:
+        if effective['min_quantity'] > effective['max_quantity'] and effective['max_quantity'] > 0:
             raise HTTPException(
                 status_code=400,
-                detail=f"Amendment would make min_quantity ({min_qty}) greater than max_quantity ({max_qty}) for product '{product_name}'"
+                detail=f"Amendments would make min_quantity ({effective['min_quantity']:,.0f}) greater than max_quantity ({effective['max_quantity']:,.0f}) for product '{product_name}'"
             )
 
 
@@ -529,6 +605,14 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
     has_additives_required = _contracts_has_column(db, "additives_required")
     
     # Use SELECT FOR UPDATE to prevent concurrent modifications
+    # Note: We need to do the lock in a separate query because PostgreSQL doesn't allow
+    # FOR UPDATE with LEFT OUTER JOINs (which joinedload creates)
+    lock_query = db.query(models.Contract).filter(models.Contract.id == contract_id).with_for_update()
+    locked_contract = lock_query.first()
+    if locked_contract is None:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    
+    # Now load the full contract with relationships
     query = db.query(models.Contract).options(
         joinedload(models.Contract.contract_products).joinedload(models.ContractProduct.product),
         joinedload(models.Contract.authority_amendments).joinedload(models.AuthorityAmendment.product)
@@ -538,9 +622,7 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
     if not has_additives_required:
         query = query.options(defer(models.Contract.additives_required))
     
-    db_contract = query.filter(models.Contract.id == contract_id).with_for_update().first()
-    if db_contract is None:
-        raise HTTPException(status_code=404, detail="Contract not found")
+    db_contract = query.filter(models.Contract.id == contract_id).first()
     
     # Capture old values for audit logging
     old_values = get_contract_snapshot(db_contract)
@@ -580,15 +662,18 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
         raise HTTPException(status_code=400, detail="start_period must be on or before end_period")
     
     # Handle products update (normalized)
+    # preserve_originals=True ensures original quantities are kept for amendment tracking
     if "products" in update_data:
         for product in update_data["products"]:
             _get_product_by_name(db, product["name"])
-        _sync_contract_products(db, db_contract, update_data["products"])
+        _sync_contract_products(db, db_contract, update_data["products"], preserve_originals=True)
         del update_data["products"]  # Don't try to set as attribute
     
     # Handle authority_amendments update (normalized)
     if "authority_amendments" in update_data:
         db.flush()  # Ensure products are synced first
+        # Expire and refresh to ensure contract_products relationship is reloaded
+        db.expire(db_contract, ['contract_products'])
         db.refresh(db_contract)
         _sync_authority_amendments(db, db_contract, update_data["authority_amendments"])
         del update_data["authority_amendments"]  # Don't try to set as attribute

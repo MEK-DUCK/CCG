@@ -24,8 +24,8 @@ import {
 } from '@mui/material'
 import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp, CalendarMonth, History, ViewModule, ViewList } from '@mui/icons-material'
 import { ToggleButton, ToggleButtonGroup } from '@mui/material'
-import { monthlyPlanAPI, contractAPI, cargoAPI } from '../api/client'
-import { MonthlyPlanStatus } from '../types'
+import { monthlyPlanAPI, contractAPI, cargoAPI, quarterlyPlanAPI } from '../api/client'
+import { MonthlyPlanStatus, QuarterlyPlanAdjustment } from '../types'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 import { VersionHistoryDialog } from './VersionHistory'
@@ -85,6 +85,11 @@ interface MonthlyPlanEntry {
   // Authority top-up tracking
   authority_topup_quantity?: number  // Top-up quantity in KT
   authority_topup_reference?: string  // Reference number
+  // Move tracking fields
+  original_month?: number  // Original month before first move
+  original_year?: number  // Original year before first move
+  last_move_action?: 'DEFER' | 'ADVANCE'  // DEFER or ADVANCE
+  last_move_authority_reference?: string  // Authority ref for last cross-quarter move
   // Optimistic locking
   version?: number
 }
@@ -100,6 +105,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const [planStatuses, setPlanStatuses] = useState<Record<number, MonthlyPlanStatus>>({})
   const [editingUser, setEditingUser] = useState<{ user: PresenceUser; field: string } | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
+  const [quarterlyAdjustments, setQuarterlyAdjustments] = useState<QuarterlyPlanAdjustment[]>([])
   
   // Real-time presence tracking for this contract's monthly plan
   const handleDataChanged = useCallback(() => {
@@ -191,6 +197,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const [moveTargetMonth, setMoveTargetMonth] = useState<number>(1)
   const [moveTargetYear, setMoveTargetYear] = useState<number>(new Date().getFullYear())
   const [moveReason, setMoveReason] = useState('')
+  const [moveAuthorityReference, setMoveAuthorityReference] = useState('')
   const [isMoving, setIsMoving] = useState(false)
   
   // Action menu state
@@ -311,6 +318,20 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     }
     loadContract()
   }, [propContract, contractId])
+
+  // Load quarterly plan adjustments (defer/advance history)
+  useEffect(() => {
+    const loadAdjustments = async () => {
+      if (!contractId || skipQuarterlyPlan) return
+      try {
+        const response = await quarterlyPlanAPI.getContractAdjustments(contractId)
+        setQuarterlyAdjustments(response.data || [])
+      } catch (error) {
+        console.error('Error loading quarterly adjustments:', error)
+      }
+    }
+    loadAdjustments()
+  }, [contractId, skipQuarterlyPlan])
 
   useEffect(() => {
     const loadExistingMonthlyPlans = async () => {
@@ -455,6 +476,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               combi_quantities: {},
               authority_topup_quantity: plan.authority_topup_quantity || 0,
               authority_topup_reference: plan.authority_topup_reference || '',
+              // Move tracking fields
+              original_month: plan.original_month,
+              original_year: plan.original_year,
+              last_move_action: plan.last_move_action,
+              last_move_authority_reference: plan.last_move_authority_reference,
               version: plan.version || 1,
             })
           })
@@ -612,6 +638,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             combi_quantities: {},
             authority_topup_quantity: plan.authority_topup_quantity || 0,
             authority_topup_reference: plan.authority_topup_reference || '',
+            // Move tracking fields
+            original_month: plan.original_month,
+            original_year: plan.original_year,
+            last_move_action: plan.last_move_action,
+            last_move_authority_reference: plan.last_move_authority_reference,
             version: plan.version || 1,
           })
         })
@@ -926,6 +957,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     setMoveAction(null)
     setMoveEntryData(null)
     setMoveReason('')
+    setMoveAuthorityReference('')
   }
 
   const handleExecuteMove = async () => {
@@ -942,11 +974,21 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           target_month: moveTargetMonth,
           target_year: moveTargetYear,
           reason: moveReason || undefined,
+          authority_reference: moveAuthorityReference || undefined,
         })
       }
       
       handleCloseMoveDialog()
       onPlanCreated() // Refresh the data
+      // Reload adjustments after move
+      if (!skipQuarterlyPlan) {
+        try {
+          const adjResponse = await quarterlyPlanAPI.getContractAdjustments(contractId)
+          setQuarterlyAdjustments(adjResponse.data || [])
+        } catch (e) {
+          console.error('Error reloading adjustments:', e)
+        }
+      }
     } catch (error: any) {
       console.error('Error moving monthly plan:', error)
       alert(error.response?.data?.detail || 'Failed to move cargo. Please try again.')
@@ -2368,6 +2410,55 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             </Grid>
         ))}
         </Grid>
+        
+        {/* Authority Changes History */}
+        {quarterlyAdjustments.length > 0 && (
+          <Box sx={{ mt: 2, pt: 2, borderTop: '1px dashed #E2E8F0' }}>
+            <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.7rem', display: 'block', mb: 1 }}>
+              📋 Authority Changes
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              {quarterlyAdjustments.map((adj) => {
+                const isOutgoing = adj.adjustment_type.endsWith('_OUT')
+                const actionType = adj.adjustment_type.startsWith('DEFER') ? 'Deferred' : 'Advanced'
+                const direction = isOutgoing ? 'to' : 'from'
+                const otherQuarter = isOutgoing ? adj.to_quarter : adj.from_quarter
+                
+                return (
+                  <Box 
+                    key={adj.id} 
+                    sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 1,
+                      p: 0.75,
+                      bgcolor: isOutgoing ? '#FEF2F2' : '#F0FDF4',
+                      borderRadius: 1,
+                      border: `1px solid ${isOutgoing ? '#FECACA' : '#BBF7D0'}`,
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ 
+                      color: isOutgoing ? '#DC2626' : '#16A34A', 
+                      fontWeight: 600,
+                      minWidth: 60,
+                    }}>
+                      {isOutgoing ? '−' : '+'}{adj.quantity.toLocaleString()} KT
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#475569', flex: 1 }}>
+                      {actionType} {direction} Q{otherQuarter}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#3B82F6', fontWeight: 500 }}>
+                      {adj.authority_reference}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#94A3B8', fontSize: '0.65rem' }}>
+                      {adj.user_initials} • {new Date(adj.created_at).toLocaleDateString()}
+                    </Typography>
+                  </Box>
+                )
+              })}
+            </Box>
+          </Box>
+        )}
       </Box>
       
       {/* Table View - Compact list of all cargos */}
@@ -2664,6 +2755,22 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                   label="Combie Cargo"
                                   size="small" 
                                   sx={{ mb: 1, bgcolor: BADGE_COLORS.COMBI.bgcolor, color: BADGE_COLORS.COMBI.color }} 
+                                />
+                              )}
+                              
+                              {/* Show move indicator for deferred/advanced plans */}
+                              {entry.original_month && entry.original_year && entry.id && (
+                                <Chip 
+                                  icon={entry.last_move_action === 'DEFER' ? <ArrowForward sx={{ fontSize: 14 }} /> : <ArrowBack sx={{ fontSize: 14 }} />}
+                                  label={`${entry.last_move_action === 'DEFER' ? 'Deferred' : 'Advanced'} from ${getMonthName(entry.original_month)} ${entry.original_year}${entry.last_move_authority_reference ? ` (${entry.last_move_authority_reference})` : ''}`}
+                                  size="small" 
+                                  sx={{ 
+                                    mb: 1, 
+                                    ml: entry.is_combi ? 1 : 0,
+                                    bgcolor: entry.last_move_action === 'DEFER' ? '#DBEAFE' : '#EDE9FE',
+                                    color: entry.last_move_action === 'DEFER' ? '#1E40AF' : '#5B21B6',
+                                    '& .MuiChip-icon': { color: 'inherit' }
+                                  }} 
                                 />
                               )}
                               
@@ -3010,18 +3117,23 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <MenuItem onClick={() => handleOpenMoveDialog('DEFER')}>
-          <ListItemIcon>
-            <ArrowForward fontSize="small" sx={{ color: '#2563EB' }} />
-          </ListItemIcon>
-          <ListItemText primary="Defer to Later Month" />
-        </MenuItem>
-        <MenuItem onClick={() => handleOpenMoveDialog('ADVANCE')}>
-          <ListItemIcon>
-            <ArrowBack fontSize="small" sx={{ color: '#7C3AED' }} />
-          </ListItemIcon>
-          <ListItemText primary="Advance to Earlier Month" />
-        </MenuItem>
+        {/* Defer/Advance not available for SPOT contracts */}
+        {!isSpotContract && (
+          <>
+            <MenuItem onClick={() => handleOpenMoveDialog('DEFER')}>
+              <ListItemIcon>
+                <ArrowForward fontSize="small" sx={{ color: '#2563EB' }} />
+              </ListItemIcon>
+              <ListItemText primary="Defer to Later Month" />
+            </MenuItem>
+            <MenuItem onClick={() => handleOpenMoveDialog('ADVANCE')}>
+              <ListItemIcon>
+                <ArrowBack fontSize="small" sx={{ color: '#7C3AED' }} />
+              </ListItemIcon>
+              <ListItemText primary="Advance to Earlier Month" />
+            </MenuItem>
+          </>
+        )}
         <MenuItem 
           onClick={() => {
             if (!actionMenuEntry?.entry.id) {
@@ -3111,10 +3223,15 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         targetMonth={moveTargetMonth}
         targetYear={moveTargetYear}
         reason={moveReason}
+        authorityReference={moveAuthorityReference}
         isMoving={isMoving}
         onTargetMonthChange={setMoveTargetMonth}
         onTargetYearChange={setMoveTargetYear}
         onReasonChange={setMoveReason}
+        onAuthorityReferenceChange={setMoveAuthorityReference}
+        contractType={contractType || 'FOB'}
+        fiscalStartMonth={contract?.fiscal_start_month || 1}
+        isSpotContract={isSpotContract}
       />
       
       {/* Authority Top-Up Dialog */}

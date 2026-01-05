@@ -997,10 +997,20 @@ export default function ContractManagement() {
                               const isMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
                               const optionalQty = p.optional_quantity || 0
                               
+                              // Check if product has been amended (original values differ from current)
+                              const isAmended = isMinMax && (
+                                (p.original_min_quantity != null && p.original_min_quantity !== p.min_quantity) ||
+                                (p.original_max_quantity != null && p.original_max_quantity !== p.max_quantity)
+                              )
+                              
                               // Build quantity display
                               let qtyDisplay: string
+                              let originalDisplay: string | null = null
                               if (isMinMax) {
                                 qtyDisplay = `${(p.min_quantity || 0).toLocaleString()} - ${(p.max_quantity || 0).toLocaleString()} KT`
+                                if (isAmended) {
+                                  originalDisplay = `${(p.original_min_quantity || 0).toLocaleString()} - ${(p.original_max_quantity || 0).toLocaleString()} KT`
+                                }
                               } else {
                                 qtyDisplay = `${(p.total_quantity || 0).toLocaleString()} KT`
                               }
@@ -1022,6 +1032,22 @@ export default function ContractManagement() {
                                         '& .MuiChip-label': { px: 0.5 }
                                       }} 
                                     />
+                                  )}
+                                  {isAmended && (
+                                    <Tooltip title={`Original: ${originalDisplay}`} arrow>
+                                      <Chip 
+                                        label="Amended" 
+                                        size="small" 
+                                        sx={{ 
+                                          height: 16, 
+                                          fontSize: '0.625rem',
+                                          bgcolor: '#FEF3C7', 
+                                          color: '#D97706',
+                                          fontWeight: 600,
+                                          '& .MuiChip-label': { px: 0.5 }
+                                        }} 
+                                      />
+                                    </Tooltip>
                                   )}
                                   {optionalQty > 0 && (
                                     <Chip 

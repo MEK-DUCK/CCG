@@ -263,6 +263,10 @@ class ContractProduct(Base):
     Product allocation within a contract.
     Links contracts to products with quantity information.
     Replaces the old JSON products column for proper relational storage.
+    
+    Original quantities store the base contract values before any amendments.
+    Current quantities (min_quantity, max_quantity) are the effective values
+    that should be calculated dynamically from original + amendments.
     """
     __tablename__ = "contract_products"
     
@@ -274,9 +278,15 @@ class ContractProduct(Base):
     total_quantity = Column(Float, nullable=True)  # Total fixed quantity in KT
     optional_quantity = Column(Float, nullable=True, default=0)  # Optional quantity in KT
     
-    # Min/Max quantity mode (range-based)
-    min_quantity = Column(Float, nullable=True)  # Minimum contract quantity in KT
-    max_quantity = Column(Float, nullable=True)  # Maximum contract quantity in KT
+    # Min/Max quantity mode (range-based) - these are the ORIGINAL contract values
+    min_quantity = Column(Float, nullable=True)  # Original minimum contract quantity in KT
+    max_quantity = Column(Float, nullable=True)  # Original maximum contract quantity in KT
+    
+    # Original quantities preserved for audit/reference (populated from initial contract values)
+    # These remain unchanged even when amendments are applied
+    original_min_quantity = Column(Float, nullable=True)  # Original min before any amendments
+    original_max_quantity = Column(Float, nullable=True)  # Original max before any amendments
+    original_year_quantities = Column(Text, nullable=True)  # Original per-year quantities JSON
     
     # Per-year breakdown stored as JSONB for flexibility
     # Format: [{"year": 1, "quantity": 500, "min_quantity": 200, "max_quantity": 600}, ...]
@@ -289,8 +299,12 @@ class ContractProduct(Base):
     contract = relationship("Contract", back_populates="contract_products")
     product = relationship("Product", back_populates="contract_products")
     
-    def to_dict(self):
-        """Convert to dict format matching the old JSON structure for API compatibility."""
+    def to_dict(self, include_originals: bool = True):
+        """Convert to dict format matching the old JSON structure for API compatibility.
+        
+        Args:
+            include_originals: If True, include original_min/max quantities for UI display
+        """
         import json
         result = {
             "name": self.product.name,
@@ -310,6 +324,18 @@ class ContractProduct(Base):
                 result["year_quantities"] = json.loads(self.year_quantities)
             except (json.JSONDecodeError, TypeError):
                 pass
+        
+        # Include original quantities for audit/display purposes
+        if include_originals:
+            if self.original_min_quantity is not None:
+                result["original_min_quantity"] = self.original_min_quantity
+            if self.original_max_quantity is not None:
+                result["original_max_quantity"] = self.original_max_quantity
+            if self.original_year_quantities:
+                try:
+                    result["original_year_quantities"] = json.loads(self.original_year_quantities)
+                except (json.JSONDecodeError, TypeError):
+                    pass
         
         return result
 
@@ -388,6 +414,10 @@ class QuarterlyPlan(Base):
     q4_quantity = Column(Float, default=0)
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
     
+    # Adjustment notes for deferred/advanced quantities
+    # Format: "Includes 50 KT deferred from Q1 (AUTH-2025-007)"
+    adjustment_notes = Column(Text, nullable=True)
+    
     # Optimistic locking - prevents lost updates in concurrent edits
     version = Column(Integer, nullable=False, default=1)
     
@@ -445,6 +475,15 @@ class MonthlyPlan(Base):
     tng_revised_date = Column(Date, nullable=True)  # Date TNG was revised
     tng_revised_initials = Column(String(10), nullable=True)  # Initials of user who revised TNG
     tng_remarks = Column(Text, nullable=True)  # Notes about the TNG
+    
+    # Move tracking - for deferred/advanced plans
+    # Stores original month/year before any moves (for display indicator)
+    original_month = Column(Integer, nullable=True)  # Original month before first move
+    original_year = Column(Integer, nullable=True)  # Original year before first move
+    last_move_authority_reference = Column(String(100), nullable=True)  # Authority ref for last cross-quarter move
+    last_move_reason = Column(Text, nullable=True)  # Reason for last move
+    last_move_date = Column(Date, nullable=True)  # Date of last move
+    last_move_action = Column(String(10), nullable=True)  # DEFER or ADVANCE
     
     # Nullable for SPOT contracts that skip quarterly planning
     quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=True)
@@ -630,6 +669,9 @@ class CargoAuditLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     cargo_snapshot = Column(Text, nullable=True)  # JSON snapshot for deleted cargos
     
+    # Authority reference for cross-quarter moves
+    authority_reference = Column(String(100), nullable=True)
+    
     # User tracking
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     user_initials = Column(String(4), nullable=True, index=True)
@@ -655,6 +697,9 @@ class MonthlyPlanAuditLog(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     monthly_plan_snapshot = Column(Text, nullable=True)
+    
+    # Authority reference for cross-quarter moves
+    authority_reference = Column(String(100), nullable=True)
     
     # User tracking
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -682,6 +727,43 @@ class QuarterlyPlanAuditLog(Base):
     # User tracking
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     user_initials = Column(String(4), nullable=True, index=True)
+
+
+class QuarterlyPlanAdjustment(Base):
+    """
+    Tracks authority-approved adjustments to quarterly plan quantities.
+    Created when monthly plans are deferred/advanced across quarters.
+    """
+    __tablename__ = "quarterly_plan_adjustments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=False)
+    
+    # Adjustment details
+    adjustment_type = Column(String(20), nullable=False)  # DEFER_OUT, DEFER_IN, ADVANCE_OUT, ADVANCE_IN
+    quantity = Column(Float, nullable=False)  # Quantity in KT (always positive)
+    
+    # Source/Target info
+    from_quarter = Column(Integer, nullable=True)  # Q1=1, Q2=2, etc. (for incoming adjustments)
+    to_quarter = Column(Integer, nullable=True)  # Q1=1, Q2=2, etc. (for outgoing adjustments)
+    from_year = Column(Integer, nullable=True)  # Calendar year
+    to_year = Column(Integer, nullable=True)  # Calendar year
+    
+    # Authority tracking
+    authority_reference = Column(String(100), nullable=False)
+    reason = Column(Text, nullable=True)
+    
+    # Monthly plan reference (the plan that was moved)
+    monthly_plan_id = Column(Integer, ForeignKey("monthly_plans.id"), nullable=True)
+    
+    # Audit fields
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_initials = Column(String(4), nullable=True)
+    
+    # Relationships
+    quarterly_plan = relationship("QuarterlyPlan", backref="adjustments")
+    monthly_plan = relationship("MonthlyPlan")
 
 
 class ContractAuditLog(Base):

@@ -20,6 +20,7 @@ import {
   TableRow,
   Paper,
   Button,
+  Tooltip,
 } from '@mui/material'
 import { FileDownload, PictureAsPdf } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
@@ -157,6 +158,14 @@ export default function ContractSummaryPage() {
     (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
   )
   
+  // Check if any product has been amended (original values differ from current)
+  const hasAmendments = (c: Contract) => c.products.some(p => {
+    const isMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
+    if (!isMinMax) return false
+    return (p.original_min_quantity != null && p.original_min_quantity !== p.min_quantity) ||
+           (p.original_max_quantity != null && p.original_max_quantity !== p.max_quantity)
+  })
+  
   // For fixed mode: return total_quantity, for min/max mode: return max_quantity
   const firmTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
     const hasMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
@@ -174,6 +183,18 @@ export default function ContractSummaryPage() {
   
   // For min/max mode: return min_quantity
   const minTotalFor = (c: Contract) => c.products.reduce((acc, p) => acc + (Number(p.min_quantity) || 0), 0)
+  
+  // Get original min total (before amendments)
+  const originalMinTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
+    const origMin = p.original_min_quantity ?? p.min_quantity ?? 0
+    return acc + Number(origMin)
+  }, 0)
+  
+  // Get original max total (before amendments)
+  const originalMaxTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
+    const origMax = p.original_max_quantity ?? p.max_quantity ?? p.total_quantity ?? 0
+    return acc + Number(origMax)
+  }, 0)
 
   const saveRemarks = async (contractId: number) => {
     if (!remarksEnabled) return
@@ -481,16 +502,37 @@ export default function ContractSummaryPage() {
                       <Typography variant="body2">{productsLabel}</Typography>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {isMinMaxMode(c) ? (
-                        <Chip 
-                          label={`${minTotalFor(c)} - ${firmTotalFor(c)}`} 
-                          size="small" 
-                          variant="outlined"
-                          sx={{ bgcolor: BADGE_COLORS.COMBI.bgcolor, borderColor: BADGE_COLORS.COMBI.color }}
-                        />
-                      ) : (
-                        <Chip label={`${firmTotalFor(c)}`} size="small" variant="outlined" />
-                      )}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {isMinMaxMode(c) ? (
+                          <Chip 
+                            label={`${minTotalFor(c).toLocaleString()} - ${firmTotalFor(c).toLocaleString()}`} 
+                            size="small" 
+                            variant="outlined"
+                            sx={{ bgcolor: BADGE_COLORS.COMBI.bgcolor, borderColor: BADGE_COLORS.COMBI.color }}
+                          />
+                        ) : (
+                          <Chip label={`${firmTotalFor(c).toLocaleString()}`} size="small" variant="outlined" />
+                        )}
+                        {hasAmendments(c) && (
+                          <Tooltip 
+                            title={`Original: ${originalMinTotalFor(c).toLocaleString()} - ${originalMaxTotalFor(c).toLocaleString()} KT`}
+                            arrow
+                          >
+                            <Chip 
+                              label="Amended" 
+                              size="small" 
+                              sx={{ 
+                                height: 18,
+                                fontSize: '0.65rem',
+                                bgcolor: '#FEF3C7', 
+                                color: '#D97706',
+                                fontWeight: 600,
+                                '& .MuiChip-label': { px: 0.5 }
+                              }} 
+                            />
+                          </Tooltip>
+                        )}
+                      </Box>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <Chip label={c.contract_type} size="small" sx={getContractTypeColor(c.contract_type)} />

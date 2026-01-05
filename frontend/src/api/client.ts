@@ -216,6 +216,10 @@ export const quarterlyPlanAPI = {
   create: (data: any) => client.post('/api/quarterly-plans/', data),
   update: (id: number, data: any) => client.put(`/api/quarterly-plans/${id}`, data),
   delete: (id: number) => client.delete(`/api/quarterly-plans/${id}`),
+  // Get adjustments (defer/advance history) for a quarterly plan
+  getAdjustments: (planId: number) => client.get(`/api/quarterly-plans/${planId}/adjustments`),
+  // Get all adjustments for a contract's quarterly plans
+  getContractAdjustments: (contractId: number) => client.get(`/api/quarterly-plans/contract/${contractId}/adjustments`),
 }
 
 // Monthly Plan Authority Top-Up Request
@@ -260,7 +264,7 @@ export const monthlyPlanAPI = {
   create: (data: any) => client.post('/api/monthly-plans/', data),
   update: (id: number, data: any) => client.put(`/api/monthly-plans/${id}`, data),
   delete: (id: number) => client.delete(`/api/monthly-plans/${id}`),
-  move: (id: number, data: { action: 'DEFER' | 'ADVANCE'; target_month: number; target_year: number; reason?: string }) =>
+  move: (id: number, data: { action: 'DEFER' | 'ADVANCE'; target_month: number; target_year: number; reason?: string; authority_reference?: string }) =>
     client.put(`/api/monthly-plans/${id}/move`, data),
   // Add authority top-up to a specific monthly plan cargo
   addAuthorityTopup: (id: number, topup: MonthlyPlanTopUpRequest) =>

@@ -11,9 +11,15 @@ Quantity Modes:
 Both modes are normalized to a common interface:
 - min_quantity: Minimum required quantity
 - max_quantity: Maximum allowed quantity (including optional)
+
+Authority Amendments:
+- Amendments modify the effective min/max quantities without changing original values
+- Effective quantities = original quantities + sum of all applicable amendments
+- Amendments can be filtered by effective_date and contract_year
 """
 
 import json
+from datetime import date
 from typing import Optional, List, Dict, Any, Tuple
 
 
@@ -278,4 +284,308 @@ def validate_quantity_against_limits(
             )
     
     return True, None
+
+
+# =============================================================================
+# Authority Amendment Functions
+# =============================================================================
+
+def apply_amendments_to_product(
+    original_min: float,
+    original_max: float,
+    amendments: List[Dict[str, Any]],
+    as_of_date: Optional[date] = None,
+    contract_year: Optional[int] = None,
+) -> Dict[str, float]:
+    """
+    Calculate effective min/max quantities by applying amendments to original values.
+    
+    This is the core function for dynamic amendment calculation. It takes original
+    contract quantities and applies all applicable amendments to compute effective values.
+    
+    Args:
+        original_min: Original minimum quantity from contract
+        original_max: Original maximum quantity from contract
+        amendments: List of amendment dicts with keys:
+            - amendment_type: 'increase_max', 'decrease_max', 'increase_min', 
+                             'decrease_min', 'set_min', 'set_max'
+            - quantity_change: Amount to add/subtract (for increase/decrease types)
+            - new_min_quantity: New absolute min (for set_min type)
+            - new_max_quantity: New absolute max (for set_max type)
+            - effective_date: Optional date when amendment takes effect
+            - year: Optional contract year this amendment applies to
+        as_of_date: Only apply amendments with effective_date <= this date
+                   If None, applies all amendments regardless of date
+        contract_year: Only apply amendments for this specific contract year
+                      If None, applies amendments where year is None (all years)
+                      
+    Returns:
+        Dict with:
+        - min_quantity: Effective minimum after amendments
+        - max_quantity: Effective maximum after amendments
+        - amendment_count: Number of amendments applied
+        - amendments_applied: List of applied amendment details
+    """
+    effective_min = original_min
+    effective_max = original_max
+    applied_amendments = []
+    
+    for amendment in amendments:
+        # Filter by effective date
+        if as_of_date is not None:
+            eff_date = amendment.get('effective_date')
+            if eff_date:
+                # Convert string to date if needed
+                if isinstance(eff_date, str):
+                    try:
+                        eff_date = date.fromisoformat(eff_date)
+                    except ValueError:
+                        eff_date = None
+                if eff_date and eff_date > as_of_date:
+                    continue  # Amendment not yet effective
+        
+        # Filter by contract year
+        amendment_year = amendment.get('year')
+        if contract_year is not None:
+            # If contract_year specified, only apply amendments for that year or all years (None)
+            if amendment_year is not None and amendment_year != contract_year:
+                continue
+        else:
+            # If no contract_year filter, only apply amendments that apply to all years
+            if amendment_year is not None:
+                continue
+        
+        # Apply the amendment
+        amendment_type = amendment.get('amendment_type')
+        qty_change = amendment.get('quantity_change') or 0
+        new_min = amendment.get('new_min_quantity')
+        new_max = amendment.get('new_max_quantity')
+        
+        applied = False
+        
+        if amendment_type == 'increase_max':
+            effective_max += qty_change
+            applied = True
+        elif amendment_type == 'decrease_max':
+            effective_max = max(0, effective_max - qty_change)
+            applied = True
+        elif amendment_type == 'increase_min':
+            effective_min += qty_change
+            applied = True
+        elif amendment_type == 'decrease_min':
+            effective_min = max(0, effective_min - qty_change)
+            applied = True
+        elif amendment_type == 'set_min' and new_min is not None:
+            effective_min = new_min
+            applied = True
+        elif amendment_type == 'set_max' and new_max is not None:
+            effective_max = new_max
+            applied = True
+        
+        if applied:
+            applied_amendments.append({
+                'type': amendment_type,
+                'change': qty_change if amendment_type in ['increase_max', 'decrease_max', 'increase_min', 'decrease_min'] else None,
+                'new_value': new_min or new_max if amendment_type in ['set_min', 'set_max'] else None,
+                'reference': amendment.get('authority_reference'),
+            })
+    
+    return {
+        'min_quantity': effective_min,
+        'max_quantity': effective_max,
+        'amendment_count': len(applied_amendments),
+        'amendments_applied': applied_amendments,
+    }
+
+
+def get_amendments_for_contract(db, contract_id: int, product_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Get all authority amendments for a contract, optionally filtered by product.
+    
+    Args:
+        db: Database session
+        contract_id: Contract ID
+        product_id: Optional product ID to filter by
+        
+    Returns:
+        List of amendment dicts suitable for apply_amendments_to_product()
+    """
+    from app import models
+    
+    query = db.query(models.AuthorityAmendment).filter(
+        models.AuthorityAmendment.contract_id == contract_id
+    )
+    
+    if product_id:
+        query = query.filter(models.AuthorityAmendment.product_id == product_id)
+    
+    amendments = query.order_by(models.AuthorityAmendment.id).all()
+    
+    return [
+        {
+            'amendment_type': a.amendment_type,
+            'quantity_change': a.quantity_change,
+            'new_min_quantity': a.new_min_quantity,
+            'new_max_quantity': a.new_max_quantity,
+            'effective_date': a.effective_date,
+            'year': a.year,
+            'authority_reference': a.authority_reference,
+            'reason': a.reason,
+        }
+        for a in amendments
+    ]
+
+
+def get_effective_product_quantities(
+    db,
+    contract_id: int,
+    product_id: int,
+    original_min: float,
+    original_max: float,
+    optional_quantity: float = 0,
+    as_of_date: Optional[date] = None,
+    contract_year: Optional[int] = None,
+    include_topup: bool = True,
+) -> Dict[str, Any]:
+    """
+    Get effective quantities for a product including amendments and top-ups.
+    
+    This is the main function to use when you need the actual usable quantities
+    for validation or display purposes.
+    
+    Args:
+        db: Database session
+        contract_id: Contract ID
+        product_id: Product ID
+        original_min: Original min quantity from contract
+        original_max: Original max quantity from contract
+        optional_quantity: Optional quantity on top of max
+        as_of_date: Calculate effective values as of this date
+        contract_year: Calculate for specific contract year
+        include_topup: Whether to include authority top-ups in max calculation
+        
+    Returns:
+        Dict with:
+        - original_min: Original min from contract
+        - original_max: Original max from contract
+        - effective_min: Min after amendments
+        - effective_max: Max after amendments
+        - max_with_optional: effective_max + optional
+        - max_with_topup: max_with_optional + authority top-ups
+        - total_amendment_delta_min: Net change to min from amendments
+        - total_amendment_delta_max: Net change to max from amendments
+        - amendment_count: Number of amendments applied
+    """
+    # Get amendments for this product
+    amendments = get_amendments_for_contract(db, contract_id, product_id)
+    
+    # Apply amendments
+    amended = apply_amendments_to_product(
+        original_min=original_min,
+        original_max=original_max,
+        amendments=amendments,
+        as_of_date=as_of_date,
+        contract_year=contract_year,
+    )
+    
+    # Get authority top-ups if requested
+    topup_qty = 0
+    if include_topup:
+        topup_qty = get_authority_topup_for_product(db, contract_id, product_id=product_id)
+    
+    return {
+        'original_min': original_min,
+        'original_max': original_max,
+        'effective_min': amended['min_quantity'],
+        'effective_max': amended['max_quantity'],
+        'max_with_optional': amended['max_quantity'] + optional_quantity,
+        'max_with_topup': amended['max_quantity'] + optional_quantity + topup_qty,
+        'optional_quantity': optional_quantity,
+        'authority_topup': topup_qty,
+        'total_amendment_delta_min': amended['min_quantity'] - original_min,
+        'total_amendment_delta_max': amended['max_quantity'] - original_max,
+        'amendment_count': amended['amendment_count'],
+        'is_amended': amended['amendment_count'] > 0,
+    }
+
+
+def get_effective_contract_quantities(
+    db,
+    contract,
+    as_of_date: Optional[date] = None,
+    contract_year: Optional[int] = None,
+    include_topup: bool = True,
+) -> Dict[str, Any]:
+    """
+    Get effective quantities for an entire contract including all products.
+    
+    Args:
+        db: Database session
+        contract: Contract model with contract_products loaded
+        as_of_date: Calculate effective values as of this date
+        contract_year: Calculate for specific contract year
+        include_topup: Whether to include authority top-ups
+        
+    Returns:
+        Dict with:
+        - products: List of product dicts with effective quantities
+        - totals: Aggregate totals across all products
+    """
+    products_data = []
+    total_original_min = 0
+    total_original_max = 0
+    total_effective_min = 0
+    total_effective_max = 0
+    total_optional = 0
+    total_topup = 0
+    total_amendments = 0
+    
+    for cp in contract.contract_products:
+        original_min = cp.original_min_quantity or cp.min_quantity or 0
+        original_max = cp.original_max_quantity or cp.max_quantity or 0
+        optional_qty = cp.optional_quantity or 0
+        
+        effective = get_effective_product_quantities(
+            db=db,
+            contract_id=contract.id,
+            product_id=cp.product_id,
+            original_min=original_min,
+            original_max=original_max,
+            optional_quantity=optional_qty,
+            as_of_date=as_of_date,
+            contract_year=contract_year,
+            include_topup=include_topup,
+        )
+        
+        product_name = cp.product.name if cp.product else f"Product {cp.product_id}"
+        
+        products_data.append({
+            'name': product_name,
+            'product_id': cp.product_id,
+            **effective,
+        })
+        
+        total_original_min += original_min
+        total_original_max += original_max
+        total_effective_min += effective['effective_min']
+        total_effective_max += effective['effective_max']
+        total_optional += optional_qty
+        total_topup += effective['authority_topup']
+        total_amendments += effective['amendment_count']
+    
+    return {
+        'products': products_data,
+        'totals': {
+            'original_min': total_original_min,
+            'original_max': total_original_max,
+            'effective_min': total_effective_min,
+            'effective_max': total_effective_max,
+            'max_with_optional': total_effective_max + total_optional,
+            'max_with_topup': total_effective_max + total_optional + total_topup,
+            'optional_quantity': total_optional,
+            'authority_topup': total_topup,
+            'amendment_count': total_amendments,
+            'is_amended': total_amendments > 0,
+        }
+    }
 

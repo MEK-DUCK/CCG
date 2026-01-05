@@ -652,6 +652,52 @@ async def update_monthly_plan(
     return _monthly_plan_to_schema(db_plan, db)
 
 
+def _get_fiscal_quarter(month: int, fiscal_start_month: int = 1) -> int:
+    """
+    Calculate the fiscal quarter for a given month.
+    
+    Args:
+        month: Calendar month (1-12)
+        fiscal_start_month: Month when fiscal Q1 starts (1=January, 4=April, etc.)
+    
+    Returns:
+        Fiscal quarter (1-4)
+    """
+    # Adjust month relative to fiscal year start
+    adjusted_month = (month - fiscal_start_month) % 12
+    return (adjusted_month // 3) + 1
+
+
+def _parse_delivery_month(delivery_month_str: str) -> tuple:
+    """
+    Parse delivery month string like "March 2025" into (month_num, year).
+    Returns (None, None) if parsing fails.
+    """
+    if not delivery_month_str:
+        return None, None
+    
+    month_names_list = ['January', 'February', 'March', 'April', 'May', 'June', 
+                       'July', 'August', 'September', 'October', 'November', 'December']
+    try:
+        parts = delivery_month_str.split(' ')
+        if len(parts) == 2:
+            month_name_str = parts[0]
+            year = int(parts[1])
+            if month_name_str in month_names_list:
+                month_num = month_names_list.index(month_name_str) + 1
+                return month_num, year
+    except Exception:
+        pass
+    return None, None
+
+
+def _format_delivery_month(month_num: int, year: int) -> str:
+    """Format month number and year into delivery month string like 'March 2025'."""
+    month_names_list = ['January', 'February', 'March', 'April', 'May', 'June', 
+                       'July', 'August', 'September', 'October', 'November', 'December']
+    return f"{month_names_list[month_num - 1]} {year}"
+
+
 @router.put("/{plan_id}/move", response_model=schemas.MonthlyPlan)
 async def move_monthly_plan(
     plan_id: int, 
@@ -661,10 +707,24 @@ async def move_monthly_plan(
 ):
     """
     Move a monthly plan to a different month (defer or advance).
-    If the plan has cargos, they will be moved along with it (with version history).
-    Blocked if the plan has COMPLETED cargos (completed operations can't be moved).
+    
+    Rules:
+    - SPOT contracts: Not allowed (return 400)
+    - Within same quarter: Allowed freely
+    - Cross-quarter: Requires authority_reference and reason
+    - FOB: Quarter determined by loading month
+    - CIF: Quarter determined by delivery month
+    
+    What happens on move:
+    - Month/year updated
+    - For CIF: delivery_month updated (user selects target delivery month)
+    - Laycan dates on cargos are cleared
+    - quarterly_plan_id updated for cross-quarter moves
+    - Move tracking fields populated
+    - Audit logs created with authority_reference
     """
     from app.version_history import version_service
+    from datetime import date as date_type
     
     # Get user initials for version history
     user_initials = current_user.initials if current_user else "SYS"
@@ -676,6 +736,33 @@ async def move_monthly_plan(
     if db_plan is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
     
+    # Get the contract
+    contract = None
+    old_quarterly_plan = None
+    if db_plan.quarterly_plan_id:
+        old_quarterly_plan = db.query(models.QuarterlyPlan).filter(
+            models.QuarterlyPlan.id == db_plan.quarterly_plan_id
+        ).first()
+        if old_quarterly_plan:
+            contract = db.query(models.Contract).filter(
+                models.Contract.id == old_quarterly_plan.contract_id
+            ).first()
+    if not contract and db_plan.contract_id:
+        contract = db.query(models.Contract).filter(
+            models.Contract.id == db_plan.contract_id
+        ).first()
+    
+    if not contract:
+        raise HTTPException(status_code=400, detail="Cannot determine contract for this monthly plan")
+    
+    # Block SPOT contracts from defer/advance
+    contract_category = getattr(contract, 'contract_category', None)
+    if contract_category == 'SPOT':
+        raise HTTPException(
+            status_code=400,
+            detail="Defer/Advance is not allowed for SPOT contracts. SPOT contracts are one-time operations."
+        )
+    
     # Check cargo status - only block if cargos are COMPLETED
     cargo_info = get_cargo_info(plan_id, db)
     if cargo_info['has_completed_cargos']:
@@ -685,30 +772,74 @@ async def move_monthly_plan(
                    f"{', '.join(cargo_info['completed_cargo_ids'])}. Completed operations cannot be moved."
         )
     
+    # Determine source and target months based on contract type
+    # For CIF: use delivery month for quarter calculation
+    # For FOB: use loading month
+    is_cif = contract.contract_type == 'CIF'
+    fiscal_start_month = getattr(contract, 'fiscal_start_month', 1) or 1
+    
+    if is_cif:
+        # For CIF, target_month/target_year in the request IS the delivery month
+        # Source is the current delivery_month
+        source_month, source_year = _parse_delivery_month(db_plan.delivery_month)
+        if source_month is None:
+            # Fallback to loading month if delivery_month not set
+            source_month = db_plan.month
+            source_year = db_plan.year
+        target_month = move_request.target_month
+        target_year = move_request.target_year
+    else:
+        # For FOB, use loading month directly
+        source_month = db_plan.month
+        source_year = db_plan.year
+        target_month = move_request.target_month
+        target_year = move_request.target_year
+    
     # Validate move direction matches action
-    old_date = db_plan.year * 12 + db_plan.month
-    new_date = move_request.target_year * 12 + move_request.target_month
+    old_date = source_year * 12 + source_month
+    new_date = target_year * 12 + target_month
     
     if move_request.action == "DEFER" and new_date <= old_date:
         raise to_http_exception(invalid_move_direction("DEFER", "Cannot defer to an earlier or same month. Use ADVANCE action instead."))
     elif move_request.action == "ADVANCE" and new_date >= old_date:
         raise to_http_exception(invalid_move_direction("ADVANCE", "Cannot advance to a later or same month. Use DEFER action instead."))
     
+    # Calculate quarters to determine if cross-quarter move
+    source_quarter = _get_fiscal_quarter(source_month, fiscal_start_month)
+    target_quarter = _get_fiscal_quarter(target_month, fiscal_start_month)
+    
+    # Cross-quarter if quarters differ OR years differ
+    is_cross_quarter = (source_quarter != target_quarter) or (source_year != target_year)
+    
+    # Validate authority for cross-quarter moves
+    if is_cross_quarter:
+        if not move_request.authority_reference:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cross-quarter move requires authority reference. "
+                       f"Moving from Q{source_quarter} {source_year} to Q{target_quarter} {target_year}."
+            )
+        if not move_request.reason:
+            raise HTTPException(
+                status_code=400,
+                detail="Cross-quarter move requires a reason."
+            )
+    
     # Store old values for audit
     old_month = db_plan.month
     old_year = db_plan.year
-    old_month_name = month_name[old_month]
-    new_month_name = month_name[move_request.target_month]
+    old_month_name = month_name[source_month]
+    new_month_name = month_name[target_month]
     action_verb = "Deferred" if move_request.action == "DEFER" else "Advanced"
     
     # Save version history for the monthly plan before moving
     version_service.save_version(
         db, "monthly_plan", db_plan.id, db_plan,
         user_initials=user_initials,
-        change_summary=f"{action_verb} from {old_month_name} {old_year} to {new_month_name} {move_request.target_year}"
+        change_summary=f"{action_verb} from {old_month_name} {source_year} to {new_month_name} {target_year}"
     )
     
-    # If there are cargos, save version history and update them
+    # If there are cargos, save version history, clear laycan, and update them
     cargos = db.query(models.Cargo).filter(models.Cargo.monthly_plan_id == plan_id).all()
     moved_cargo_ids = []
     
@@ -717,8 +848,12 @@ async def move_monthly_plan(
         version_service.save_version(
             db, "cargo", cargo.id, cargo,
             user_initials=user_initials,
-            change_summary=f"{action_verb} with monthly plan from {old_month_name} {old_year} to {new_month_name} {move_request.target_year}"
+            change_summary=f"{action_verb} with monthly plan from {old_month_name} {source_year} to {new_month_name} {target_year}"
         )
+        
+        # Clear laycan dates - they need to be re-negotiated
+        cargo.laycan_start = None
+        cargo.laycan_end = None
         
         # Log the cargo move in the cargo audit log
         audit_entry = models.CargoAuditLog(
@@ -727,85 +862,161 @@ async def move_monthly_plan(
             cargo_cargo_id=cargo.cargo_id,
             action=move_request.action,
             field_name='monthly_plan_month',
-            old_value=f"{old_month_name} {old_year}",
-            new_value=f"{new_month_name} {move_request.target_year}",
-            old_month=old_month,
-            old_year=old_year,
-            new_month=move_request.target_month,
-            new_year=move_request.target_year,
-            description=move_request.reason or f"{action_verb} with monthly plan"
+            old_value=f"{old_month_name} {source_year}",
+            new_value=f"{new_month_name} {target_year}",
+            old_month=source_month,
+            old_year=source_year,
+            new_month=target_month,
+            new_year=target_year,
+            description=move_request.reason or f"{action_verb} with monthly plan",
+            authority_reference=move_request.authority_reference if is_cross_quarter else None
         )
         db.add(audit_entry)
         moved_cargo_ids.append(cargo.cargo_id)
         
-        logger.info(f"Cargo {cargo.cargo_id} {action_verb.lower()} with monthly plan: {old_month_name} {old_year} -> {new_month_name} {move_request.target_year}")
+        logger.info(f"Cargo {cargo.cargo_id} {action_verb.lower()} with monthly plan: {old_month_name} {source_year} -> {new_month_name} {target_year}")
     
-    # Update the monthly plan
-    db_plan.month = move_request.target_month
-    db_plan.year = move_request.target_year
-    db_plan.version = (db_plan.version or 1) + 1  # Increment version for optimistic locking
-    
-    # For CIF contracts, update delivery_month to match the new loading month
-    # This ensures the quantity is tracked against the correct delivery quarter
-    # Get the contract to check if it's CIF
-    contract = None
-    if db_plan.quarterly_plan_id:
-        quarterly_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == db_plan.quarterly_plan_id).first()
-        if quarterly_plan:
-            contract = db.query(models.Contract).filter(models.Contract.id == quarterly_plan.contract_id).first()
-    elif db_plan.contract_id:
-        contract = db.query(models.Contract).filter(models.Contract.id == db_plan.contract_id).first()
-    
-    if contract and contract.contract_type == 'CIF' and db_plan.delivery_month:
-        # Calculate new delivery month based on the move
-        # The delivery month should shift by the same amount as the loading month
-        old_delivery_month = db_plan.delivery_month  # e.g., "January 2026"
-        month_diff = (move_request.target_year * 12 + move_request.target_month) - (old_year * 12 + old_month)
+    # Update the monthly plan based on contract type
+    if is_cif:
+        # For CIF: target is delivery month, calculate new loading month
+        month_diff = (target_year * 12 + target_month) - (source_year * 12 + source_month)
+        new_loading_month = old_month + (month_diff % 12)
+        new_loading_year = old_year + (month_diff // 12)
+        if new_loading_month > 12:
+            new_loading_month -= 12
+            new_loading_year += 1
+        elif new_loading_month < 1:
+            new_loading_month += 12
+            new_loading_year -= 1
         
-        # Parse the old delivery month
-        try:
-            parts = old_delivery_month.split(' ')
-            if len(parts) == 2:
-                old_del_month_name = parts[0]
-                old_del_year = int(parts[1])
-                # Convert month name to number
-                month_names_list = ['January', 'February', 'March', 'April', 'May', 'June', 
-                                   'July', 'August', 'September', 'October', 'November', 'December']
-                if old_del_month_name in month_names_list:
-                    old_del_month_num = month_names_list.index(old_del_month_name) + 1
-                    # Calculate new delivery month
-                    new_del_total = old_del_year * 12 + old_del_month_num + month_diff
-                    new_del_year = (new_del_total - 1) // 12
-                    new_del_month_num = ((new_del_total - 1) % 12) + 1
-                    new_del_month_name = month_names_list[new_del_month_num - 1]
-                    db_plan.delivery_month = f"{new_del_month_name} {new_del_year}"
-                    logger.info(f"Updated delivery_month from '{old_delivery_month}' to '{db_plan.delivery_month}'")
-        except Exception as e:
-            logger.warning(f"Could not update delivery_month: {e}")
+        db_plan.month = new_loading_month
+        db_plan.year = new_loading_year
+        db_plan.delivery_month = _format_delivery_month(target_month, target_year)
+        logger.info(f"CIF: Updated delivery_month to '{db_plan.delivery_month}', loading month to {new_loading_month}/{new_loading_year}")
+    else:
+        # For FOB: target is loading month
+        db_plan.month = target_month
+        db_plan.year = target_year
+    
+    db_plan.version = (db_plan.version or 1) + 1
+    
+    # Track original month/year (first move only)
+    if db_plan.original_month is None:
+        db_plan.original_month = old_month
+        db_plan.original_year = old_year
+    
+    # Update move tracking fields
+    if is_cross_quarter:
+        db_plan.last_move_authority_reference = move_request.authority_reference
+        db_plan.last_move_reason = move_request.reason
+        db_plan.last_move_date = date_type.today()
+        db_plan.last_move_action = move_request.action
+    
+    # Handle cross-quarter: adjust quarterly plan quantities
+    if is_cross_quarter and old_quarterly_plan:
+        move_quantity = db_plan.month_quantity
+        
+        # Map quarter number to field name
+        quarter_field_map = {1: 'q1_quantity', 2: 'q2_quantity', 3: 'q3_quantity', 4: 'q4_quantity'}
+        source_field = quarter_field_map[source_quarter]
+        target_field = quarter_field_map[target_quarter]
+        
+        # 1. Decrease source quarter quantity
+        old_source_qty = getattr(old_quarterly_plan, source_field) or 0
+        new_source_qty = max(0, old_source_qty - move_quantity)
+        setattr(old_quarterly_plan, source_field, new_source_qty)
+        
+        # Create adjustment record for source (outgoing)
+        source_adjustment = models.QuarterlyPlanAdjustment(
+            quarterly_plan_id=old_quarterly_plan.id,
+            adjustment_type=f"{move_request.action}_OUT",  # DEFER_OUT or ADVANCE_OUT
+            quantity=move_quantity,
+            from_quarter=source_quarter,
+            to_quarter=target_quarter,
+            from_year=source_year,
+            to_year=target_year,
+            authority_reference=move_request.authority_reference,
+            reason=move_request.reason,
+            monthly_plan_id=db_plan.id,
+            user_id=current_user.id if current_user else None,
+            user_initials=user_initials,
+        )
+        db.add(source_adjustment)
+        
+        logger.info(f"Decreased Q{source_quarter} from {old_source_qty} to {new_source_qty} KT")
+        
+        # 2. Increase target quarter quantity
+        old_target_qty = getattr(old_quarterly_plan, target_field) or 0
+        new_target_qty = old_target_qty + move_quantity
+        setattr(old_quarterly_plan, target_field, new_target_qty)
+        
+        # Create adjustment record for target (incoming)
+        target_adjustment = models.QuarterlyPlanAdjustment(
+            quarterly_plan_id=old_quarterly_plan.id,
+            adjustment_type=f"{move_request.action}_IN",  # DEFER_IN or ADVANCE_IN
+            quantity=move_quantity,
+            from_quarter=source_quarter,
+            to_quarter=target_quarter,
+            from_year=source_year,
+            to_year=target_year,
+            authority_reference=move_request.authority_reference,
+            reason=move_request.reason,
+            monthly_plan_id=db_plan.id,
+            user_id=current_user.id if current_user else None,
+            user_initials=user_initials,
+        )
+        db.add(target_adjustment)
+        
+        logger.info(f"Increased Q{target_quarter} from {old_target_qty} to {new_target_qty} KT")
+        
+        # Update adjustment notes (human-readable summary)
+        if move_request.action == "DEFER":
+            note = f"-{move_quantity:,.0f} KT deferred from Q{source_quarter} to Q{target_quarter} ({move_request.authority_reference})"
+        else:
+            note = f"-{move_quantity:,.0f} KT advanced from Q{source_quarter} to Q{target_quarter} ({move_request.authority_reference})"
+        
+        if old_quarterly_plan.adjustment_notes:
+            old_quarterly_plan.adjustment_notes += f"\n{note}"
+        else:
+            old_quarterly_plan.adjustment_notes = note
     
     # Build description for monthly plan audit log
-    description = f"{action_verb} {db_plan.month_quantity:,.0f} KT from {old_month_name} {old_year} to {new_month_name} {move_request.target_year}"
+    quarter_info = f" (Q{source_quarter} → Q{target_quarter})" if is_cross_quarter else ""
+    description = f"{action_verb} {db_plan.month_quantity:,.0f} KT from {old_month_name} {source_year} to {new_month_name} {target_year}{quarter_info}"
     if moved_cargo_ids:
         description += f" (with cargo(s): {', '.join(moved_cargo_ids)})"
     if move_request.reason:
         description += f" - Reason: {move_request.reason}"
+    if is_cross_quarter and move_request.authority_reference:
+        description += f" [Authority: {move_request.authority_reference}]"
     
-    log_monthly_plan_action(
-        db=db,
+    # Create audit log entry with authority_reference
+    audit_entry = models.MonthlyPlanAuditLog(
+        monthly_plan_id=db_plan.id,
+        monthly_plan_db_id=db_plan.id,
         action=move_request.action,
-        monthly_plan=db_plan,
         field_name='month',
-        old_value=f"{old_month}/{old_year}",
-        new_value=f"{move_request.target_month}/{move_request.target_year}",
-        description=description
+        old_value=f"{source_month}/{source_year}",
+        new_value=f"{target_month}/{target_year}",
+        month=db_plan.month,
+        year=db_plan.year,
+        contract_id=contract.id,
+        contract_number=contract.contract_number,
+        quarterly_plan_id=db_plan.quarterly_plan_id,
+        description=description,
+        authority_reference=move_request.authority_reference if is_cross_quarter else None,
+        user_initials=user_initials
     )
+    db.add(audit_entry)
     
     db.commit()
     db.refresh(db_plan)
     
-    logger.info(f"Monthly plan {plan_id} {action_verb.lower()}: {old_month_name} {old_year} -> {new_month_name} {move_request.target_year}")
+    logger.info(f"Monthly plan {plan_id} {action_verb.lower()}: {old_month_name} {source_year} -> {new_month_name} {target_year}")
+    if is_cross_quarter:
+        logger.info(f"Cross-quarter move Q{source_quarter} -> Q{target_quarter}, Authority: {move_request.authority_reference}")
     if moved_cargo_ids:
-        logger.info(f"Moved {len(moved_cargo_ids)} cargo(s) with the plan: {', '.join(moved_cargo_ids)}")
+        logger.info(f"Moved {len(moved_cargo_ids)} cargo(s) with the plan (laycan cleared): {', '.join(moved_cargo_ids)}")
     
     return _monthly_plan_to_schema(db_plan, db)
 

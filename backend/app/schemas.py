@@ -156,6 +156,10 @@ class ContractProduct(BaseModel):
     max_quantity: Optional[float] = Field(None, ge=0)  # Maximum contract quantity in KT
     # Per-year breakdown (for multi-year contracts)
     year_quantities: Optional[List[YearQuantity]] = None  # Per-year quantities for multi-year contracts
+    # Original quantities (before amendments) - read-only, set by backend
+    original_min_quantity: Optional[float] = Field(None, ge=0)  # Original min before amendments
+    original_max_quantity: Optional[float] = Field(None, ge=0)  # Original max before amendments
+    original_year_quantities: Optional[List[YearQuantity]] = None  # Original per-year quantities
     
     @model_validator(mode="after")
     def _validate_quantity_mode(self):
@@ -311,6 +315,7 @@ class QuarterlyPlanBase(BaseModel):
     q2_quantity: float = Field(0, ge=0)
     q3_quantity: float = Field(0, ge=0)
     q4_quantity: float = Field(0, ge=0)
+    adjustment_notes: Optional[str] = None  # Notes about deferred/advanced quantities
 
 class QuarterlyPlanCreate(QuarterlyPlanBase):
     contract_id: int
@@ -322,6 +327,7 @@ class QuarterlyPlanUpdate(BaseModel):
     q2_quantity: Optional[float] = Field(None, ge=0)
     q3_quantity: Optional[float] = Field(None, ge=0)
     q4_quantity: Optional[float] = Field(None, ge=0)
+    adjustment_notes: Optional[str] = None  # Notes about deferred/advanced quantities
     version: Optional[int] = None  # Optimistic locking - send to detect conflicts
 
 class QuarterlyPlan(QuarterlyPlanBase):
@@ -365,6 +371,13 @@ class MonthlyPlanBase(BaseModel):
     tng_revised_date: Optional[date] = None  # Date TNG was revised
     tng_revised_initials: Optional[str] = Field(None, max_length=10)  # Initials of user who revised TNG
     tng_remarks: Optional[str] = Field(None, max_length=1000)  # Notes about the TNG
+    # Move tracking fields (for deferred/advanced plans)
+    original_month: Optional[int] = None  # Original month before first move
+    original_year: Optional[int] = None  # Original year before first move
+    last_move_authority_reference: Optional[str] = None  # Authority ref for last cross-quarter move
+    last_move_reason: Optional[str] = None  # Reason for last move
+    last_move_date: Optional[date] = None  # Date of last move
+    last_move_action: Optional[str] = None  # DEFER or ADVANCE
 
 class MonthlyPlanCreate(MonthlyPlanBase):
     quarterly_plan_id: Optional[int] = None  # Optional - only for TERM contracts
@@ -429,7 +442,8 @@ class MonthlyPlanMoveRequest(BaseModel):
     action: str = Field(..., pattern="^(DEFER|ADVANCE)$")  # DEFER or ADVANCE
     target_month: int = Field(..., ge=1, le=12)
     target_year: int = Field(..., ge=2020, le=2100)
-    reason: Optional[str] = Field(None, max_length=500)  # Optional reason for the move
+    reason: Optional[str] = Field(None, max_length=500)  # Reason for the move (required for cross-quarter)
+    authority_reference: Optional[str] = Field(None, max_length=100)  # Required for cross-quarter moves
 
 
 # Enriched schemas for bulk queries (with embedded related data)
