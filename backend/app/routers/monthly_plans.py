@@ -490,11 +490,19 @@ async def update_monthly_plan(
     to prevent lost updates from concurrent edits.
     """
     # Lock the monthly plan row to prevent concurrent modifications
-    db_plan = db.query(models.MonthlyPlan).filter(
+    # Separate locking from relationship loading to avoid PostgreSQL FOR UPDATE error
+    db_plan_locked = db.query(models.MonthlyPlan).filter(
         models.MonthlyPlan.id == plan_id
     ).with_for_update().first()
-    if db_plan is None:
+    if db_plan_locked is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
+    
+    # Now load the product relationship separately if needed
+    db_plan = db.query(models.MonthlyPlan).options(
+        joinedload(models.MonthlyPlan.product)
+    ).filter(
+        models.MonthlyPlan.id == plan_id
+    ).first()
     
     # Check if plan has completed cargos (locked)
     cargo_info = get_cargo_info(plan_id, db)
@@ -571,12 +579,20 @@ async def update_monthly_plan(
         contract = db.query(models.Contract).filter(models.Contract.id == db_plan.contract_id).first()
         if contract:
             products = parse_contract_products(contract)
-            product_name = db_plan.product_name
+            # Get product_name from relationship or lookup
+            product_name = None
+            if db_plan.product_id:
+                if db_plan.product:
+                    product_name = db_plan.product.name
+                else:
+                    product_name = get_product_name_by_id(db, db_plan.product_id)
             authority_topup = get_authority_topup_for_product(db, contract.id, product_name)
             limits = get_contract_quantity_limits(products, product_name, authority_topup)
             
             # Get existing monthly plans for this contract (excluding current plan)
-            existing_monthly_plans = db.query(models.MonthlyPlan).filter(
+            existing_monthly_plans = db.query(models.MonthlyPlan).options(
+                joinedload(models.MonthlyPlan.product)
+            ).filter(
                 models.MonthlyPlan.contract_id == db_plan.contract_id,
                 models.MonthlyPlan.quarterly_plan_id.is_(None),
                 models.MonthlyPlan.id != plan_id
@@ -584,7 +600,10 @@ async def update_monthly_plan(
             
             # If product-specific, only count plans for that product
             if product_name:
-                used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans if mp.product_name == product_name)
+                used_quantity = sum(
+                    mp.month_quantity or 0 for mp in existing_monthly_plans 
+                    if (mp.product.name if mp.product else get_product_name_by_id(db, mp.product_id)) == product_name
+                )
             else:
                 used_quantity = sum(mp.month_quantity or 0 for mp in existing_monthly_plans)
             
@@ -1130,11 +1149,19 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
     Example: March cargo was 100 KT, got authority to load 120 KT -> add 20 KT top-up
     """
     # Lock the monthly plan row to prevent concurrent modifications
-    db_plan = db.query(models.MonthlyPlan).filter(
+    # Separate locking from relationship loading to avoid PostgreSQL FOR UPDATE error
+    db_plan_locked = db.query(models.MonthlyPlan).filter(
         models.MonthlyPlan.id == plan_id
     ).with_for_update().first()
-    if db_plan is None:
+    if db_plan_locked is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
+    
+    # Now load the product relationship separately if needed
+    db_plan = db.query(models.MonthlyPlan).options(
+        joinedload(models.MonthlyPlan.product)
+    ).filter(
+        models.MonthlyPlan.id == plan_id
+    ).first()
     
     # Get contract for audit log
     contract = db.query(models.Contract).filter(
@@ -1161,7 +1188,13 @@ def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: 
     db_plan.month_quantity = old_month_qty + topup.quantity
     
     month_str = month_name[db_plan.month]
-    product_name = db_plan.product_name or "Unknown"
+    # Get product_name from relationship or lookup
+    product_name = "Unknown"
+    if db_plan.product_id:
+        if db_plan.product:
+            product_name = db_plan.product.name
+        else:
+            product_name = get_product_name_by_id(db, db_plan.product_id) or "Unknown"
     
     # Log monthly plan changes
     log_monthly_plan_action(

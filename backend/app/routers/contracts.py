@@ -79,12 +79,12 @@ def _contract_to_dict(
         "created_at": db_contract.created_at,
         "updated_at": db_contract.updated_at
     }
-    
+
     # Include effective quantities with amendments applied
     if include_effective_quantities and db:
         effective = get_effective_contract_quantities(db, db_contract)
         result["effective_quantities"] = effective
-    
+
     return result
 
 

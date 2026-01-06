@@ -276,7 +276,7 @@ def ensure_schema():
                         else:
                             conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col_name} {col_type}'))
                     logger.info(f"Added {col_name} column to monthly_plans table")
-            
+        
             # Add move tracking fields for defer/advance
             move_cols = [
                 ("original_month", "INTEGER"),

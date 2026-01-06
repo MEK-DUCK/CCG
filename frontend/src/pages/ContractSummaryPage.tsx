@@ -503,16 +503,16 @@ export default function ContractSummaryPage() {
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        {isMinMaxMode(c) ? (
-                          <Chip 
+                      {isMinMaxMode(c) ? (
+                        <Chip 
                             label={`${minTotalFor(c).toLocaleString()} - ${firmTotalFor(c).toLocaleString()}`} 
-                            size="small" 
-                            variant="outlined"
-                            sx={{ bgcolor: BADGE_COLORS.COMBI.bgcolor, borderColor: BADGE_COLORS.COMBI.color }}
-                          />
-                        ) : (
+                          size="small" 
+                          variant="outlined"
+                          sx={{ bgcolor: BADGE_COLORS.COMBI.bgcolor, borderColor: BADGE_COLORS.COMBI.color }}
+                        />
+                      ) : (
                           <Chip label={`${firmTotalFor(c).toLocaleString()}`} size="small" variant="outlined" />
-                        )}
+                      )}
                         {hasAmendments(c) && (
                           <Tooltip 
                             title={`Original: ${originalMinTotalFor(c).toLocaleString()} - ${originalMaxTotalFor(c).toLocaleString()} KT`}

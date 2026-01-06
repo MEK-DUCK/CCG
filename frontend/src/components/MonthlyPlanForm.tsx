@@ -2412,53 +2412,57 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         </Grid>
         
         {/* Authority Changes History */}
-        {quarterlyAdjustments.length > 0 && (
-          <Box sx={{ mt: 2, pt: 2, borderTop: '1px dashed #E2E8F0' }}>
-            <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.7rem', display: 'block', mb: 1 }}>
-              📋 Authority Changes
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              {quarterlyAdjustments.map((adj) => {
-                const isOutgoing = adj.adjustment_type.endsWith('_OUT')
-                const actionType = adj.adjustment_type.startsWith('DEFER') ? 'Deferred' : 'Advanced'
-                const direction = isOutgoing ? 'to' : 'from'
-                const otherQuarter = isOutgoing ? adj.to_quarter : adj.from_quarter
-                
-                return (
-                  <Box 
-                    key={adj.id} 
-                    sx={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: 1,
-                      p: 0.75,
-                      bgcolor: isOutgoing ? '#FEF2F2' : '#F0FDF4',
-                      borderRadius: 1,
-                      border: `1px solid ${isOutgoing ? '#FECACA' : '#BBF7D0'}`,
-                    }}
-                  >
-                    <Typography variant="caption" sx={{ 
-                      color: isOutgoing ? '#DC2626' : '#16A34A', 
-                      fontWeight: 600,
-                      minWidth: 60,
-                    }}>
-                      {isOutgoing ? '−' : '+'}{adj.quantity.toLocaleString()} KT
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: '#475569', flex: 1 }}>
-                      {actionType} {direction} Q{otherQuarter}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: '#3B82F6', fontWeight: 500 }}>
-                      {adj.authority_reference}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: '#94A3B8', fontSize: '0.65rem' }}>
-                      {adj.user_initials} • {new Date(adj.created_at).toLocaleDateString()}
-                    </Typography>
-                  </Box>
-                )
-              })}
+        {(() => {
+          // Filter to only show OUT records to avoid duplicates (one entry per action)
+          const outgoingAdjustments = quarterlyAdjustments.filter(adj => 
+            adj.adjustment_type === 'DEFER_OUT' || adj.adjustment_type === 'ADVANCE_OUT'
+          )
+          
+          return outgoingAdjustments.length > 0 && (
+            <Box sx={{ mt: 2, pt: 2, borderTop: '1px dashed #E2E8F0' }}>
+              <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.7rem', display: 'block', mb: 1 }}>
+                📋 Authority Changes
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                {outgoingAdjustments.map((adj) => {
+                  const actionType = adj.adjustment_type.startsWith('DEFER') ? 'Deferred' : 'Advanced'
+                  
+                  return (
+                    <Box 
+                      key={adj.id} 
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 1,
+                        p: 0.75,
+                        bgcolor: '#FEF3C7',
+                        borderRadius: 1,
+                        border: '1px solid #FCD34D',
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ 
+                        color: '#92400E', 
+                        fontWeight: 600,
+                        minWidth: 60,
+                      }}>
+                        {adj.quantity.toLocaleString()} KT
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: '#475569', flex: 1 }}>
+                        {actionType} from Q{adj.from_quarter} to Q{adj.to_quarter}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: '#3B82F6', fontWeight: 500 }}>
+                        {adj.authority_reference}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: '#94A3B8', fontSize: '0.65rem' }}>
+                        {adj.user_initials} • {new Date(adj.created_at).toLocaleDateString()}
+                      </Typography>
+                    </Box>
+                  )
+                })}
+              </Box>
             </Box>
-          </Box>
-        )}
+          )
+        })()}
       </Box>
       
       {/* Table View - Compact list of all cargos */}
@@ -3120,18 +3124,18 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         {/* Defer/Advance not available for SPOT contracts */}
         {!isSpotContract && (
           <>
-            <MenuItem onClick={() => handleOpenMoveDialog('DEFER')}>
-              <ListItemIcon>
-                <ArrowForward fontSize="small" sx={{ color: '#2563EB' }} />
-              </ListItemIcon>
-              <ListItemText primary="Defer to Later Month" />
-            </MenuItem>
-            <MenuItem onClick={() => handleOpenMoveDialog('ADVANCE')}>
-              <ListItemIcon>
-                <ArrowBack fontSize="small" sx={{ color: '#7C3AED' }} />
-              </ListItemIcon>
-              <ListItemText primary="Advance to Earlier Month" />
-            </MenuItem>
+        <MenuItem onClick={() => handleOpenMoveDialog('DEFER')}>
+          <ListItemIcon>
+            <ArrowForward fontSize="small" sx={{ color: '#2563EB' }} />
+          </ListItemIcon>
+          <ListItemText primary="Defer to Later Month" />
+        </MenuItem>
+        <MenuItem onClick={() => handleOpenMoveDialog('ADVANCE')}>
+          <ListItemIcon>
+            <ArrowBack fontSize="small" sx={{ color: '#7C3AED' }} />
+          </ListItemIcon>
+          <ListItemText primary="Advance to Earlier Month" />
+        </MenuItem>
           </>
         )}
         <MenuItem 
