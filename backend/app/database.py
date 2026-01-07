@@ -709,10 +709,22 @@ def _add_postgresql_indexes():
         ("idx_cargos_contract_id", "cargos", "(contract_id)"),
         # Monthly plans by year/month for port movement
         ("idx_monthly_plans_year_month", "monthly_plans", "(year, month)"),
+        # Monthly plans by contract for filtering
+        ("idx_monthly_plans_contract_year_month", "monthly_plans", "(contract_id, year, month)"),
         # Port operations by cargo
         ("idx_cargo_port_ops_cargo", "cargo_port_operations", "(cargo_id)"),
         # Port operations by status for active loadings
         ("idx_cargo_port_ops_status", "cargo_port_operations", "(status)"),
+        # Entity versions for history lookups
+        ("idx_entity_versions_lookup", "entity_versions", "(entity_type, entity_id)"),
+        # Deleted entities for restore/cleanup queries
+        ("idx_deleted_entities_type_date", "deleted_entities", "(entity_type, deleted_at)"),
+        # Quarterly plans by contract for filtering
+        ("idx_quarterly_plans_contract", "quarterly_plans", "(contract_id)"),
+        # Cargo audit logs by cargo for history
+        ("idx_cargo_audit_cargo", "cargo_audit_logs", "(cargo_db_id)"),
+        # Contract products by contract
+        ("idx_contract_products_contract", "contract_products", "(contract_id)"),
     ]
     
     for index_name, table, columns in indexes:
