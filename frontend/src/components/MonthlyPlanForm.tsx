@@ -107,6 +107,10 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
   const [quarterlyAdjustments, setQuarterlyAdjustments] = useState<QuarterlyPlanAdjustment[]>([])
   
+  // Filters for CIF contracts table view
+  const [selectedLoadingMonths, setSelectedLoadingMonths] = useState<string[]>([])
+  const [selectedDeliveryMonths, setSelectedDeliveryMonths] = useState<string[]>([])
+  
   // Real-time presence tracking for this contract's monthly plan
   const handleDataChanged = useCallback(() => {
     // Another user saved changes - reload the data
@@ -1937,7 +1941,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   {isMinMaxMode ? (
                     <>
                         <Chip 
-                          label={`Range: ${minQuantity.toLocaleString()} - ${(p.max_quantity || 0).toLocaleString()} KT`}
+                          label={`Range: ${minQuantity.toLocaleString()} - ${maxQuantityForYear.toLocaleString()} KT`}
                           size="small"
                           sx={{ 
                             bgcolor: 'rgba(139, 92, 246, 0.1)', 
@@ -2024,7 +2028,267 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           })}
         </Box>
         
-        {/* Monthly entries for SPOT/Range contract - use yearContractMonths to show only selected year */}
+        {/* View Mode Toggle for RANGE/SPOT contracts */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(_, newMode) => newMode && setViewMode(newMode)}
+            size="small"
+          >
+            <ToggleButton value="grid" aria-label="grid view">
+              <ViewModule fontSize="small" />
+            </ToggleButton>
+            <ToggleButton value="table" aria-label="table view">
+              <ViewList fontSize="small" />
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+        
+        {/* Table View for RANGE/SPOT contracts - Same structure as TERM contracts */}
+        {viewMode === 'table' && (
+          <Box sx={{ mt: 2 }}>
+            {/* Filters for CIF contracts */}
+            {contractType === 'CIF' && (() => {
+              // Get unique loading months and delivery months from entries AND existingMonthlyPlans
+              const loadingMonthsSet = new Set<string>()
+              const deliveryMonthsSet = new Set<string>()
+              
+              // Check monthEntries
+              Object.entries(monthEntries).forEach(([key, entries]) => {
+                const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
+                const calendarYear = contractStartYear + (selectedYear - 1)
+                const parts = key.split('-')
+                if (parts.length === 2) {
+                  const entryYear = parseInt(parts[1])
+                  if (entryYear === calendarYear) {
+                    entries.forEach(entry => {
+                      if (entry.loading_month && entry.loading_month.trim()) {
+                        loadingMonthsSet.add(entry.loading_month)
+                      }
+                      if (entry.delivery_month && entry.delivery_month.trim()) {
+                        deliveryMonthsSet.add(entry.delivery_month)
+                      }
+                    })
+                  }
+                }
+              })
+              
+              // Also check existingMonthlyPlans for the selected year
+              const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
+              const calendarYear = contractStartYear + (selectedYear - 1)
+              existingMonthlyPlans.forEach((plan: any) => {
+                if (plan.year === calendarYear) {
+                  if (plan.loading_month && plan.loading_month.trim()) {
+                    loadingMonthsSet.add(plan.loading_month)
+                  }
+                  if (plan.delivery_month && plan.delivery_month.trim()) {
+                    deliveryMonthsSet.add(plan.delivery_month)
+                  }
+                }
+              })
+              
+              const loadingMonths = Array.from(loadingMonthsSet).sort()
+              const deliveryMonths = Array.from(deliveryMonthsSet).sort()
+              
+              return (
+                <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <FormControl size="small" sx={{ minWidth: 200 }}>
+                    <InputLabel>Loading Month</InputLabel>
+                    <Select
+                      multiple
+                      value={selectedLoadingMonths}
+                      onChange={(e) => setSelectedLoadingMonths(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
+                      renderValue={(selected) => selected.length === 0 ? 'All' : `${selected.length} selected`}
+                      label="Loading Month"
+                    >
+                      {loadingMonths.map((month) => (
+                        <MenuItem key={month} value={month}>
+                          <Checkbox checked={selectedLoadingMonths.indexOf(month) > -1} />
+                          <ListItemText primary={month} />
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  
+                  <FormControl size="small" sx={{ minWidth: 200 }}>
+                    <InputLabel>Delivery Month</InputLabel>
+                    <Select
+                      multiple
+                      value={selectedDeliveryMonths}
+                      onChange={(e) => setSelectedDeliveryMonths(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
+                      renderValue={(selected) => selected.length === 0 ? 'All' : `${selected.length} selected`}
+                      label="Delivery Month"
+                    >
+                      {deliveryMonths.map((month) => (
+                        <MenuItem key={month} value={month}>
+                          <Checkbox checked={selectedDeliveryMonths.indexOf(month) > -1} />
+                          <ListItemText primary={month} />
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  
+                  {(selectedLoadingMonths.length > 0 || selectedDeliveryMonths.length > 0) && (
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setSelectedLoadingMonths([])
+                        setSelectedDeliveryMonths([])
+                      }}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Clear Filters
+                    </Button>
+                  )}
+                </Box>
+              )
+            })()}
+            
+            <Paper variant="outlined" sx={{ overflowX: 'auto', overflowY: 'visible' }}>
+              <Box sx={{ 
+                display: 'grid', 
+                gridTemplateColumns: contractType === 'CIF' 
+                  ? 'minmax(120px, 1.2fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(120px, 1.2fr) minmax(150px, 1.5fr) minmax(100px, 1fr)'
+                  : 'minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(80px, 0.6fr)',
+                bgcolor: '#F8FAFC',
+                borderBottom: '1px solid #E2E8F0',
+                px: 2,
+                py: 1,
+                minWidth: contractType === 'CIF' ? 800 : 600,
+              }}>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Loading Month</Typography>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Quantity</Typography>
+                {contractType === 'FOB' ? (
+                  <>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>5-Day Laycan</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>2-Day Laycan</Typography>
+                  </>
+                ) : (
+                  <>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Loading Window</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Delivery Month</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Delivery Window</Typography>
+                  </>
+                )}
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Actions</Typography>
+              </Box>
+              {/* Table rows - filter to only show selected year */}
+              {Object.entries(monthEntries)
+                .filter(([key]) => {
+                  // Filter to only show entries for the selected year
+                  const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
+                  const calendarYear = contractStartYear + (selectedYear - 1)
+                  const parts = key.split('-')
+                  if (parts.length === 2) {
+                    const entryYear = parseInt(parts[1])
+                    return entryYear === calendarYear
+                  }
+                  return false
+                })
+                .sort(([a], [b]) => {
+                  const [aMonth, aYear] = a.split('-').map(Number)
+                  const [bMonth, bYear] = b.split('-').map(Number)
+                  return aYear !== bYear ? aYear - bYear : aMonth - bMonth
+                })
+                .flatMap(([key, entries]) => {
+                  const [month, year] = key.split('-').map(Number)
+                  return entries.map((entry, idx) => {
+                    const quantity = entry.is_combi 
+                      ? Object.values(entry.combi_quantities || {}).reduce((sum, q) => sum + (parseFloat(q) || 0), 0)
+                      : parseFloat(entry.quantity || '0')
+                    if (quantity === 0) return null
+                    
+                    // Filter by loading month and delivery month for CIF contracts
+                    if (contractType === 'CIF') {
+                      if (selectedLoadingMonths.length > 0 && entry.loading_month && !selectedLoadingMonths.includes(entry.loading_month)) {
+                        return null
+                      }
+                      if (selectedDeliveryMonths.length > 0 && entry.delivery_month && !selectedDeliveryMonths.includes(entry.delivery_month)) {
+                        return null
+                      }
+                    }
+                    
+                    return (
+                      <Box 
+                        key={`${key}-${idx}`}
+                        sx={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: contractType === 'CIF' 
+                            ? 'minmax(120px, 1.2fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(120px, 1.2fr) minmax(150px, 1.5fr) minmax(100px, 1fr)'
+                            : 'minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(80px, 0.6fr)',
+                          px: 2,
+                          py: 1.5,
+                          borderBottom: '1px solid #F1F5F9',
+                          '&:hover': { bgcolor: '#F8FAFC' },
+                          alignItems: 'center',
+                          minWidth: contractType === 'CIF' ? 800 : 600,
+                        }}
+                      >
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {contractType === 'CIF' && entry.loading_month ? entry.loading_month : `${getMonthName(month)} ${year}`}
+                          </Typography>
+                          {entry.is_combi && (
+                            <Chip label="Combi" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: BADGE_COLORS.COMBI.bgcolor, color: BADGE_COLORS.COMBI.color, mt: 0.5 }} />
+                          )}
+                          {!entry.is_combi && isMultiProduct && (
+                            <Typography variant="caption" sx={{ color: '#64748B' }}>{entry.product_name}</Typography>
+                          )}
+                        </Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {quantity.toLocaleString()} KT
+                        </Typography>
+                        {contractType === 'FOB' ? (
+                          <>
+                            <Typography variant="body2" sx={{ color: '#64748B' }}>
+                              {entry.laycan_5_days || '-'}
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: '#64748B' }}>
+                              {entry.laycan_2_days || '-'}
+                            </Typography>
+                          </>
+                        ) : (
+                          <>
+                            <Typography variant="body2" sx={{ color: entry.loading_window ? '#1E293B' : '#94A3B8' }}>
+                              {entry.loading_window || '-'}
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: entry.delivery_month ? '#1E293B' : '#94A3B8' }}>
+                              {entry.delivery_month || '-'}
+                            </Typography>
+                            <Box>
+                              <Typography variant="body2" sx={{ color: entry.delivery_window ? '#1E293B' : '#94A3B8', fontStyle: entry.delivery_window ? 'normal' : 'italic' }}>
+                                {entry.delivery_window || (entry.delivery_month || '-')}
+                              </Typography>
+                              {entry.loading_window && entry.cif_route && contract?.cif_destination && (
+                                <Typography variant="caption" sx={{ color: '#6366F1', fontStyle: 'italic', display: 'block' }}>
+                                  ETA: {calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route, month, year) || '-'}
+                                </Typography>
+                              )}
+                            </Box>
+                          </>
+                        )}
+                        <Button 
+                          size="small" 
+                          onClick={(e) => {
+                            const entryIndex = monthEntries[key].findIndex(e => e === entry)
+                            handleActionMenuOpen(e, month, year, entryIndex, entry, planStatuses[entry.id || 0]?.has_cargos || false)
+                          }}
+                          sx={{ textTransform: 'none', color: '#2563EB', minWidth: 'auto', fontSize: '0.75rem' }}
+                        >
+                          Edit
+                        </Button>
+                      </Box>
+                    )
+                  })
+                })
+                .filter(Boolean)}
+            </Paper>
+          </Box>
+        )}
+        
+        {/* Grid View for RANGE/SPOT contracts - use yearContractMonths to show only selected year */}
+        {viewMode === 'grid' && (
         <Grid container spacing={2}>
           {yearContractMonths.map(({ month, year }) => {
             const key = `${month}-${year}`
@@ -2305,6 +2569,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             )
           })}
         </Grid>
+        )}
         
         {/* Save Button */}
         <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
@@ -2544,6 +2809,91 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       {/* Table View - Compact list of all cargos */}
       {viewMode === 'table' && (
         <Box sx={{ mt: 2 }}>
+          {/* Filters for CIF contracts */}
+          {contractType === 'CIF' && (() => {
+            // Get unique loading months and delivery months from entries AND existingMonthlyPlans
+            const loadingMonthsSet = new Set<string>()
+            const deliveryMonthsSet = new Set<string>()
+            
+            // Check monthEntries
+            Object.entries(monthEntries).forEach(([, entries]) => {
+              entries.forEach(entry => {
+                if (entry.loading_month && entry.loading_month.trim()) {
+                  loadingMonthsSet.add(entry.loading_month)
+                }
+                if (entry.delivery_month && entry.delivery_month.trim()) {
+                  deliveryMonthsSet.add(entry.delivery_month)
+                }
+              })
+            })
+            
+            // Also check existingMonthlyPlans
+            existingMonthlyPlans.forEach((plan: any) => {
+              if (plan.loading_month && plan.loading_month.trim()) {
+                loadingMonthsSet.add(plan.loading_month)
+              }
+              if (plan.delivery_month && plan.delivery_month.trim()) {
+                deliveryMonthsSet.add(plan.delivery_month)
+              }
+            })
+            
+            const loadingMonths = Array.from(loadingMonthsSet).sort()
+            const deliveryMonths = Array.from(deliveryMonthsSet).sort()
+            
+            return (
+              <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                <FormControl size="small" sx={{ minWidth: 200 }}>
+                  <InputLabel>Loading Month</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedLoadingMonths}
+                    onChange={(e) => setSelectedLoadingMonths(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
+                    renderValue={(selected) => selected.length === 0 ? 'All' : `${selected.length} selected`}
+                    label="Loading Month"
+                  >
+                    {loadingMonths.map((month) => (
+                      <MenuItem key={month} value={month}>
+                        <Checkbox checked={selectedLoadingMonths.indexOf(month) > -1} />
+                        <ListItemText primary={month} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                
+                <FormControl size="small" sx={{ minWidth: 200 }}>
+                  <InputLabel>Delivery Month</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedDeliveryMonths}
+                    onChange={(e) => setSelectedDeliveryMonths(typeof e.target.value === 'string' ? [e.target.value] : e.target.value)}
+                    renderValue={(selected) => selected.length === 0 ? 'All' : `${selected.length} selected`}
+                    label="Delivery Month"
+                  >
+                    {deliveryMonths.map((month) => (
+                      <MenuItem key={month} value={month}>
+                        <Checkbox checked={selectedDeliveryMonths.indexOf(month) > -1} />
+                        <ListItemText primary={month} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                
+                {(selectedLoadingMonths.length > 0 || selectedDeliveryMonths.length > 0) && (
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setSelectedLoadingMonths([])
+                      setSelectedDeliveryMonths([])
+                    }}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    Clear Filters
+                  </Button>
+                )}
+              </Box>
+            )
+          })()}
+          
           <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
             <Box sx={{ 
               display: 'grid', 
@@ -2586,6 +2936,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                     : parseFloat(entry.quantity || '0')
                   if (quantity === 0) return null
                   
+                  // Filter by loading month and delivery month for CIF contracts
+                  if (contractType === 'CIF') {
+                    if (selectedLoadingMonths.length > 0 && entry.loading_month && !selectedLoadingMonths.includes(entry.loading_month)) {
+                      return null
+                    }
+                    if (selectedDeliveryMonths.length > 0 && entry.delivery_month && !selectedDeliveryMonths.includes(entry.delivery_month)) {
+                      return null
+                    }
+                  }
+                  
                   return (
                     <Box 
                       key={`${key}-${idx}`}
@@ -2603,7 +2963,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                     >
                       <Box>
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          {getMonthName(month)} {year}
+                          {contractType === 'CIF' && entry.loading_month ? entry.loading_month : `${getMonthName(month)} ${year}`}
                         </Typography>
                         {entry.is_combi && (
                           <Chip label="Combi" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: BADGE_COLORS.COMBI.bgcolor, color: BADGE_COLORS.COMBI.color, mt: 0.5 }} />
@@ -2634,7 +2994,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                       ) : (
                         <>
                           <Typography variant="body2" sx={{ color: entry.loading_window ? '#1E293B' : '#94A3B8', fontStyle: entry.loading_window ? 'normal' : 'italic' }}>
-                            {entry.loading_window || `${getMonthName(month)} ${year}`}
+                            {entry.loading_window || '-'}
                           </Typography>
                           <Typography variant="body2" sx={{ color: entry.delivery_month ? '#1E293B' : '#94A3B8' }}>
                             {entry.delivery_month || '-'}
