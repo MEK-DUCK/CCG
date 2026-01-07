@@ -1074,6 +1074,11 @@ export default function HomePage() {
   })
 
   const handleEditCargo = async (cargo: Cargo) => {
+    // Prevent editing temporary/optimistic cargos that haven't been saved yet
+    if (cargo.cargo_id?.startsWith('TEMP-')) {
+      alert('Please wait for the cargo to finish saving before editing.')
+      return
+    }
     setEditingCargo(cargo)
     setCargoMonthlyPlanId(cargo.monthly_plan_id)
     setCargoMonthlyPlan(null) // Reset before fetching
@@ -3152,6 +3157,14 @@ export default function HomePage() {
 
   const handleTaskCompletion = async (cargoId: number, taskType: 'sailing_fax_entry' | 'documents_mailing' | 'inspector_invoice', completed: boolean, initials: string) => {
     try {
+      // Find cargo first to check if it's temporary
+      const allCargos = [...portMovement, ...completedCargos, ...inRoadCIF]
+      const cargo = allCargos.find(c => c.id === cargoId)
+      if (cargo?.cargo_id?.startsWith('TEMP-')) {
+        alert('Please wait for the cargo to finish saving.')
+        return
+      }
+
       const updateData: any = {}
       const dateField = `${taskType}_date`
       const completedField = `${taskType}_completed`
@@ -3166,9 +3179,8 @@ export default function HomePage() {
         updateData[dateField] = null
       }
 
-      // Find the cargo to update
-      const allCargos = [...portMovement, ...completedCargos, ...inRoadCIF]
-      const cargoToUpdate = allCargos.find(c => c.id === cargoId)
+      // Use the cargo we already found (or find it if not already)
+      const cargoToUpdate = cargo || allCargos.find(c => c.id === cargoId)
       if (!cargoToUpdate) {
         alert('Cargo not found')
         return
