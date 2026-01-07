@@ -108,18 +108,6 @@ export default function Layout({ children }: LayoutProps) {
             handleDrawerToggle()
           }}
         >
-          <Box sx={{ 
-            mr: 1.5, 
-            width: 32, 
-            height: 32, 
-            borderRadius: 2, 
-            bgcolor: colors.iconBg, 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center' 
-          }}>
-            <Storage sx={{ fontSize: 20, color: colors.icon }} />
-          </Box>
           <Typography variant="h6" component="div" sx={{ fontWeight: 600, color: colors.text.primary, fontSize: '1rem' }}>
             CCG-3 Program
           </Typography>
@@ -286,18 +274,6 @@ export default function Layout({ children }: LayoutProps) {
                 }}
                 onClick={() => navigate('/')}
               >
-                <Box sx={{ 
-                  mr: 1.5, 
-                  width: 28, 
-                  height: 28, 
-                  borderRadius: 1.5, 
-                  bgcolor: colors.iconBg, 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center' 
-                }}>
-                  <Storage sx={{ fontSize: 18, color: colors.icon }} />
-                </Box>
                 <Typography 
                   variant="h6" 
                   component="div" 
@@ -327,18 +303,6 @@ export default function Layout({ children }: LayoutProps) {
                 }}
                 onClick={() => navigate('/')}
               >
-                <Box sx={{ 
-                  mr: 1.5, 
-                  width: 32, 
-                  height: 32, 
-                  borderRadius: 2, 
-                  bgcolor: colors.iconBg, 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center' 
-                }}>
-                  <Storage sx={{ fontSize: 20, color: colors.icon }} />
-                </Box>
                 <Typography 
                   variant="h6" 
                   component="div" 
