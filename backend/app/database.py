@@ -308,17 +308,21 @@ def ensure_schema():
                             conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col_name} {col_type}'))
                     logger.info(f"Added {col_name} column to monthly_plans table")
         
-        # Contracts migrations - add authority_topups for authorized quantity increases (legacy, kept for compatibility)
+        # Drop legacy authority_topups column - now using authority_amendments table
         if insp.has_table("contracts"):
             cols = [c.get("name") for c in insp.get_columns("contracts")]
-            if "authority_topups" not in cols:
-                with engine.begin() as conn:
-                    if dialect == "postgresql":
-                        conn.execute(text('ALTER TABLE contracts ADD COLUMN IF NOT EXISTS authority_topups TEXT'))
-                    else:
-                        conn.execute(text('ALTER TABLE contracts ADD COLUMN authority_topups TEXT'))
-                logger.info("Added authority_topups column to contracts table")
-            
+            if "authority_topups" in cols:
+                try:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text('ALTER TABLE contracts DROP COLUMN IF EXISTS authority_topups'))
+                        else:
+                            # SQLite doesn't support DROP COLUMN before 3.35.0, skip silently
+                            pass
+                    logger.info("Dropped legacy authority_topups column from contracts")
+                except Exception as e:
+                    logger.debug(f"Could not drop authority_topups from contracts: {e}")
+
             # Add fiscal year support fields
             fiscal_cols = [
                 ("fiscal_start_month", "INTEGER DEFAULT 1"),
