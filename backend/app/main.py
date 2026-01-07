@@ -9,6 +9,10 @@ from collections import defaultdict
 from threading import Lock
 
 from app.database import engine, Base, ensure_schema
+# CRITICAL: Import models BEFORE create_all() to ensure all tables are registered with Base.metadata
+# Without this explicit import, models may not be fully loaded when create_all() runs
+import app.models  # noqa: F401 - This registers all model classes with Base.metadata
+
 from app.routers import customers, contracts, quarterly_plans, monthly_plans, cargos, audit_logs, documents
 from app.routers import config_router, admin, products, load_ports, inspectors, discharge_ports
 from app.routers import auth_router, users, presence_router, version_history_router
@@ -22,9 +26,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create database tables
+# =============================================================================
+# DATABASE TABLE CREATION
+# =============================================================================
+# Log which tables will be created and in which database
+from sqlalchemy import inspect
+inspector = inspect(engine)
+existing_tables = set(inspector.get_table_names())
+defined_tables = set(Base.metadata.tables.keys())
+missing_tables = defined_tables - existing_tables
+
+dialect_name = engine.dialect.name
+logger.info(f"Database dialect: {dialect_name}")
+logger.info(f"Tables defined in models: {len(defined_tables)}")
+logger.info(f"Tables already in database: {len(existing_tables)}")
+
+if missing_tables:
+    logger.info(f"Creating {len(missing_tables)} missing tables: {sorted(missing_tables)}")
+else:
+    logger.info("All tables already exist - no creation needed")
+
+# Create all tables that don't exist yet
 Base.metadata.create_all(bind=engine)
+
+# Run schema migrations (add columns, indexes, etc.)
 ensure_schema()
+
+logger.info("Database initialization complete")
 
 # Ensure admin/test users and reference data exist on startup
 from app.startup import ensure_admin_user, ensure_test_users, ensure_discharge_ports

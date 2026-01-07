@@ -17,27 +17,33 @@ USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() == "true"
 
 if USE_SQLITE:
     DATABASE_URL = "sqlite:///./oil_lifting.db"
-    print("✓ Using SQLite database (oil_lifting.db)")
-    print("  To use PostgreSQL, set USE_SQLITE=false and configure DATABASE_URL in .env")
-    
+    logger.info("✓ Using SQLite database (oil_lifting.db)")
+    logger.info("  To use PostgreSQL, set USE_SQLITE=false and configure DATABASE_URL in .env")
+
     engine = create_engine(
         DATABASE_URL,
         connect_args={"check_same_thread": False},
         echo=False
     )
 else:
+    if not DATABASE_URL:
+        raise ValueError(
+            "DATABASE_URL environment variable is not set. "
+            "Either set DATABASE_URL for PostgreSQL or set USE_SQLITE=true for local development."
+        )
+
     try:
         test_engine = create_engine(
-            DATABASE_URL, 
+            DATABASE_URL,
             connect_args={"connect_timeout": 5},
             pool_pre_ping=True
         )
-        
+
         with test_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        
-        print(f"✓ Connected to PostgreSQL database")
-        
+
+        logger.info(f"✓ Connected to PostgreSQL database")
+
         engine = create_engine(
             DATABASE_URL,
             pool_pre_ping=True,
@@ -48,17 +54,27 @@ else:
             connect_args={"connect_timeout": 5},
             echo=False
         )
-        
+
     except Exception as e:
-        print(f"⚠ PostgreSQL connection failed: {str(e)}")
-        print("⚠ Falling back to SQLite database (oil_lifting.db)")
-        
-        DATABASE_URL = "sqlite:///./oil_lifting.db"
-        engine = create_engine(
-            DATABASE_URL,
-            connect_args={"check_same_thread": False},
-            echo=False
-        )
+        # In production, we should NOT silently fall back to SQLite
+        # This could cause data to be written to the wrong database
+        ALLOW_SQLITE_FALLBACK = os.getenv("ALLOW_SQLITE_FALLBACK", "false").lower() == "true"
+
+        if ALLOW_SQLITE_FALLBACK:
+            logger.warning(f"⚠ PostgreSQL connection failed: {str(e)}")
+            logger.warning("⚠ Falling back to SQLite database (oil_lifting.db)")
+            logger.warning("⚠ WARNING: Data will NOT be synced to PostgreSQL!")
+
+            DATABASE_URL = "sqlite:///./oil_lifting.db"
+            engine = create_engine(
+                DATABASE_URL,
+                connect_args={"check_same_thread": False},
+                echo=False
+            )
+        else:
+            logger.error(f"✗ PostgreSQL connection failed: {str(e)}")
+            logger.error("✗ Set ALLOW_SQLITE_FALLBACK=true to allow fallback to SQLite (NOT recommended for production)")
+            raise
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
