@@ -2053,11 +2053,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               // Get unique loading months and delivery months from entries AND existingMonthlyPlans
               const loadingMonthsSet = new Set<string>()
               const deliveryMonthsSet = new Set<string>()
-              
+              const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
+              const calendarYear = contractStartYear + (selectedYear - 1)
+
               // Check monthEntries
               Object.entries(monthEntries).forEach(([key, entries]) => {
-                const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
-                const calendarYear = contractStartYear + (selectedYear - 1)
                 const parts = key.split('-')
                 if (parts.length === 2) {
                   const entryYear = parseInt(parts[1])
@@ -2073,10 +2073,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   }
                 }
               })
-              
+
               // Also check existingMonthlyPlans for the selected year
-              const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
-              const calendarYear = contractStartYear + (selectedYear - 1)
               existingMonthlyPlans.forEach((plan: any) => {
                 if (plan.year === calendarYear) {
                   if (plan.loading_month && plan.loading_month.trim()) {
@@ -2814,9 +2812,22 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             // Get unique loading months and delivery months from entries AND existingMonthlyPlans
             const loadingMonthsSet = new Set<string>()
             const deliveryMonthsSet = new Set<string>()
-            
-            // Check monthEntries
-            Object.entries(monthEntries).forEach(([, entries]) => {
+            const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
+            const calendarYear = contractStartYear + (selectedYear - 1)
+
+            // Check monthEntries - filter by selected year for multi-year contracts
+            Object.entries(monthEntries).forEach(([key, entries]) => {
+              // Only include entries from the selected year if multi-year contract
+              if (numContractYears > 1) {
+                const parts = key.split('-')
+                if (parts.length === 2) {
+                  const entryYear = parseInt(parts[1])
+                  if (entryYear !== calendarYear) {
+                    return // Skip entries not from selected year
+                  }
+                }
+              }
+
               entries.forEach(entry => {
                 if (entry.loading_month && entry.loading_month.trim()) {
                   loadingMonthsSet.add(entry.loading_month)
@@ -2826,9 +2837,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 }
               })
             })
-            
-            // Also check existingMonthlyPlans
+
+            // Also check existingMonthlyPlans - filter by selected year for multi-year contracts
             existingMonthlyPlans.forEach((plan: any) => {
+              // Only include plans from the selected year if multi-year contract
+              if (numContractYears > 1 && plan.year !== calendarYear) {
+                return // Skip plans not from selected year
+              }
+
               if (plan.loading_month && plan.loading_month.trim()) {
                 loadingMonthsSet.add(plan.loading_month)
               }
@@ -2894,16 +2910,17 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             )
           })()}
           
-          <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-            <Box sx={{ 
-              display: 'grid', 
-              gridTemplateColumns: contractType === 'CIF' 
-                ? 'minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(80px, 0.6fr)'
+          <Paper variant="outlined" sx={{ overflowX: 'auto', overflowY: 'visible' }}>
+            <Box sx={{
+              display: 'grid',
+              gridTemplateColumns: contractType === 'CIF'
+                ? 'minmax(120px, 1.2fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(120px, 1.2fr) minmax(150px, 1.5fr) minmax(100px, 1fr)'
                 : 'minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(80px, 0.6fr)',
               bgcolor: '#F8FAFC',
               borderBottom: '1px solid #E2E8F0',
               px: 2,
               py: 1,
+              minWidth: contractType === 'CIF' ? 800 : 600,
             }}>
               <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Loading Month</Typography>
               <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Quantity</Typography>
@@ -2931,8 +2948,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               .flatMap(([key, entries]) => {
                 const [month, year] = key.split('-').map(Number)
                 return entries.map((entry, idx) => {
-                  const quantity = entry.is_combi 
-                    ? Object.values(entry.combi_quantities).reduce((sum, q) => sum + (parseFloat(q) || 0), 0)
+                  const quantity = entry.is_combi
+                    ? Object.values(entry.combi_quantities || {}).reduce((sum, q) => sum + (parseFloat(q) || 0), 0)
                     : parseFloat(entry.quantity || '0')
                   if (quantity === 0) return null
                   
@@ -2947,18 +2964,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   }
                   
                   return (
-                    <Box 
+                    <Box
                       key={`${key}-${idx}`}
-                      sx={{ 
-                        display: 'grid', 
-                        gridTemplateColumns: contractType === 'CIF' 
-                          ? 'minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(80px, 0.6fr)'
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: contractType === 'CIF'
+                          ? 'minmax(120px, 1.2fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(120px, 1.2fr) minmax(150px, 1.5fr) minmax(100px, 1fr)'
                           : 'minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(80px, 0.6fr)',
                         px: 2,
                         py: 1.5,
                         borderBottom: '1px solid #F1F5F9',
                         '&:hover': { bgcolor: '#F8FAFC' },
                         alignItems: 'center',
+                        minWidth: contractType === 'CIF' ? 800 : 600,
                       }}
                     >
                       <Box>
