@@ -125,33 +125,20 @@ def ensure_schema():
                     else:
                         conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN product_name VARCHAR'))
             
-            # Data migration: populate product_name for single-product contracts where it's NULL
+            # Data migration: populate product_name from products table where product_id is set
             try:
                 with engine.begin() as conn:
+                    # Use normalized schema: quarterly_plans.product_id -> products.name
                     result = conn.execute(text('''
-                        SELECT qp.id, c.products 
-                        FROM quarterly_plans qp 
-                        JOIN contracts c ON c.id = qp.contract_id 
-                        WHERE qp.product_name IS NULL
+                        UPDATE quarterly_plans
+                        SET product_name = (
+                            SELECT p.name FROM products p WHERE p.id = quarterly_plans.product_id
+                        )
+                        WHERE product_name IS NULL
+                        AND product_id IS NOT NULL
                     '''))
-                    rows = result.fetchall()
-                    
-                    import json
-                    for row in rows:
-                        qp_id = row[0]
-                        products_json = row[1]
-                        if products_json:
-                            try:
-                                products = json.loads(products_json) if isinstance(products_json, str) else products_json
-                                if products and len(products) == 1:
-                                    product_name = products[0].get('name')
-                                    if product_name:
-                                        conn.execute(
-                                            text('UPDATE quarterly_plans SET product_name = :pn WHERE id = :id'),
-                                            {"pn": product_name, "id": qp_id}
-                                        )
-                            except Exception:
-                                pass
+                    if result.rowcount > 0:
+                        logger.info(f"Populated product_name for {result.rowcount} quarterly plans")
             except Exception as e:
                 logger.warning(f"Failed to populate product_name for quarterly plans: {e}")
         
