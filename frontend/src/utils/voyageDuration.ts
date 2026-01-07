@@ -135,32 +135,47 @@ export function parseLoadingWindowStart(
     // Format: "DD-DD/MM" or "D-D/M"
     if (loadingWindow.includes("/")) {
       const parts = loadingWindow.split("/")
+      if (parts.length < 2 || !parts[0] || !parts[1]) return null
+
       const dayPart = parts[0]  // "01-05" or "1-5"
       const monthPart = parts[1]  // "01" or "1"
-      
-      // Get first day
-      const firstDay = parseInt(dayPart.split("-")[0], 10)
+
+      // Get first day - safely handle missing hyphen
+      const dayParts = dayPart.split("-")
+      if (!dayParts[0]) return null
+
+      const firstDay = parseInt(dayParts[0], 10)
       const parsedMonth = parseInt(monthPart, 10)
-      
+
+      // Validate parsed values
+      if (isNaN(firstDay) || isNaN(parsedMonth)) return null
+
       // Determine year - if parsed month < reference month, it might be next year
       let parsedYear = year
       if (parsedMonth < month) {
         parsedYear = year + 1
       }
-      
+
       return new Date(parsedYear, parsedMonth - 1, firstDay)
     }
-    
+
     // Format: "DD-DD" (use reference month/year)
     if (loadingWindow.includes("-")) {
-      const firstDay = parseInt(loadingWindow.split("-")[0], 10)
+      const dayParts = loadingWindow.split("-")
+      if (!dayParts[0]) return null
+
+      const firstDay = parseInt(dayParts[0], 10)
+      if (isNaN(firstDay)) return null
+
       return new Date(year, month - 1, firstDay)
     }
-    
+
     // Single day
     const firstDay = parseInt(loadingWindow, 10)
+    if (isNaN(firstDay)) return null
+
     return new Date(year, month - 1, firstDay)
-    
+
   } catch {
     return null
   }

@@ -163,7 +163,7 @@ export default function DashboardPage() {
                 {analytics?.inspector_stats && analytics.inspector_stats.length > 0 ? (
                   <Box>
                     {analytics.inspector_stats.map((stat, idx) => {
-                      const maxCount = Math.max(...analytics.inspector_stats.map(s => s.cargo_count))
+                      const maxCount = Math.max(...analytics.inspector_stats.map(s => s.cargo_count), 0)
                       const percentage = maxCount > 0 ? (stat.cargo_count / maxCount) * 100 : 0
                       return (
                         <Box key={idx} sx={{ mb: 2 }}>
@@ -215,7 +215,7 @@ export default function DashboardPage() {
                 {analytics?.port_stats && analytics.port_stats.length > 0 ? (
                   <Box>
                     {analytics.port_stats.map((stat, idx) => {
-                      const maxCount = Math.max(...analytics.port_stats.map(s => s.cargo_count))
+                      const maxCount = Math.max(...analytics.port_stats.map(s => s.cargo_count), 0)
                       const percentage = maxCount > 0 ? (stat.cargo_count / maxCount) * 100 : 0
                       return (
                         <Box key={idx} sx={{ mb: 2 }}>
@@ -267,7 +267,7 @@ export default function DashboardPage() {
                 {analytics?.customer_stats && analytics.customer_stats.length > 0 ? (
                   <Box>
                     {analytics.customer_stats.map((stat, idx) => {
-                      const maxCount = Math.max(...analytics.customer_stats.map(s => s.cargo_count))
+                      const maxCount = Math.max(...analytics.customer_stats.map(s => s.cargo_count), 0)
                       const percentage = maxCount > 0 ? (stat.cargo_count / maxCount) * 100 : 0
                       return (
                         <Box key={idx} sx={{ mb: 2 }}>
@@ -361,7 +361,7 @@ export default function DashboardPage() {
                 {analytics?.product_stats && analytics.product_stats.length > 0 ? (
                   <Box>
                     {analytics.product_stats.map((stat, idx) => {
-                      const maxQty = Math.max(...analytics.product_stats.map(s => s.completed_quantity))
+                      const maxQty = Math.max(...analytics.product_stats.map(s => s.completed_quantity), 0)
                       const percentage = maxQty > 0 ? (stat.completed_quantity / maxQty) * 100 : 0
                       const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
                       const color = colors[idx % colors.length]
