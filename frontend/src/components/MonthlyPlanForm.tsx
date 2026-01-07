@@ -2056,33 +2056,41 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
               const calendarYear = contractStartYear + (selectedYear - 1)
 
-              // Check monthEntries
+              // Check monthEntries - only filter by year for multi-year contracts
               Object.entries(monthEntries).forEach(([key, entries]) => {
-                const parts = key.split('-')
-                if (parts.length === 2) {
-                  const entryYear = parseInt(parts[1])
-                  if (entryYear === calendarYear) {
-                    entries.forEach(entry => {
-                      if (entry.loading_month && entry.loading_month.trim()) {
-                        loadingMonthsSet.add(entry.loading_month)
-                      }
-                      if (entry.delivery_month && entry.delivery_month.trim()) {
-                        deliveryMonthsSet.add(entry.delivery_month)
-                      }
-                    })
+                // Only apply year filtering for multi-year contracts
+                if (numContractYears > 1) {
+                  const parts = key.split('-')
+                  if (parts.length === 2) {
+                    const entryYear = parseInt(parts[1])
+                    if (entryYear !== calendarYear) {
+                      return // Skip entries not from selected year
+                    }
                   }
                 }
+
+                entries.forEach(entry => {
+                  if (entry.loading_month && entry.loading_month.trim()) {
+                    loadingMonthsSet.add(entry.loading_month)
+                  }
+                  if (entry.delivery_month && entry.delivery_month.trim()) {
+                    deliveryMonthsSet.add(entry.delivery_month)
+                  }
+                })
               })
 
-              // Also check existingMonthlyPlans for the selected year
+              // Also check existingMonthlyPlans - only filter by year for multi-year contracts
               existingMonthlyPlans.forEach((plan: any) => {
-                if (plan.year === calendarYear) {
-                  if (plan.loading_month && plan.loading_month.trim()) {
-                    loadingMonthsSet.add(plan.loading_month)
-                  }
-                  if (plan.delivery_month && plan.delivery_month.trim()) {
-                    deliveryMonthsSet.add(plan.delivery_month)
-                  }
+                // Only apply year filtering for multi-year contracts
+                if (numContractYears > 1 && plan.year !== calendarYear) {
+                  return // Skip plans not from selected year
+                }
+
+                if (plan.loading_month && plan.loading_month.trim()) {
+                  loadingMonthsSet.add(plan.loading_month)
+                }
+                if (plan.delivery_month && plan.delivery_month.trim()) {
+                  deliveryMonthsSet.add(plan.delivery_month)
                 }
               })
               
