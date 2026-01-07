@@ -115,8 +115,36 @@ def ensure_schema():
                         else:
                             conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col} TEXT'))
 
+        # Drop legacy product_name columns - now using product_id FK with JOIN to products table
+        if insp.has_table("quarterly_plans"):
+            cols = [c.get("name") for c in insp.get_columns("quarterly_plans")]
+            if "product_name" in cols:
+                try:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text('ALTER TABLE quarterly_plans DROP COLUMN IF EXISTS product_name'))
+                        else:
+                            # SQLite doesn't support DROP COLUMN before 3.35.0, skip silently
+                            pass
+                    logger.info("Dropped legacy product_name column from quarterly_plans")
+                except Exception as e:
+                    logger.debug(f"Could not drop product_name from quarterly_plans: {e}")
+
+        if insp.has_table("monthly_plans"):
+            cols = [c.get("name") for c in insp.get_columns("monthly_plans")]
+            if "product_name" in cols:
+                try:
+                    with engine.begin() as conn:
+                        if dialect == "postgresql":
+                            conn.execute(text('ALTER TABLE monthly_plans DROP COLUMN IF EXISTS product_name'))
+                        else:
+                            # SQLite doesn't support DROP COLUMN before 3.35.0, skip silently
+                            pass
+                    logger.info("Dropped legacy product_name column from monthly_plans")
+                except Exception as e:
+                    logger.debug(f"Could not drop product_name from monthly_plans: {e}")
+
         # Quarterly plans migrations - add top-up tracking fields
-        # NOTE: product_name column removed - use product_id FK with JOIN to products table
         if insp.has_table("quarterly_plans"):
             cols = [c.get("name") for c in insp.get_columns("quarterly_plans")]
             topup_fields = ["q1_topup", "q2_topup", "q3_topup", "q4_topup"]
