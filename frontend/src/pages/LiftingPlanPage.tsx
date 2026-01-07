@@ -65,6 +65,7 @@ interface ContractQuarterlyData {
   contractNumber: string
   productsText: string
   contractType: 'FOB' | 'CIF'
+  year: number  // Add year to the interface
   month1Entries: MonthlyPlanEntry[]  // All entries for month 1
   month2Entries: MonthlyPlanEntry[]  // All entries for month 2
   month3Entries: MonthlyPlanEntry[]  // All entries for month 3
@@ -198,6 +199,7 @@ export default function LiftingPlanPage() {
   }
 
   const calculateQuarterlyData = () => {
+    // Original Map key: contract.id (number)
     const dataMap = new Map<number, ContractQuarterlyData>()
     
     // Determine months for selected quarter
@@ -209,8 +211,26 @@ export default function LiftingPlanPage() {
     }
     const months = quarterMonths[selectedQuarter]
 
-    // Initialize all contracts with empty entries
+    // Process each contract's quarterly plans
     contracts.forEach(contract => {
+      // Find quarterly plans for this contract
+      const contractQuarterlyPlans = quarterlyPlans.filter(qp => qp.contract_id === contract.id)
+      
+      // Collect all monthly plans for this contract
+      const allContractMonthlyPlans: (MonthlyPlan & { productName?: string })[] = []
+      
+      contractQuarterlyPlans.forEach(qp => {
+        const qpMonthlyPlans = monthlyPlans.filter(mp => 
+          mp.quarterly_plan_id === qp.id && mp.year === selectedYear
+        )
+        qpMonthlyPlans.forEach(mp => {
+          allContractMonthlyPlans.push({
+            ...mp,
+            productName: mp.product_name || undefined
+          })
+        })
+      })
+      
       const customer = customers.find(c => c.id === contract.customer_id)
       if (!customer) return
 
@@ -223,7 +243,7 @@ export default function LiftingPlanPage() {
           if (name) {
             productNames.push(name)
             const cat = normalizeProductCategory(name)
-          if (cat) productCategories.add(cat)
+            if (cat) productCategories.add(cat)
           }
         })
       }
@@ -240,60 +260,47 @@ export default function LiftingPlanPage() {
         productsText = productNames.length > 0 ? productNames.join(', ') : '-'
       }
 
-      dataMap.set(contract.id, {
-        customerId: contract.customer_id,
-        customerName: customer.name,
-        contractId: contract.id,
-        contractNumber: contract.contract_number,
-        productsText,
-        contractType: contract.contract_type,
-        month1Entries: [],
-        month2Entries: [],
-        month3Entries: [],
-        total: 0,
-        notes: notes.get(contract.id) || '',
-      })
-    })
-
-    // Process each contract's quarterly plans
-    contracts.forEach(contract => {
-      // Find quarterly plans for this contract
-      const contractQuarterlyPlans = quarterlyPlans.filter(qp => qp.contract_id === contract.id)
-      
-      // Collect all monthly plans for this contract
-      const allContractMonthlyPlans: (MonthlyPlan & { productName?: string })[] = []
-      contractQuarterlyPlans.forEach(qp => {
-        const qpMonthlyPlans = monthlyPlans.filter(mp => 
-          mp.quarterly_plan_id === qp.id && 
-          mp.year === selectedYear
-        )
-        qpMonthlyPlans.forEach(mp => {
-          allContractMonthlyPlans.push({
-            ...mp,
-            productName: mp.product_name || undefined
-          })
+      // Initialize contract entry if not exists
+      if (!dataMap.has(contract.id)) {
+        dataMap.set(contract.id, {
+          customerId: contract.customer_id,
+          customerName: customer.name,
+          contractId: contract.id,
+          contractNumber: contract.contract_number,
+          productsText,
+          contractType: contract.contract_type,
+          year: selectedYear,
+          month1Entries: [],
+          month2Entries: [],
+          month3Entries: [],
+          total: 0,
+          notes: notes.get(contract.id) || '',
         })
-      })
-
-      // Group monthly plans by combi_group_id
-      const combiGroups = new Map<string, (MonthlyPlan & { productName?: string })[]>()
-      const nonCombiPlans: (MonthlyPlan & { productName?: string })[] = []
+      }
       
-      allContractMonthlyPlans.forEach(mp => {
-        if (mp.combi_group_id) {
-          const existing = combiGroups.get(mp.combi_group_id) || []
-          existing.push(mp)
-          combiGroups.set(mp.combi_group_id, existing)
-        } else {
-          nonCombiPlans.push(mp)
-        }
-      })
+      const contractData = dataMap.get(contract.id)!
+      
+      // Filter monthly plans to only those for the selected quarter months
+      const filteredMonthlyPlans = allContractMonthlyPlans.filter(mp => 
+        months.includes(mp.month)
+      )
 
-            const contractData = dataMap.get(contract.id)
-      if (!contractData) return
+        // Group monthly plans by combi_group_id
+        const combiGroups = new Map<string, (MonthlyPlan & { productName?: string })[]>()
+        const nonCombiPlans: (MonthlyPlan & { productName?: string })[] = []
+        
+        filteredMonthlyPlans.forEach(mp => {
+          if (mp.combi_group_id) {
+            const existing = combiGroups.get(mp.combi_group_id) || []
+            existing.push(mp)
+            combiGroups.set(mp.combi_group_id, existing)
+          } else {
+            nonCombiPlans.push(mp)
+          }
+        })
 
-      // Process combi groups - create one unified entry per group
-      combiGroups.forEach((combiPlans, combiGroupId) => {
+        // Process combi groups - create one unified entry per group
+        combiGroups.forEach((combiPlans, combiGroupId) => {
         if (combiPlans.length === 0) return
         
         // All plans in a combi group should have the same month, laycan, etc.
@@ -370,8 +377,8 @@ export default function LiftingPlanPage() {
         }
       })
 
-      // Process non-combi plans individually
-      nonCombiPlans.forEach(mp => {
+        // Process non-combi plans individually
+        nonCombiPlans.forEach(mp => {
         // If a product filter is selected, skip plans that don't match the category
         if (selectedProduct && !productMatchesCategory(mp.productName, selectedProduct)) return
         
@@ -399,13 +406,13 @@ export default function LiftingPlanPage() {
               } else if (monthIndex === 2) {
                 contractData.month3Entries.push(entry)
               }
-      })
+        })
               
-              // Calculate total
-              contractData.total = 
-                contractData.month1Entries.reduce((sum, e) => sum + e.quantity, 0) +
-                contractData.month2Entries.reduce((sum, e) => sum + e.quantity, 0) +
-                contractData.month3Entries.reduce((sum, e) => sum + e.quantity, 0)
+        // Calculate total
+        contractData.total = 
+          contractData.month1Entries.reduce((sum, e) => sum + e.quantity, 0) +
+          contractData.month2Entries.reduce((sum, e) => sum + e.quantity, 0) +
+          contractData.month3Entries.reduce((sum, e) => sum + e.quantity, 0)
     })
 
     setContractData(dataMap)
@@ -416,14 +423,15 @@ export default function LiftingPlanPage() {
     newNotes.set(contractId, value)
     setNotes(newNotes)
     
-    // Update contract data
+    // Update contract data for all contract-year combinations
     const updatedData = new Map(contractData)
-    const contract = updatedData.get(contractId)
-    if (contract) {
-      contract.notes = value
-      updatedData.set(contractId, contract)
-      setContractData(updatedData)
-    }
+    updatedData.forEach((data, key) => {
+      if (data.contractId === contractId) {
+        data.notes = value
+        updatedData.set(key, data)
+      }
+    })
+    setContractData(updatedData)
   }
 
 
@@ -439,8 +447,11 @@ export default function LiftingPlanPage() {
 
   const getFilteredDataArray = (): ContractQuarterlyData[] => {
     return Array.from(contractData.values())
-      // Only show contracts that have entries for the selected product
-      .filter((d) => d.month1Entries.length > 0 || d.month2Entries.length > 0 || d.month3Entries.length > 0 || d.total > 0)
+      // Only show contracts that have entries for the selected product and selected quarter
+      .filter((d) => {
+        // Show all years that have data for the selected quarter months
+        return d.month1Entries.length > 0 || d.month2Entries.length > 0 || d.month3Entries.length > 0 || d.total > 0
+      })
       .sort((a, b) => {
         const customerCompare = a.customerName.localeCompare(b.customerName)
         if (customerCompare !== 0) return customerCompare

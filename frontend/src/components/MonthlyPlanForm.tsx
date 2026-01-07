@@ -344,8 +344,25 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           console.log('Loaded SPOT monthly plans for contract', contractId, ':', monthlyRes.data)
           // product_name is stored directly on monthly plans
           const allPlans = monthlyRes.data || []
+          
+          // For multi-year RANGE/SPOT contracts, filter by selectedYear to show only that year's plans
+          // Calculate the calendar year for the selected contract year
+          let filteredPlans = allPlans
+          if (contract?.start_period) {
+            const contractStartYear = new Date(contract.start_period).getFullYear()
+            const calendarYear = contractStartYear + (selectedYear - 1)
+            
+            // Always filter by selectedYear if we have year tabs (numContractYears > 1)
+            // OR if the contract spans multiple calendar years (check if plans have different years)
+            const uniqueYears = new Set(allPlans.map((p: any) => p.year))
+            if (numContractYears > 1 || uniqueYears.size > 1) {
+              filteredPlans = allPlans.filter((p: any) => p.year === calendarYear)
+              console.log(`Filtered RANGE/SPOT plans for Year ${selectedYear} (${calendarYear}):`, filteredPlans.map((p: any) => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
+            }
+          }
+          
           console.log('All loaded SPOT plans:', allPlans.map((p: any) => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
-          setExistingMonthlyPlans(allPlans)
+          setExistingMonthlyPlans(filteredPlans)
           
           // Load status for all plans
           const statusMap: Record<number, MonthlyPlanStatus> = {}
@@ -496,15 +513,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       if (!quarterlyPlans || quarterlyPlans.length === 0) return
       
       try {
-        // Load monthly plans from all quarterly plans
+        // Filter quarterly plans by selectedYear for multi-year contracts
+        // Use yearQuarterlyPlans which is already filtered by selectedYear
+        const quarterlyPlansToLoad = numContractYears > 1 ? yearQuarterlyPlans : quarterlyPlans
+        
+        // Load monthly plans from quarterly plans for the selected year only
         const allPlans: any[] = []
-        for (const qp of quarterlyPlans) {
+        for (const qp of quarterlyPlansToLoad) {
           const monthlyRes = await monthlyPlanAPI.getAll(qp.id)
           console.log('Loaded monthly plans for QP', qp.id, ':', monthlyRes.data)
           // product_name is stored directly on monthly plans
           allPlans.push(...(monthlyRes.data || []))
         }
-        console.log('All loaded plans:', allPlans.map(p => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
+        console.log(`All loaded plans for Year ${selectedYear}:`, allPlans.map(p => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
         setExistingMonthlyPlans(allPlans)
         
         // Load status for all plans in a single bulk request (optimization)
@@ -654,7 +675,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     }
     
     loadExistingMonthlyPlans()
-  }, [quarterlyPlans, products, skipQuarterlyPlan, contractId])
+  }, [quarterlyPlans, products, skipQuarterlyPlan, contractId, selectedYear, contract, numContractYears])
 
   const handleProductChange = (month: number, year: number, entryIndex: number, productName: string) => {
     const key = `${month}-${year}`
@@ -1579,6 +1600,29 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           editingUser={editingUser}
         />
         
+        {/* Year Tabs for multi-year RANGE/SPOT contracts */}
+        {numContractYears > 1 && (
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tabs 
+              value={selectedYear} 
+              onChange={(_, newValue) => setSelectedYear(newValue)}
+              variant="scrollable"
+              scrollButtons="auto"
+            >
+              {Array.from({ length: numContractYears }, (_, i) => i + 1).map(year => (
+                <Tab 
+                  key={year} 
+                  value={year} 
+                  label={getYearLabel(year)}
+                  icon={<CalendarMonth fontSize="small" />}
+                  iconPosition="start"
+                  sx={{ minHeight: 48 }}
+                />
+              ))}
+            </Tabs>
+          </Box>
+        )}
+        
         {/* Contract Period Info with Quantity Validation */}
         <Box sx={{ mb: 3, p: 2, bgcolor: '#F8FAFC', borderRadius: 2, border: '1px solid #E2E8F0' }}>
           <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
@@ -1592,35 +1636,67 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           
           {/* Quantity validation for each product */}
           {products.map((p: any) => {
+            // Get year-specific quantities if available, otherwise use total quantities
+            let yearQuantity: any = null
+            if (p.year_quantities && Array.isArray(p.year_quantities)) {
+              yearQuantity = p.year_quantities.find((yq: any) => yq.year === selectedYear)
+            }
+            
             // Support both fixed quantity mode and min/max range mode
             // Use != null to check for both null and undefined, and ensure value > 0
             const isMinMaxMode = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
-            const minQuantity = p.min_quantity || 0
-            const optionalQuantity = p.optional_quantity || 0  // Optional quantity - works for both modes
+            
+            // Use year-specific quantities if available, otherwise fall back to total quantities
+            const minQuantity = yearQuantity 
+              ? (yearQuantity.min_quantity || (isMinMaxMode ? 0 : yearQuantity.quantity || 0))
+              : (p.min_quantity || 0)
+            const maxQuantityForYear = yearQuantity
+              ? (yearQuantity.max_quantity || (isMinMaxMode ? 0 : yearQuantity.quantity || 0))
+              : (p.max_quantity || 0)
+            const totalQuantityForYear = yearQuantity
+              ? (yearQuantity.quantity || 0)
+              : (p.total_quantity || 0)
+            const optionalQuantity = yearQuantity
+              ? (yearQuantity.optional_quantity || 0)
+              : (p.optional_quantity || 0)  // Optional quantity - works for both modes
             
             // For range contracts: max is the max_quantity, optional is on top of max
             // For fixed contracts: max is total + optional
             const maxQuantity = isMinMaxMode 
-              ? (p.max_quantity || 0) + optionalQuantity  // Range: max + optional
-              : (p.total_quantity || 0) + optionalQuantity  // Fixed: total + optional
+              ? maxQuantityForYear + optionalQuantity  // Range: max + optional
+              : totalQuantityForYear + optionalQuantity  // Fixed: total + optional
             
             const firmQuantity = isMinMaxMode 
-              ? (p.max_quantity || 0)  // For range mode - max is the "firm" ceiling before optional
-              : (p.total_quantity || 0)  // For fixed mode - firm quantity without optional
+              ? maxQuantityForYear  // For range mode - max is the "firm" ceiling before optional
+              : totalQuantityForYear  // For fixed mode - firm quantity without optional
             
             const totalQuantity = maxQuantity  // Total possible = firm + optional
             
-            // Calculate total allocated across all months for this product
-            const allocated = Object.values(monthEntries).reduce((sum, entries) => {
-              return sum + entries.reduce((entrySum, entry) => {
-                if (entry.is_combi) {
-                  return entrySum + (parseFloat(entry.combi_quantities[p.name] || '0') || 0)
-                } else if (entry.product_name === p.name) {
-                  return entrySum + (parseFloat(entry.quantity || '0') || 0)
+            // Calculate total allocated across months for THIS YEAR ONLY
+            // Filter monthEntries to only include entries for the selected year
+            const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
+            const calendarYear = contractStartYear + (selectedYear - 1)
+            
+            const allocated = Object.entries(monthEntries)
+              .filter(([key]) => {
+                // Key format is "month-year", extract year
+                const parts = key.split('-')
+                if (parts.length === 2) {
+                  const entryYear = parseInt(parts[1])
+                  return entryYear === calendarYear
                 }
-                return entrySum
+                return false
+              })
+              .reduce((sum, [, entries]) => {
+                return sum + entries.reduce((entrySum, entry) => {
+                  if (entry.is_combi) {
+                    return entrySum + (parseFloat(entry.combi_quantities[p.name] || '0') || 0)
+                  } else if (entry.product_name === p.name) {
+                    return entrySum + (parseFloat(entry.quantity || '0') || 0)
+                  }
+                  return entrySum
+                }, 0)
               }, 0)
-            }, 0)
             
             // For min/max mode: valid when allocated is between min and max (or max + optional)
             // For fixed mode: valid when allocated equals total (firm + optional)
@@ -1948,9 +2024,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           })}
         </Box>
         
-        {/* Monthly entries for SPOT contract */}
+        {/* Monthly entries for SPOT/Range contract - use yearContractMonths to show only selected year */}
         <Grid container spacing={2}>
-          {contractMonths.map(({ month, year }) => {
+          {yearContractMonths.map(({ month, year }) => {
             const key = `${month}-${year}`
             const entries = monthEntries[key] || []
             
