@@ -2207,11 +2207,15 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                     
                     // Filter by loading month and delivery month for CIF contracts
                     if (contractType === 'CIF') {
-                      if (selectedLoadingMonths.length > 0 && entry.loading_month && !selectedLoadingMonths.includes(entry.loading_month)) {
-                        return null
+                      if (selectedLoadingMonths.length > 0) {
+                        if (!entry.loading_month || !selectedLoadingMonths.includes(entry.loading_month)) {
+                          return null
+                        }
                       }
-                      if (selectedDeliveryMonths.length > 0 && entry.delivery_month && !selectedDeliveryMonths.includes(entry.delivery_month)) {
-                        return null
+                      if (selectedDeliveryMonths.length > 0) {
+                        if (!entry.delivery_month || !selectedDeliveryMonths.includes(entry.delivery_month)) {
+                          return null
+                        }
                       }
                     }
                     
@@ -2963,11 +2967,15 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   
                   // Filter by loading month and delivery month for CIF contracts
                   if (contractType === 'CIF') {
-                    if (selectedLoadingMonths.length > 0 && entry.loading_month && !selectedLoadingMonths.includes(entry.loading_month)) {
-                      return null
+                    if (selectedLoadingMonths.length > 0) {
+                      if (!entry.loading_month || !selectedLoadingMonths.includes(entry.loading_month)) {
+                        return null
+                      }
                     }
-                    if (selectedDeliveryMonths.length > 0 && entry.delivery_month && !selectedDeliveryMonths.includes(entry.delivery_month)) {
-                      return null
+                    if (selectedDeliveryMonths.length > 0) {
+                      if (!entry.delivery_month || !selectedDeliveryMonths.includes(entry.delivery_month)) {
+                        return null
+                      }
                     }
                   }
                   
