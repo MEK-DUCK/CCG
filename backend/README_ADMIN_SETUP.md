@@ -16,8 +16,8 @@ Make sure to set the `ALLOWED_ORIGINS` environment variable in Render to include
 
 1. Go to Render dashboard → Your backend service → Environment
 2. Add or update `ALLOWED_ORIGINS`:
-   - Value: `https://your-vercel-app.vercel.app` (replace with your actual Vercel URL)
-   - If you have multiple origins, separate with commas: `https://app1.vercel.app,https://app2.vercel.app`
+   - Value: `https://meklabs.dev,https://www.meklabs.dev` (your production domain)
+   - If you have multiple origins, separate with commas: `https://meklabs.dev,https://www.meklabs.dev`
 
 3. Redeploy the backend service after setting the environment variable
 

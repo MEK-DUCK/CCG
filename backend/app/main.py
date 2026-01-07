@@ -50,12 +50,13 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 # Explicitly list allowed origins (Safari needs exact matches)
 # In production, this should be loaded from environment variables
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").split(",") if os.getenv("ALLOWED_ORIGINS") else [
+    "https://meklabs.dev",
+    "https://www.meklabs.dev",
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
     "http://0.0.0.0:5173",
-    "http://192.168.0.5:5173",  # Local network IP for Safari testing
 ]
 
 # Filter out empty strings
@@ -63,12 +64,9 @@ ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip(
 
 app.add_middleware(
     CORSMiddleware,
-    # TEMPORARY: Allow all origins for testing - REMOVE AFTER TESTING
-    allow_origins=["*"],
-    allow_credentials=False,  # Required when using ["*"] - TEMPORARY
-    # Restrict to specific methods instead of "*"
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,  # Allow cookies/auth headers
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    # Restrict to specific headers instead of "*"
     allow_headers=[
         "Content-Type",
         "Authorization",
