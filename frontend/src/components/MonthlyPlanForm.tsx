@@ -2586,7 +2586,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               }}
                               helperText={
                                 entry.loading_window && (entry.cif_route || isSingleRouteDestination(contract?.cif_destination)) && contract?.cif_destination
-                                  ? `ETA: ${calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route || '', month, year) || '-'}`
+                                  ? `ETA: ${calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route || '', month, year) || '-'} · Basis ${contract.cif_destination}`
                                   : (contract?.cif_destination ? `Basis ${contract.cif_destination}` : 'Set destination in contract')
                               }
                             />
@@ -3568,7 +3568,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       disabled={isLocked}
                                       helperText={
                                         entry.loading_window && (entry.cif_route || isSingleRouteDestination(contract?.cif_destination)) && contract?.cif_destination
-                                          ? `ETA: ${calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route || '', month, year) || '-'}`
+                                          ? `ETA: ${calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route || '', month, year) || '-'} · Basis ${contract.cif_destination}`
                                           : (contract?.cif_destination ? `Basis ${contract.cif_destination}` : '')
                                       }
                                       sx={{
