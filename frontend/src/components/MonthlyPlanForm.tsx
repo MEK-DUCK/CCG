@@ -2069,10 +2069,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   }
                 }
 
+                const [month, year] = key.split('-').map(Number)
                 entries.forEach(entry => {
-                  if (entry.loading_month && entry.loading_month.trim()) {
-                    loadingMonthsSet.add(entry.loading_month)
+                  // For CIF contracts, use loading_month if available, otherwise use fallback (plan's month-year)
+                  if (contractType === 'CIF') {
+                    const displayedLoadingMonth = entry.loading_month && entry.loading_month.trim()
+                      ? entry.loading_month
+                      : `${getMonthName(month)} ${year}`
+                    loadingMonthsSet.add(displayedLoadingMonth)
                   }
+
                   if (entry.delivery_month && entry.delivery_month.trim()) {
                     deliveryMonthsSet.add(entry.delivery_month)
                   }
@@ -2086,9 +2092,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   return // Skip plans not from selected year
                 }
 
-                if (plan.loading_month && plan.loading_month.trim()) {
-                  loadingMonthsSet.add(plan.loading_month)
+                // For CIF contracts, use loading_month if available, otherwise use fallback (plan's month-year)
+                if (contractType === 'CIF') {
+                  const displayedLoadingMonth = plan.loading_month && plan.loading_month.trim()
+                    ? plan.loading_month
+                    : `${getMonthName(plan.month)} ${plan.year}`
+                  loadingMonthsSet.add(displayedLoadingMonth)
                 }
+
                 if (plan.delivery_month && plan.delivery_month.trim()) {
                   deliveryMonthsSet.add(plan.delivery_month)
                 }
@@ -2208,7 +2219,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                     // Filter by loading month and delivery month for CIF contracts
                     if (contractType === 'CIF') {
                       if (selectedLoadingMonths.length > 0) {
-                        if (!entry.loading_month || !selectedLoadingMonths.includes(entry.loading_month)) {
+                        // Check the displayed loading month (actual or fallback)
+                        const displayedLoadingMonth = entry.loading_month && entry.loading_month.trim()
+                          ? entry.loading_month
+                          : `${getMonthName(month)} ${year}`
+                        if (!selectedLoadingMonths.includes(displayedLoadingMonth)) {
                           return null
                         }
                       }
@@ -2840,10 +2855,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 }
               }
 
+              const [month, year] = key.split('-').map(Number)
               entries.forEach(entry => {
-                if (entry.loading_month && entry.loading_month.trim()) {
-                  loadingMonthsSet.add(entry.loading_month)
+                // For CIF contracts, use loading_month if available, otherwise use fallback (plan's month-year)
+                if (contractType === 'CIF') {
+                  const displayedLoadingMonth = entry.loading_month && entry.loading_month.trim()
+                    ? entry.loading_month
+                    : `${getMonthName(month)} ${year}`
+                  loadingMonthsSet.add(displayedLoadingMonth)
                 }
+
                 if (entry.delivery_month && entry.delivery_month.trim()) {
                   deliveryMonthsSet.add(entry.delivery_month)
                 }
@@ -2857,9 +2878,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 return // Skip plans not from selected year
               }
 
-              if (plan.loading_month && plan.loading_month.trim()) {
-                loadingMonthsSet.add(plan.loading_month)
+              // For CIF contracts, use loading_month if available, otherwise use fallback (plan's month-year)
+              if (contractType === 'CIF') {
+                const displayedLoadingMonth = plan.loading_month && plan.loading_month.trim()
+                  ? plan.loading_month
+                  : `${getMonthName(plan.month)} ${plan.year}`
+                loadingMonthsSet.add(displayedLoadingMonth)
               }
+
               if (plan.delivery_month && plan.delivery_month.trim()) {
                 deliveryMonthsSet.add(plan.delivery_month)
               }
@@ -2968,7 +2994,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   // Filter by loading month and delivery month for CIF contracts
                   if (contractType === 'CIF') {
                     if (selectedLoadingMonths.length > 0) {
-                      if (!entry.loading_month || !selectedLoadingMonths.includes(entry.loading_month)) {
+                      // Check the displayed loading month (actual or fallback)
+                      const displayedLoadingMonth = entry.loading_month && entry.loading_month.trim()
+                        ? entry.loading_month
+                        : `${getMonthName(month)} ${year}`
+                      if (!selectedLoadingMonths.includes(displayedLoadingMonth)) {
                         return null
                       }
                     }
