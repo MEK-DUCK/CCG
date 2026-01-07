@@ -77,6 +77,9 @@ def get_database_stats(db: Session = Depends(get_db)):
         MonthlyPlan.authority_topup_quantity > 0
     ).count()
     
+    # Temporary fix: contracts_with_topups (to be implemented later)
+    contracts_with_topups = 0
+    
     return {
         "counts": {
             "customers": customers_count,
