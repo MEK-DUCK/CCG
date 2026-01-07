@@ -41,23 +41,38 @@ else:
     try:
         # Force IPv4 for Supabase connections (Render doesn't support IPv6 outbound)
         import socket
-        from urllib.parse import urlparse
+        from urllib.parse import urlparse, urlunparse
 
         parsed = urlparse(DATABASE_URL)
         hostname = parsed.hostname
+        original_url = DATABASE_URL
 
-        # Resolve hostname to IPv4 address to avoid IPv6 issues
+        # Resolve hostname to IPv4 address and replace in URL
+        # This is needed because psycopg3 ignores hostaddr parameter
         try:
             ipv4_addr = socket.gethostbyname(hostname)  # Returns IPv4 only
             logger.info(f"Resolved {hostname} to IPv4: {ipv4_addr}")
-        except socket.gaierror as e:
-            logger.warning(f"Could not resolve hostname to IPv4: {e}")
-            ipv4_addr = None
 
-        # Build connect_args with IPv4 preference
+            # Replace hostname with IP in the URL
+            # netloc format: user:pass@host:port
+            if parsed.port:
+                new_netloc = f"{parsed.username}:{parsed.password}@{ipv4_addr}:{parsed.port}"
+            else:
+                new_netloc = f"{parsed.username}:{parsed.password}@{ipv4_addr}"
+
+            DATABASE_URL = urlunparse((
+                parsed.scheme,
+                new_netloc,
+                parsed.path,
+                parsed.params,
+                parsed.query,
+                parsed.fragment
+            ))
+            logger.info(f"Using IPv4 address in connection URL")
+        except socket.gaierror as e:
+            logger.warning(f"Could not resolve hostname to IPv4: {e}, using original URL")
+
         connect_args = {"connect_timeout": 5}
-        if ipv4_addr:
-            connect_args["hostaddr"] = ipv4_addr  # Force IPv4 address
 
         test_engine = create_engine(
             DATABASE_URL,
