@@ -55,11 +55,13 @@ ensure_schema()
 logger.info("Database initialization complete")
 
 # Ensure admin/test users and reference data exist on startup
-from app.startup import ensure_admin_user, ensure_test_users, ensure_discharge_ports, ensure_products
+from app.startup import ensure_admin_user, ensure_test_users, ensure_discharge_ports, ensure_products, ensure_load_ports, ensure_inspectors
 ensure_admin_user()
 ensure_test_users()
 ensure_discharge_ports()
 ensure_products()
+ensure_load_ports()
+ensure_inspectors()
 
 app = FastAPI(
     title="Oil Lifting Program API", 
