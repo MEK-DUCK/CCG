@@ -89,8 +89,6 @@ export default function LiftingPlanPage() {
   const [selectedQuarter, setSelectedQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>(getCurrentQuarter())
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()) // Default to current year
   const [selectedProduct, setSelectedProduct] = useState<string>('GASOIL') // Product filter - defaults to first tab
-  const [selectedLoadingMonths, setSelectedLoadingMonths] = useState<string[]>([])
-  const [selectedDeliveryMonths, setSelectedDeliveryMonths] = useState<string[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
@@ -459,59 +457,7 @@ export default function LiftingPlanPage() {
         if (customerCompare !== 0) return customerCompare
         return a.contractNumber.localeCompare(b.contractNumber)
       })
-    
-    // Filter by loading month (for CIF contracts in table view)
-    if (selectedLoadingMonths.length > 0) {
-      result = result.map(contract => {
-        const filteredMonth1Entries = contract.month1Entries.filter(entry =>
-          entry.loadingMonth && selectedLoadingMonths.includes(entry.loadingMonth)
-        )
-        const filteredMonth2Entries = contract.month2Entries.filter(entry =>
-          entry.loadingMonth && selectedLoadingMonths.includes(entry.loadingMonth)
-        )
-        const filteredMonth3Entries = contract.month3Entries.filter(entry =>
-          entry.loadingMonth && selectedLoadingMonths.includes(entry.loadingMonth)
-        )
-        return {
-          ...contract,
-          month1Entries: filteredMonth1Entries,
-          month2Entries: filteredMonth2Entries,
-          month3Entries: filteredMonth3Entries,
-          total: filteredMonth1Entries.reduce((sum, e) => sum + e.quantity, 0) +
-                 filteredMonth2Entries.reduce((sum, e) => sum + e.quantity, 0) +
-                 filteredMonth3Entries.reduce((sum, e) => sum + e.quantity, 0)
-        }
-      }).filter(contract => 
-        contract.month1Entries.length > 0 || contract.month2Entries.length > 0 || contract.month3Entries.length > 0
-      )
-    }
-    
-    // Filter by delivery month (for CIF contracts in table view)
-    if (selectedDeliveryMonths.length > 0) {
-      result = result.map(contract => {
-        const filteredMonth1Entries = contract.month1Entries.filter(entry =>
-          entry.deliveryMonth && selectedDeliveryMonths.includes(entry.deliveryMonth)
-        )
-        const filteredMonth2Entries = contract.month2Entries.filter(entry =>
-          entry.deliveryMonth && selectedDeliveryMonths.includes(entry.deliveryMonth)
-        )
-        const filteredMonth3Entries = contract.month3Entries.filter(entry =>
-          entry.deliveryMonth && selectedDeliveryMonths.includes(entry.deliveryMonth)
-        )
-        return {
-          ...contract,
-          month1Entries: filteredMonth1Entries,
-          month2Entries: filteredMonth2Entries,
-          month3Entries: filteredMonth3Entries,
-          total: filteredMonth1Entries.reduce((sum, e) => sum + e.quantity, 0) +
-                 filteredMonth2Entries.reduce((sum, e) => sum + e.quantity, 0) +
-                 filteredMonth3Entries.reduce((sum, e) => sum + e.quantity, 0)
-        }
-      }).filter(contract => 
-        contract.month1Entries.length > 0 || contract.month2Entries.length > 0 || contract.month3Entries.length > 0
-      )
-    }
-    
+
     return result
   }
 
