@@ -343,7 +343,7 @@ def ensure_schema():
             original_qty_cols = [
                 ("original_min_quantity", "FLOAT"),
                 ("original_max_quantity", "FLOAT"),
-                ("original_year_quantities", "TEXT"),
+                ("original_year_quantities", "JSONB" if dialect == "postgresql" else "JSON"),
             ]
             for col_name, col_type in original_qty_cols:
                 if col_name not in cols:
@@ -353,13 +353,17 @@ def ensure_schema():
                         else:
                             conn.execute(text(f'ALTER TABLE contract_products ADD COLUMN {col_name} {col_type}'))
                     logger.info(f"Added {col_name} column to contract_products table")
-            
+
+            # Convert TEXT columns to JSONB for better query performance (PostgreSQL only)
+            if dialect == "postgresql":
+                _convert_contract_products_to_jsonb()
+
             # Backfill original quantities from current values for existing records
             # Only do this once - check if any records have NULL original values but non-NULL current values
             with engine.begin() as conn:
                 if dialect == "postgresql":
                     conn.execute(text('''
-                        UPDATE contract_products 
+                        UPDATE contract_products
                         SET original_min_quantity = min_quantity,
                             original_max_quantity = max_quantity,
                             original_year_quantities = year_quantities
@@ -368,7 +372,7 @@ def ensure_schema():
                     '''))
                 else:
                     conn.execute(text('''
-                        UPDATE contract_products 
+                        UPDATE contract_products
                         SET original_min_quantity = min_quantity,
                             original_max_quantity = max_quantity,
                             original_year_quantities = year_quantities
@@ -387,7 +391,7 @@ def ensure_schema():
                     else:
                         conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN contract_year INTEGER DEFAULT 1'))
                 logger.info("Added contract_year column to quarterly_plans table")
-            
+
             # Add adjustment_notes for defer/advance tracking
             if "adjustment_notes" not in cols:
                 with engine.begin() as conn:
@@ -396,6 +400,10 @@ def ensure_schema():
                     else:
                         conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN adjustment_notes TEXT'))
                 logger.info("Added adjustment_notes column to quarterly_plans table")
+
+            # Ensure product_id and contract_year are NOT NULL (PostgreSQL only)
+            if dialect == "postgresql":
+                _ensure_quarterly_plans_not_null()
         
         # Audit logs migrations - add authority_reference for cross-quarter moves
         if insp.has_table("monthly_plan_audit_logs"):
@@ -478,7 +486,11 @@ def ensure_schema():
                     logger.info("Made quarterly_plan_id nullable in monthly_plans table")
                 except Exception:
                     pass  # Already nullable or constraint doesn't exist
-        
+
+            # Ensure product_id is NOT NULL (PostgreSQL only)
+            if dialect == "postgresql":
+                _ensure_monthly_plans_product_not_null()
+
         # Create products table if not exists (for admin-managed product configuration)
         if not insp.has_table("products"):
             with engine.begin() as conn:
@@ -653,6 +665,7 @@ def ensure_schema():
         # =============================================================================
         if dialect == "postgresql":
             _add_postgresql_constraints()
+            _add_postgresql_unique_constraints()
             _add_postgresql_indexes()
             _add_financial_hold_enum()
                     
@@ -663,6 +676,10 @@ def ensure_schema():
 def _add_postgresql_constraints():
     """Add CHECK constraints for data validation (PostgreSQL only)."""
     constraints = [
+        # Contracts: end_period must be >= start_period
+        ("contracts", "chk_contracts_date_range", "end_period >= start_period"),
+        # Contracts: fiscal_start_month must be 1-12
+        ("contracts", "chk_contracts_fiscal_month", "fiscal_start_month >= 1 AND fiscal_start_month <= 12"),
         # Monthly plans: month must be 1-12
         ("monthly_plans", "chk_monthly_plans_month", "month >= 1 AND month <= 12"),
         # Monthly plans: year must be reasonable
@@ -674,8 +691,16 @@ def _add_postgresql_constraints():
         ("quarterly_plans", "chk_quarterly_q2", "q2_quantity >= 0"),
         ("quarterly_plans", "chk_quarterly_q3", "q3_quantity >= 0"),
         ("quarterly_plans", "chk_quarterly_q4", "q4_quantity >= 0"),
+        # Quarterly plans: contract_year must be >= 1
+        ("quarterly_plans", "chk_quarterly_contract_year", "contract_year >= 1"),
+        # Authority amendments: amendment_type must be valid
+        ("authority_amendments", "chk_amendment_type", "amendment_type IN ('increase_max', 'decrease_max', 'increase_min', 'decrease_min', 'set_min', 'set_max')"),
         # Cargos: quantity must be positive
         ("cargos", "chk_cargos_quantity", "cargo_quantity > 0"),
+        # Cargo port operations: status must be valid
+        ("cargo_port_operations", "chk_port_op_status", "status IN ('Planned', 'Loading', 'Completed Loading')"),
+        # Quarterly plan adjustments: adjustment_type must be valid
+        ("quarterly_plan_adjustments", "chk_adjustment_type", "adjustment_type IN ('DEFER_OUT', 'DEFER_IN', 'ADVANCE_OUT', 'ADVANCE_IN')"),
     ]
     
     for table, constraint_name, check_condition in constraints:
@@ -698,9 +723,42 @@ def _add_postgresql_constraints():
             logger.debug(f"Constraint {constraint_name} may already exist or failed: {e}")
 
 
+def _add_postgresql_unique_constraints():
+    """Add UNIQUE constraints for data integrity (PostgreSQL only)."""
+    unique_constraints = [
+        # Contract products: one product per contract
+        ("contract_products", "uq_contract_products_contract_product", "contract_id, product_id"),
+        # Cargo port operations: one port per cargo
+        ("cargo_port_operations", "uq_cargo_port_operations_cargo_port", "cargo_id, load_port_id"),
+        # Entity versions: one version number per entity
+        ("entity_versions", "uq_entity_versions_type_id_version", "entity_type, entity_id, version_number"),
+    ]
+
+    for table, constraint_name, columns in unique_constraints:
+        try:
+            with engine.begin() as conn:
+                # Check if constraint exists
+                result = conn.execute(text("""
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = :name
+                """), {"name": constraint_name})
+
+                if not result.fetchone():
+                    conn.execute(text(f"""
+                        ALTER TABLE {table}
+                        ADD CONSTRAINT {constraint_name}
+                        UNIQUE ({columns})
+                    """))
+                    logger.info(f"Added unique constraint {constraint_name} to {table}")
+        except Exception as e:
+            logger.debug(f"Unique constraint {constraint_name} may already exist or failed: {e}")
+
+
 def _add_postgresql_indexes():
     """Add performance indexes (PostgreSQL only)."""
     indexes = [
+        # Contracts by customer for filtering
+        ("idx_contracts_customer_id", "contracts", "(customer_id)"),
         # Weekly comparison query optimization
         ("idx_monthly_audit_log_comparison", "monthly_plan_audit_logs", "(created_at, contract_id, field_name)"),
         # Cargo queries by status
@@ -721,10 +779,20 @@ def _add_postgresql_indexes():
         ("idx_deleted_entities_type_date", "deleted_entities", "(entity_type, deleted_at)"),
         # Quarterly plans by contract for filtering
         ("idx_quarterly_plans_contract", "quarterly_plans", "(contract_id)"),
+        # Quarterly plans by product for filtering
+        ("idx_quarterly_plans_product", "quarterly_plans", "(product_id)"),
+        # Authority amendments by product for filtering
+        ("idx_authority_amendments_product", "authority_amendments", "(product_id)"),
         # Cargo audit logs by cargo for history
         ("idx_cargo_audit_cargo", "cargo_audit_logs", "(cargo_db_id)"),
         # Contract products by contract
         ("idx_contract_products_contract", "contract_products", "(contract_id)"),
+        # Cargos by customer for filtering
+        ("idx_cargos_customer_id", "cargos", "(customer_id)"),
+        # Cargos by product for filtering
+        ("idx_cargos_product_id", "cargos", "(product_id)"),
+        # Monthly plans by product for filtering
+        ("idx_monthly_plans_product", "monthly_plans", "(product_id)"),
     ]
     
     for index_name, table, columns in indexes:
@@ -743,11 +811,11 @@ def _add_financial_hold_enum():
         with engine.begin() as conn:
             # Check if Financial Hold exists in the enum
             result = conn.execute(text("""
-                SELECT 1 FROM pg_enum 
-                WHERE enumtypid = 'lcstatus'::regtype 
+                SELECT 1 FROM pg_enum
+                WHERE enumtypid = 'lcstatus'::regtype
                 AND enumlabel = 'Financial Hold'
             """))
-            
+
             if not result.fetchone():
                 conn.execute(text("""
                     ALTER TYPE lcstatus ADD VALUE IF NOT EXISTS 'Financial Hold'
@@ -755,6 +823,124 @@ def _add_financial_hold_enum():
                 logger.info("Added 'Financial Hold' to lcstatus enum")
     except Exception as e:
         logger.debug(f"Financial Hold enum addition skipped: {e}")
+
+
+def _convert_contract_products_to_jsonb():
+    """Convert TEXT columns to JSONB in contract_products table (PostgreSQL only).
+
+    This migrates year_quantities and original_year_quantities from TEXT to JSONB
+    for better query performance and native JSON operations.
+    """
+    columns_to_convert = ["year_quantities", "original_year_quantities"]
+
+    for col_name in columns_to_convert:
+        try:
+            with engine.begin() as conn:
+                # Check current column type
+                result = conn.execute(text("""
+                    SELECT data_type FROM information_schema.columns
+                    WHERE table_name = 'contract_products' AND column_name = :col_name
+                """), {"col_name": col_name})
+                row = result.fetchone()
+
+                if row and row[0] == 'text':
+                    # Convert TEXT to JSONB, handling existing data
+                    # USING clause converts valid JSON text to JSONB
+                    conn.execute(text(f"""
+                        ALTER TABLE contract_products
+                        ALTER COLUMN {col_name} TYPE JSONB
+                        USING CASE
+                            WHEN {col_name} IS NULL THEN NULL
+                            WHEN {col_name} = '' THEN NULL
+                            ELSE {col_name}::jsonb
+                        END
+                    """))
+                    logger.info(f"Converted contract_products.{col_name} from TEXT to JSONB")
+        except Exception as e:
+            logger.debug(f"JSONB conversion for {col_name} skipped or failed: {e}")
+
+
+def _ensure_monthly_plans_product_not_null():
+    """Ensure product_id is NOT NULL in monthly_plans (PostgreSQL only)."""
+    try:
+        with engine.begin() as conn:
+            # Check for NULL product_id values
+            result = conn.execute(text("""
+                SELECT COUNT(*) FROM monthly_plans WHERE product_id IS NULL
+            """))
+            null_count = result.scalar()
+
+            if null_count > 0:
+                logger.warning(f"Found {null_count} monthly_plans with NULL product_id - these need manual cleanup")
+                return
+
+            # Check if column is already NOT NULL
+            result = conn.execute(text("""
+                SELECT is_nullable FROM information_schema.columns
+                WHERE table_name = 'monthly_plans' AND column_name = 'product_id'
+            """))
+            row = result.fetchone()
+            if row and row[0] == 'YES':
+                conn.execute(text("""
+                    ALTER TABLE monthly_plans ALTER COLUMN product_id SET NOT NULL
+                """))
+                logger.info("Set product_id to NOT NULL in monthly_plans")
+
+    except Exception as e:
+        logger.debug(f"monthly_plans product_id NOT NULL migration skipped or failed: {e}")
+
+
+def _ensure_quarterly_plans_not_null():
+    """Ensure product_id and contract_year are NOT NULL in quarterly_plans (PostgreSQL only).
+
+    This migration:
+    1. Sets default values for any NULL records
+    2. Alters columns to NOT NULL
+    """
+    try:
+        with engine.begin() as conn:
+            # First, check for NULL product_id values
+            result = conn.execute(text("""
+                SELECT COUNT(*) FROM quarterly_plans WHERE product_id IS NULL
+            """))
+            null_count = result.scalar()
+
+            if null_count > 0:
+                logger.warning(f"Found {null_count} quarterly_plans with NULL product_id - these need manual cleanup")
+                # Cannot safely set NOT NULL if there are NULL values
+                return
+
+            # Check for NULL contract_year values and set default
+            conn.execute(text("""
+                UPDATE quarterly_plans SET contract_year = 1 WHERE contract_year IS NULL
+            """))
+
+            # Now set NOT NULL constraints
+            # Check if column is already NOT NULL
+            result = conn.execute(text("""
+                SELECT is_nullable FROM information_schema.columns
+                WHERE table_name = 'quarterly_plans' AND column_name = 'product_id'
+            """))
+            row = result.fetchone()
+            if row and row[0] == 'YES':
+                conn.execute(text("""
+                    ALTER TABLE quarterly_plans ALTER COLUMN product_id SET NOT NULL
+                """))
+                logger.info("Set product_id to NOT NULL in quarterly_plans")
+
+            result = conn.execute(text("""
+                SELECT is_nullable FROM information_schema.columns
+                WHERE table_name = 'quarterly_plans' AND column_name = 'contract_year'
+            """))
+            row = result.fetchone()
+            if row and row[0] == 'YES':
+                conn.execute(text("""
+                    ALTER TABLE quarterly_plans ALTER COLUMN contract_year SET NOT NULL
+                """))
+                logger.info("Set contract_year to NOT NULL in quarterly_plans")
+
+    except Exception as e:
+        logger.debug(f"quarterly_plans NOT NULL migration skipped or failed: {e}")
 
 
 def get_db():

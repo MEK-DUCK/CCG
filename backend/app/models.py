@@ -2,9 +2,12 @@
 SQLAlchemy models for the Oil Lifting Program.
 """
 from typing import Optional
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Enum, Text, Boolean
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Enum, Text, Boolean, UniqueConstraint, JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
+
+# Cross-database JSON type: uses JSONB on PostgreSQL, JSON on SQLite
+JSONType = JSON().with_variant(JSONB, 'postgresql')
 from sqlalchemy.sql import func
 from app.database import Base
 import enum
@@ -172,8 +175,8 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
     
-    # Who created this user
-    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # Who created this user (SET NULL if creator is deleted)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 # =============================================================================
@@ -233,10 +236,10 @@ class Contract(Base):
     # CIF Delivery Window calculation - base destination for voyage duration lookup
     # Options: Rotterdam, Le Havre, Shell Haven, Naples, Milford Haven
     cif_destination = Column(String, nullable=True)
-    
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
-    
-    
+
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+
+
     # Optimistic locking - prevents lost updates in concurrent edits
     version = Column(Integer, nullable=False, default=1)
     
@@ -263,13 +266,16 @@ class ContractProduct(Base):
     Product allocation within a contract.
     Links contracts to products with quantity information.
     Replaces the old JSON products column for proper relational storage.
-    
+
     Original quantities store the base contract values before any amendments.
     Current quantities (min_quantity, max_quantity) are the effective values
     that should be calculated dynamically from original + amendments.
     """
     __tablename__ = "contract_products"
-    
+    __table_args__ = (
+        UniqueConstraint('contract_id', 'product_id', name='uq_contract_products_contract_product'),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     contract_id = Column(Integer, ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
@@ -286,11 +292,11 @@ class ContractProduct(Base):
     # These remain unchanged even when amendments are applied
     original_min_quantity = Column(Float, nullable=True)  # Original min before any amendments
     original_max_quantity = Column(Float, nullable=True)  # Original max before any amendments
-    original_year_quantities = Column(Text, nullable=True)  # Original per-year quantities JSON
-    
-    # Per-year breakdown stored as JSONB for flexibility
+    original_year_quantities = Column(JSONType, nullable=True)  # Original per-year quantities
+
+    # Per-year breakdown stored as JSONB (PostgreSQL) or JSON (SQLite) for flexibility
     # Format: [{"year": 1, "quantity": 500, "min_quantity": 200, "max_quantity": 600}, ...]
-    year_quantities = Column(Text, nullable=True)  # JSON array for per-year quantities
+    year_quantities = Column(JSONType, nullable=True)  # JSON array for per-year quantities
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -301,16 +307,15 @@ class ContractProduct(Base):
     
     def to_dict(self, include_originals: bool = True):
         """Convert to dict format matching the old JSON structure for API compatibility.
-        
+
         Args:
             include_originals: If True, include original_min/max quantities for UI display
         """
-        import json
         result = {
             "name": self.product.name,
             "product_id": self.product_id,  # Include product_id for normalized lookups
         }
-        
+
         if self.total_quantity is not None:
             result["total_quantity"] = self.total_quantity
         if self.optional_quantity is not None and self.optional_quantity > 0:
@@ -320,11 +325,9 @@ class ContractProduct(Base):
         if self.max_quantity is not None:
             result["max_quantity"] = self.max_quantity
         if self.year_quantities:
-            try:
-                result["year_quantities"] = json.loads(self.year_quantities)
-            except (json.JSONDecodeError, TypeError):
-                pass
-        
+            # JSONB returns Python objects directly, no parsing needed
+            result["year_quantities"] = self.year_quantities
+
         # Include original quantities for audit/display purposes
         if include_originals:
             if self.original_min_quantity is not None:
@@ -332,11 +335,9 @@ class ContractProduct(Base):
             if self.original_max_quantity is not None:
                 result["original_max_quantity"] = self.original_max_quantity
             if self.original_year_quantities:
-                try:
-                    result["original_year_quantities"] = json.loads(self.original_year_quantities)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-        
+                # JSONB returns Python objects directly, no parsing needed
+                result["original_year_quantities"] = self.original_year_quantities
+
         return result
 
 
@@ -400,13 +401,13 @@ class QuarterlyPlan(Base):
     __tablename__ = "quarterly_plans"
     
     id = Column(Integer, primary_key=True, index=True)
-    
+
     # Foreign key to products table - normalized reference
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
-    
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+
     # Contract year: 1, 2, etc. (which year of the contract)
-    # Default 1 for backward compatibility
-    contract_year = Column(Integer, nullable=True, default=1)
+    # Must be >= 1
+    contract_year = Column(Integer, nullable=False, default=1)
     
     q1_quantity = Column(Float, default=0)
     q2_quantity = Column(Float, default=0)
@@ -495,7 +496,7 @@ class MonthlyPlan(Base):
     
     # Foreign key to products table - normalized reference
     # For multi-product contracts, identifies which product this monthly plan is for
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     
     # Optimistic locking - prevents lost updates in concurrent edits
     version = Column(Integer, nullable=False, default=1)
@@ -519,9 +520,9 @@ class Cargo(Base):
     id = Column(Integer, primary_key=True, index=True)
     cargo_id = Column(String, unique=True, index=True)  # System generated (e.g., CARGO-XXXX)
     vessel_name = Column(String, nullable=False)
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False, index=True)
     contract_type = Column(Enum(ContractType), nullable=False)
     
     # Combi cargo support - links multiple cargos sharing same vessel
@@ -619,15 +620,18 @@ class CargoPortOperation(Base):
     This is now the SOURCE OF TRUTH for which ports a cargo is loading at.
     """
     __tablename__ = "cargo_port_operations"
+    __table_args__ = (
+        UniqueConstraint('cargo_id', 'load_port_id', name='uq_cargo_port_operations_cargo_port'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    cargo_id = Column(Integer, ForeignKey("cargos.id"), nullable=False, index=True)
-    
+    cargo_id = Column(Integer, ForeignKey("cargos.id", ondelete="CASCADE"), nullable=False, index=True)
+
     # Normalized FK to load_ports table (replaces old port_code string)
     load_port_id = Column(Integer, ForeignKey("load_ports.id"), nullable=False, index=True)
 
-    # Per-port status (String for easy migration across SQLite/Postgres)
-    status = Column(String, nullable=False, default="Planned")  # Planned | Loading | Completed Loading
+    # Per-port status - valid values: Planned, Loading, Completed Loading
+    status = Column(String, nullable=False, default="Planned")
 
     # Per-port vessel operation fields
     eta = Column(String, nullable=True)
@@ -830,40 +834,38 @@ class EntityVersion(Base):
     """
     Version history for all major entities (cargos, contracts, monthly plans, quarterly plans).
     Stores complete snapshots allowing full restoration to any previous version.
-    
+
     This enables:
     - Viewing history of changes with full before/after data
     - Restoring to any previous version with one click
     - Auditing who changed what and when
     """
     __tablename__ = "entity_versions"
-    
+    __table_args__ = (
+        # Unique constraint: one version number per entity
+        UniqueConstraint('entity_type', 'entity_id', 'version_number', name='uq_entity_versions_type_id_version'),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
-    
+
     # Entity identification
     entity_type = Column(String(50), nullable=False, index=True)  # cargo, contract, monthly_plan, quarterly_plan
     entity_id = Column(Integer, nullable=False, index=True)  # ID of the entity
-    
+
     # Version info
     version_number = Column(Integer, nullable=False)  # 1, 2, 3, etc.
-    
+
     # Complete snapshot of the entity at this version (JSON)
     snapshot_data = Column(Text, nullable=False)  # Full JSON representation
-    
+
     # What changed from previous version (for quick display)
     change_summary = Column(Text, nullable=True)  # Human-readable summary
     changed_fields = Column(Text, nullable=True)  # JSON array of field names that changed
-    
+
     # Who and when
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_by_initials = Column(String(4), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Index for efficient lookups
-    __table_args__ = (
-        # Unique constraint: one version number per entity
-        # Index for fast history queries
-    )
 
 
 class DeletedEntity(Base):

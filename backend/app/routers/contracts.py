@@ -138,17 +138,17 @@ def _sync_contract_products(db: Session, contract: models.Contract, products_dat
             max_qty = product_data.max_quantity
             year_quantities = product_data.year_quantities
         
-        # Convert year_quantities to JSON if present
-        year_quantities_json = None
+        # Convert year_quantities to proper list format for JSONB
+        year_quantities_data = None
         if year_quantities:
             if isinstance(year_quantities, list):
-                year_quantities_json = json.dumps([
+                year_quantities_data = [
                     yq if isinstance(yq, dict) else yq.dict()
                     for yq in year_quantities
-                ])
+                ]
             else:
-                year_quantities_json = json.dumps(year_quantities)
-        
+                year_quantities_data = year_quantities
+
         # Determine original quantities
         # If preserving and product existed before, use the stored originals
         # Otherwise, original = current (new product or new contract)
@@ -161,8 +161,8 @@ def _sync_contract_products(db: Session, contract: models.Contract, products_dat
             # New product - original equals current
             original_min = min_qty
             original_max = max_qty
-            original_year_qty = year_quantities_json
-        
+            original_year_qty = year_quantities_data
+
         cp = models.ContractProduct(
             contract_id=contract.id,
             product_id=product.id,
@@ -170,7 +170,7 @@ def _sync_contract_products(db: Session, contract: models.Contract, products_dat
             optional_quantity=optional_qty,
             min_quantity=min_qty,
             max_quantity=max_qty,
-            year_quantities=year_quantities_json,
+            year_quantities=year_quantities_data,  # JSONB accepts Python objects directly
             # Store original quantities for amendment tracking
             original_min_quantity=original_min,
             original_max_quantity=original_max,
