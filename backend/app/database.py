@@ -115,34 +115,8 @@ def ensure_schema():
                         else:
                             conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col} TEXT'))
 
-        # Quarterly plans migrations - add product_name for multi-product contracts
-        if insp.has_table("quarterly_plans"):
-            cols = [c.get("name") for c in insp.get_columns("quarterly_plans")]
-            if "product_name" not in cols:
-                with engine.begin() as conn:
-                    if dialect == "postgresql":
-                        conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN IF NOT EXISTS product_name VARCHAR'))
-                    else:
-                        conn.execute(text('ALTER TABLE quarterly_plans ADD COLUMN product_name VARCHAR'))
-            
-            # Data migration: populate product_name from products table where product_id is set
-            try:
-                with engine.begin() as conn:
-                    # Use normalized schema: quarterly_plans.product_id -> products.name
-                    result = conn.execute(text('''
-                        UPDATE quarterly_plans
-                        SET product_name = (
-                            SELECT p.name FROM products p WHERE p.id = quarterly_plans.product_id
-                        )
-                        WHERE product_name IS NULL
-                        AND product_id IS NOT NULL
-                    '''))
-                    if result.rowcount > 0:
-                        logger.info(f"Populated product_name for {result.rowcount} quarterly plans")
-            except Exception as e:
-                logger.warning(f"Failed to populate product_name for quarterly plans: {e}")
-        
         # Quarterly plans migrations - add top-up tracking fields
+        # NOTE: product_name column removed - use product_id FK with JOIN to products table
         if insp.has_table("quarterly_plans"):
             cols = [c.get("name") for c in insp.get_columns("quarterly_plans")]
             topup_fields = ["q1_topup", "q2_topup", "q3_topup", "q4_topup"]
@@ -453,20 +427,16 @@ def ensure_schema():
             logger.info("Created quarterly_plan_adjustments table")
         
         # Monthly plans migrations - add direct contract link for SPOT contracts
+        # NOTE: product_name column removed - use product_id FK with JOIN to products table
         if insp.has_table("monthly_plans"):
             cols = [c.get("name") for c in insp.get_columns("monthly_plans")]
-            spot_cols = [
-                ("contract_id", "INTEGER REFERENCES contracts(id)"),
-                ("product_name", "VARCHAR"),
-            ]
-            for col_name, col_type in spot_cols:
-                if col_name not in cols:
-                    with engine.begin() as conn:
-                        if dialect == "postgresql":
-                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS {col_name} {col_type.split(" ")[0]}'))
-                        else:
-                            conn.execute(text(f'ALTER TABLE monthly_plans ADD COLUMN {col_name} {col_type.split(" ")[0]}'))
-                    logger.info(f"Added {col_name} column to monthly_plans table")
+            if "contract_id" not in cols:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text('ALTER TABLE monthly_plans ADD COLUMN IF NOT EXISTS contract_id INTEGER'))
+                    else:
+                        conn.execute(text('ALTER TABLE monthly_plans ADD COLUMN contract_id INTEGER'))
+                logger.info("Added contract_id column to monthly_plans table")
             
             # Make quarterly_plan_id nullable for SPOT contracts (PostgreSQL)
             if dialect == "postgresql":
