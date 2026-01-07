@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL")
 USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() == "true"
 
+# Convert postgresql:// to postgresql+psycopg:// for psycopg v3 compatibility
+# psycopg v3 requires the explicit +psycopg driver specification
+if DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+    logger.info("Converted DATABASE_URL to use psycopg v3 driver")
+
 if USE_SQLITE:
     DATABASE_URL = "sqlite:///./oil_lifting.db"
     logger.info("✓ Using SQLite database (oil_lifting.db)")
