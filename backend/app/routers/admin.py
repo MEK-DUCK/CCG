@@ -76,9 +76,11 @@ def get_database_stats(db: Session = Depends(get_db)):
     monthly_plans_with_topups = db.query(MonthlyPlan).filter(
         MonthlyPlan.authority_topup_quantity > 0
     ).count()
-    
-    # Temporary fix: contracts_with_topups (to be implemented later)
-    contracts_with_topups = 0
+
+    # Count distinct contracts that have at least one monthly plan with authority topup
+    contracts_with_topups = db.query(func.count(func.distinct(MonthlyPlan.contract_id))).filter(
+        MonthlyPlan.authority_topup_quantity > 0
+    ).scalar() or 0
     
     return {
         "counts": {
@@ -95,6 +97,7 @@ def get_database_stats(db: Session = Depends(get_db)):
                 "total": cargo_logs_count + monthly_plan_logs_count + quarterly_plan_logs_count + contract_logs_count
             }
         },
+        "monthly_plans_with_topups": monthly_plans_with_topups,
         "contracts_with_topups": contracts_with_topups,
         "issues": issues,
         "last_updated": datetime.utcnow().isoformat()
