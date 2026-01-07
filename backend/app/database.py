@@ -39,9 +39,29 @@ else:
         )
 
     try:
+        # Force IPv4 for Supabase connections (Render doesn't support IPv6 outbound)
+        import socket
+        from urllib.parse import urlparse
+
+        parsed = urlparse(DATABASE_URL)
+        hostname = parsed.hostname
+
+        # Resolve hostname to IPv4 address to avoid IPv6 issues
+        try:
+            ipv4_addr = socket.gethostbyname(hostname)  # Returns IPv4 only
+            logger.info(f"Resolved {hostname} to IPv4: {ipv4_addr}")
+        except socket.gaierror as e:
+            logger.warning(f"Could not resolve hostname to IPv4: {e}")
+            ipv4_addr = None
+
+        # Build connect_args with IPv4 preference
+        connect_args = {"connect_timeout": 5}
+        if ipv4_addr:
+            connect_args["hostaddr"] = ipv4_addr  # Force IPv4 address
+
         test_engine = create_engine(
             DATABASE_URL,
-            connect_args={"connect_timeout": 5},
+            connect_args=connect_args,
             pool_pre_ping=True
         )
 
@@ -57,7 +77,7 @@ else:
             max_overflow=10,
             pool_timeout=10,
             pool_recycle=3600,
-            connect_args={"connect_timeout": 5},
+            connect_args=connect_args,
             echo=False
         )
 
