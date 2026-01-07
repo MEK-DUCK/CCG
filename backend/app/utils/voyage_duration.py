@@ -13,60 +13,114 @@ from sqlalchemy.orm import Session
 # List of valid routes
 CIF_ROUTES = ["SUEZ", "CAPE"]
 
+# Single-route destinations (no route selection needed, same-month delivery allowed)
+# These destinations only have a Suez route with short voyage duration
+SINGLE_ROUTE_DESTINATIONS = ["Djibouti", "Keamari/Fotco"]
 
-def get_voyage_duration(destination: str, route: str, db: Session = None) -> Optional[int]:
+
+def is_single_route_destination(destination: str) -> bool:
     """
-    Get voyage duration in days for a destination and route.
-    
-    Fetches from database if db session provided, otherwise returns None.
-    
+    Check if a destination is a single-route destination.
+    Single-route destinations don't require route selection and allow same-month delivery.
+
     Args:
-        destination: Destination port name (e.g., "Rotterdam", "Milford Haven")
-        route: Route name ("SUEZ" or "CAPE")
+        destination: Destination port name
+
+    Returns:
+        True if single-route destination, False otherwise
+    """
+    return destination in SINGLE_ROUTE_DESTINATIONS
+
+
+def get_single_route_voyage_duration(destination: str, db: Session = None) -> Optional[int]:
+    """
+    Get voyage duration for a single-route destination.
+
+    Args:
+        destination: Destination port name
         db: SQLAlchemy database session (optional)
-    
+
     Returns:
         Number of days for the voyage, or None if not found
     """
     if db is None:
         return None
-    
+
     from app import models
-    
+
     discharge_port = db.query(models.DischargePort).filter(
         models.DischargePort.name == destination
     ).first()
-    
+
     if not discharge_port:
         return None
-    
-    if route.upper() == "SUEZ":
+
+    # For single-route destinations, return the suez duration (the only available route)
+    return discharge_port.voyage_days_suez
+
+
+def get_voyage_duration(destination: str, route: str, db: Session = None) -> Optional[int]:
+    """
+    Get voyage duration in days for a destination and route.
+
+    Fetches from database if db session provided, otherwise returns None.
+    For single-route destinations, returns the available route duration regardless of route param.
+
+    Args:
+        destination: Destination port name (e.g., "Rotterdam", "Milford Haven")
+        route: Route name ("SUEZ" or "CAPE") - ignored for single-route destinations
+        db: SQLAlchemy database session (optional)
+
+    Returns:
+        Number of days for the voyage, or None if not found
+    """
+    if db is None:
+        return None
+
+    from app import models
+
+    discharge_port = db.query(models.DischargePort).filter(
+        models.DischargePort.name == destination
+    ).first()
+
+    if not discharge_port:
+        return None
+
+    # For single-route destinations, return the only available route (suez)
+    if is_single_route_destination(destination):
         return discharge_port.voyage_days_suez
-    elif route.upper() == "CAPE":
+
+    if route and route.upper() == "SUEZ":
+        return discharge_port.voyage_days_suez
+    elif route and route.upper() == "CAPE":
         return discharge_port.voyage_days_cape
-    
+
     return None
 
 
 def get_voyage_duration_from_port(discharge_port, route: str) -> Optional[int]:
     """
     Get voyage duration from a DischargePort model instance.
-    
+
     Args:
         discharge_port: DischargePort model instance
-        route: Route name ("SUEZ" or "CAPE")
-    
+        route: Route name ("SUEZ" or "CAPE") - ignored for single-route destinations
+
     Returns:
         Number of days for the voyage, or None if not found
     """
     if not discharge_port:
         return None
-    
-    if route.upper() == "SUEZ":
+
+    # For single-route destinations, return the only available route (suez)
+    if is_single_route_destination(discharge_port.name):
         return discharge_port.voyage_days_suez
-    elif route.upper() == "CAPE":
+
+    if route and route.upper() == "SUEZ":
+        return discharge_port.voyage_days_suez
+    elif route and route.upper() == "CAPE":
         return discharge_port.voyage_days_cape
-    
+
     return None
 
 

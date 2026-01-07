@@ -14,6 +14,19 @@ let cacheLoaded = false
 // List of valid routes
 export const CIF_ROUTES = ["SUEZ", "CAPE"]
 
+// Single-route destinations (no route selection needed, same-month delivery allowed)
+// These destinations only have a Suez route with short voyage duration
+export const SINGLE_ROUTE_DESTINATIONS = ["Djibouti", "Keamari/Fotco"]
+
+/**
+ * Check if a destination is a single-route destination.
+ * Single-route destinations don't require route selection and allow same-month delivery.
+ */
+export function isSingleRouteDestination(destination: string | undefined | null): boolean {
+  if (!destination) return false
+  return SINGLE_ROUTE_DESTINATIONS.includes(destination)
+}
+
 /**
  * Interface for discharge port data from API
  */
@@ -60,17 +73,23 @@ export function getCifDestinations(): string[] {
 /**
  * Get voyage duration in days for a destination and route.
  * Uses cached data from the database.
+ * For single-route destinations, returns the available route duration regardless of route param.
  */
 export function getVoyageDuration(destination: string, route: string): number | null {
   const portData = voyageDurationsCache[destination]
   if (!portData) return null
-  
-  if (route.toUpperCase() === 'SUEZ') {
+
+  // For single-route destinations, return the only available route (suez)
+  if (isSingleRouteDestination(destination)) {
     return portData.suez
-  } else if (route.toUpperCase() === 'CAPE') {
+  }
+
+  if (route && route.toUpperCase() === 'SUEZ') {
+    return portData.suez
+  } else if (route && route.toUpperCase() === 'CAPE') {
     return portData.cape
   }
-  
+
   return null
 }
 

@@ -34,13 +34,22 @@ export const getMonthName = (month: number): string => {
  * Generate delivery month options for CIF contracts.
  * Shows months AFTER the loading month (delivery cannot be same month as loading).
  * Typically shows next 3 months after loading month.
+ *
+ * For single-route destinations (allowSameMonth=true), also includes the loading month itself
+ * since short voyage durations allow same-month delivery.
  */
-export const getDeliveryMonthOptions = (loadingMonth: number, loadingYear: number): Array<{ value: string, label: string }> => {
+export const getDeliveryMonthOptions = (
+  loadingMonth: number,
+  loadingYear: number,
+  allowSameMonth: boolean = false
+): Array<{ value: string, label: string }> => {
   const options: Array<{ value: string, label: string }> = []
-  
-  // Generate options for 3 months AFTER loading month (i starts at 1, not 0)
-  // Delivery is always after loading, so skip the loading month itself
-  for (let i = 1; i <= 3; i++) {
+
+  // For single-route destinations, include the loading month itself (same-month delivery allowed)
+  const startOffset = allowSameMonth ? 0 : 1
+
+  // Generate options for 3 months (starting from loading month if allowSameMonth, otherwise from next month)
+  for (let i = startOffset; i <= startOffset + 2; i++) {
     const date = new Date(loadingYear, loadingMonth - 1 + i, 1)
     const month = date.getMonth() + 1
     const year = date.getFullYear()
@@ -50,7 +59,7 @@ export const getDeliveryMonthOptions = (loadingMonth: number, loadingYear: numbe
       label: `${monthName} ${year}`
     })
   }
-  
+
   return options
 }
 

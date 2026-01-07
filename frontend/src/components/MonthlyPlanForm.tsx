@@ -29,7 +29,7 @@ import { MonthlyPlanStatus, QuarterlyPlanAdjustment } from '../types'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 import { VersionHistoryDialog } from './VersionHistory'
-import { CIF_ROUTES, calculateDeliveryWindow, calculateETA, setVoyageDurations, isVoyageDurationsLoaded, type DischargePort } from '../utils/voyageDuration'
+import { CIF_ROUTES, calculateDeliveryWindow, calculateETA, setVoyageDurations, isVoyageDurationsLoaded, isSingleRouteDestination, type DischargePort } from '../utils/voyageDuration'
 import client from '../api/client'
 import { BADGE_COLORS } from '../utils/chipColors'
 import { getContractYearMonths } from '../utils/fiscalYear'
@@ -723,13 +723,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     }
     
     // Auto-calculate delivery window when loading_window or cif_route changes for CIF contracts
+    // For single-route destinations, we don't need route to be selected
     if (contractType === 'CIF' && (field === 'loading_window' || field === 'cif_route')) {
       const loadingWindow = field === 'loading_window' ? value : currentEntry.loading_window
       const route = field === 'cif_route' ? value : currentEntry.cif_route
       const destination = contract?.cif_destination
-      
-      if (loadingWindow && route && destination) {
-        const calculatedDeliveryWindow = calculateDeliveryWindow(loadingWindow, destination, route, month, year)
+
+      // For single-route destinations, calculate delivery window even without route selection
+      const canCalculate = loadingWindow && destination && (route || isSingleRouteDestination(destination))
+      if (canCalculate) {
+        const calculatedDeliveryWindow = calculateDeliveryWindow(loadingWindow, destination, route || '', month, year)
         if (calculatedDeliveryWindow) {
           updatedEntries[entryIndex].delivery_window = calculatedDeliveryWindow
         }
@@ -2285,9 +2288,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               <Typography variant="body2" sx={{ color: entry.delivery_window ? '#1E293B' : '#94A3B8', fontStyle: entry.delivery_window ? 'normal' : 'italic' }}>
                                 {entry.delivery_window || (entry.delivery_month || '-')}
                               </Typography>
-                              {entry.loading_window && entry.cif_route && contract?.cif_destination && (
+                              {entry.loading_window && (entry.cif_route || isSingleRouteDestination(contract?.cif_destination)) && contract?.cif_destination && (
                                 <Typography variant="caption" sx={{ color: '#6366F1', fontStyle: 'italic', display: 'block' }}>
-                                  ETA: {calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route, month, year) || '-'}
+                                  ETA: {calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route || '', month, year) || '-'}
                                 </Typography>
                               )}
                             </Box>
@@ -2532,22 +2535,25 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               fullWidth
                               sx={{ mb: 1 }}
                             />
-                            <TextField
-                              size="small"
-                              label="Route"
-                              value={entry.cif_route}
-                              onChange={(e) => handleLaycanChange(month, year, entryIndex, 'cif_route', e.target.value)}
-                              select
-                              fullWidth
-                              sx={{ mb: 1 }}
-                            >
-                              <MenuItem value="">
-                                <em>Select route</em>
-                              </MenuItem>
-                              {CIF_ROUTES.map((route) => (
-                                <MenuItem key={route} value={route}>Via {route}</MenuItem>
-                              ))}
-                            </TextField>
+                            {/* Route dropdown - only show for destinations that require route selection */}
+                            {!isSingleRouteDestination(contract?.cif_destination) && (
+                              <TextField
+                                size="small"
+                                label="Route"
+                                value={entry.cif_route}
+                                onChange={(e) => handleLaycanChange(month, year, entryIndex, 'cif_route', e.target.value)}
+                                select
+                                fullWidth
+                                sx={{ mb: 1 }}
+                              >
+                                <MenuItem value="">
+                                  <em>Select route</em>
+                                </MenuItem>
+                                {CIF_ROUTES.map((route) => (
+                                  <MenuItem key={route} value={route}>Via {route}</MenuItem>
+                                ))}
+                              </TextField>
+                            )}
                             <TextField
                               size="small"
                               label="Delivery Month *"
@@ -2561,7 +2567,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               <MenuItem value="">
                                 <em>Select month</em>
                               </MenuItem>
-                              {getDeliveryMonthOptions(month, year).map((opt) => (
+                              {getDeliveryMonthOptions(month, year, isSingleRouteDestination(contract?.cif_destination)).map((opt) => (
                                 <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                               ))}
                             </TextField>
@@ -2571,16 +2577,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                               value={entry.delivery_window}
                               onChange={(e) => handleLaycanChange(month, year, entryIndex, 'delivery_window', e.target.value)}
                               fullWidth
-                              sx={{ 
+                              sx={{
                                 mb: 1,
-                                '& .MuiFormHelperText-root': { 
-                                  color: entry.loading_window && entry.cif_route ? '#6366F1' : undefined,
+                                '& .MuiFormHelperText-root': {
+                                  color: entry.loading_window && (entry.cif_route || isSingleRouteDestination(contract?.cif_destination)) ? '#6366F1' : undefined,
                                   fontStyle: 'italic',
                                 },
                               }}
                               helperText={
-                                entry.loading_window && entry.cif_route && contract?.cif_destination
-                                  ? `ETA: ${calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route, month, year) || '-'}`
+                                entry.loading_window && (entry.cif_route || isSingleRouteDestination(contract?.cif_destination)) && contract?.cif_destination
+                                  ? `ETA: ${calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route || '', month, year) || '-'}`
                                   : (contract?.cif_destination ? `Basis ${contract.cif_destination}` : 'Set destination in contract')
                               }
                             />
@@ -3067,10 +3073,10 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                             <Typography variant="body2" sx={{ color: entry.delivery_window ? '#1E293B' : '#94A3B8', fontStyle: entry.delivery_window ? 'normal' : 'italic' }}>
                               {entry.delivery_window || (entry.delivery_month || '-')}
                             </Typography>
-                            {/* Show ETA if loading window, route, and destination are available */}
-                            {entry.loading_window && entry.cif_route && contract?.cif_destination && (
+                            {/* Show ETA if loading window, route (or single-route destination), and destination are available */}
+                            {entry.loading_window && (entry.cif_route || isSingleRouteDestination(contract?.cif_destination)) && contract?.cif_destination && (
                               <Typography variant="caption" sx={{ color: '#6366F1', fontStyle: 'italic', display: 'block' }}>
-                                ETA: {calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route, month, year) || '-'}
+                                ETA: {calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route || '', month, year) || '-'}
                               </Typography>
                             )}
                           </Box>
@@ -3510,24 +3516,27 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       }}
                                     />
                                   </Box>
-                                  <TextField
-                                    label="Route"
-                                    size="small"
-                                    value={entry.cif_route}
-                                    onChange={(e) => handleLaycanChange(month, year, entryIndex, 'cif_route', e.target.value)}
-                                    select
-                                    disabled={isLocked}
-                                    sx={{
-                                      '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
-                                    }}
-                                  >
-                                    <MenuItem value="">
-                                      <em>Select route</em>
-                                    </MenuItem>
-                                    {CIF_ROUTES.map((route) => (
-                                      <MenuItem key={route} value={route}>Via {route}</MenuItem>
-                                    ))}
-                                  </TextField>
+                                  {/* Route dropdown - only show for destinations that require route selection */}
+                                  {!isSingleRouteDestination(contract?.cif_destination) && (
+                                    <TextField
+                                      label="Route"
+                                      size="small"
+                                      value={entry.cif_route}
+                                      onChange={(e) => handleLaycanChange(month, year, entryIndex, 'cif_route', e.target.value)}
+                                      select
+                                      disabled={isLocked}
+                                      sx={{
+                                        '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
+                                      }}
+                                    >
+                                      <MenuItem value="">
+                                        <em>Select route</em>
+                                      </MenuItem>
+                                      {CIF_ROUTES.map((route) => (
+                                        <MenuItem key={route} value={route}>Via {route}</MenuItem>
+                                      ))}
+                                    </TextField>
+                                  )}
                                   <Box sx={{ display: 'flex', gap: 1 }}>
                                     <TextField
                                       label="Delivery Month *"
@@ -3546,7 +3555,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       <MenuItem value="">
                                         <em>Select month</em>
                                       </MenuItem>
-                                      {getDeliveryMonthOptions(month, year).map((opt) => (
+                                      {getDeliveryMonthOptions(month, year, isSingleRouteDestination(contract?.cif_destination)).map((opt) => (
                                         <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                                       ))}
                                     </TextField>
@@ -3558,8 +3567,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                       placeholder="Auto"
                                       disabled={isLocked}
                                       helperText={
-                                        entry.loading_window && entry.cif_route && contract?.cif_destination
-                                          ? `ETA: ${calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route, month, year) || '-'}`
+                                        entry.loading_window && (entry.cif_route || isSingleRouteDestination(contract?.cif_destination)) && contract?.cif_destination
+                                          ? `ETA: ${calculateETA(entry.loading_window, contract.cif_destination, entry.cif_route || '', month, year) || '-'}`
                                           : (contract?.cif_destination ? `Basis ${contract.cif_destination}` : '')
                                       }
                                       sx={{
@@ -3567,8 +3576,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                         minWidth: 100,
                                         '& .MuiInputBase-root': { height: '32px', fontSize: '0.875rem' },
                                         '& .MuiInputBase-input': { padding: '6px 8px' },
-                                        '& .MuiFormHelperText-root': { 
-                                          color: entry.loading_window && entry.cif_route ? '#6366F1' : undefined,
+                                        '& .MuiFormHelperText-root': {
+                                          color: entry.loading_window && (entry.cif_route || isSingleRouteDestination(contract?.cif_destination)) ? '#6366F1' : undefined,
                                           fontStyle: 'italic',
                                         },
                                       }}

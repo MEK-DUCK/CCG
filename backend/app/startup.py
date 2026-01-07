@@ -89,6 +89,20 @@ Stern-centre manifold Max:      130
         "voyage_days_cape": 40,
         "sort_order": 5
     },
+    {
+        "name": "Djibouti",
+        "restrictions": """Djibouti Port restrictions to be confirmed.""",
+        "voyage_days_suez": 7,
+        "voyage_days_cape": None,  # Single route destination - no Cape route
+        "sort_order": 6
+    },
+    {
+        "name": "Keamari/Fotco",
+        "restrictions": """Keamari/Fotco Port restrictions to be confirmed.""",
+        "voyage_days_suez": 7,
+        "voyage_days_cape": None,  # Single route destination - no Cape route
+        "sort_order": 7
+    },
 ]
 
 def ensure_user(email: str, password: str, full_name: str, initials: str, role: UserRole):
