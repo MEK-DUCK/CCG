@@ -4,7 +4,7 @@ This runs automatically when the FastAPI app starts.
 """
 import logging
 from app.database import SessionLocal
-from app.models import User, UserRole, UserStatus, DischargePort
+from app.models import User, UserRole, UserStatus, DischargePort, Product
 from app.auth import get_password_hash
 
 logger = logging.getLogger(__name__)
@@ -210,6 +210,46 @@ def ensure_discharge_ports():
     except Exception as e:
         db.rollback()
         logger.error(f"❌ Error seeding discharge ports: {e}")
+    finally:
+        db.close()
+
+
+# Default products
+DEFAULT_PRODUCTS = [
+    {"code": "JETA1", "name": "JET A-1", "description": "Aviation turbine fuel", "sort_order": 1},
+    {"code": "GASOIL", "name": "GASOIL", "description": "Diesel fuel", "sort_order": 2},
+    {"code": "GASOIL10", "name": "GASOIL 10PPM", "description": "Ultra-low sulfur diesel (10ppm)", "sort_order": 3},
+    {"code": "HFO", "name": "HFO", "description": "Heavy fuel oil", "sort_order": 4},
+    {"code": "LSFO", "name": "LSFO", "description": "Low sulfur fuel oil", "sort_order": 5},
+]
+
+
+def ensure_products():
+    """Ensure default products exist, create if they don't."""
+    db = SessionLocal()
+
+    try:
+        existing_count = db.query(Product).count()
+
+        if existing_count == 0:
+            for product_data in DEFAULT_PRODUCTS:
+                product = Product(
+                    code=product_data["code"],
+                    name=product_data["name"],
+                    description=product_data["description"],
+                    is_active=True,
+                    sort_order=product_data["sort_order"]
+                )
+                db.add(product)
+
+            db.commit()
+            logger.info(f"✅ Seeded {len(DEFAULT_PRODUCTS)} default products")
+        else:
+            logger.info(f"ℹ️  Products already exist ({existing_count} products)")
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error seeding products: {e}")
     finally:
         db.close()
 
