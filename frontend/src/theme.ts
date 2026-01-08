@@ -20,25 +20,25 @@ const getBaseThemeOptions = (mode: 'light' | 'dark'): ThemeOptions => {
         contrastText: '#ffffff',
       },
       success: {
-        main: '#059669',
+        main: '#059669',      // Kept for actual success states
         light: '#10B981',
         dark: '#047857',
         contrastText: '#ffffff',
       },
       warning: {
-        main: '#D97706',
-        light: '#F59E0B',
-        dark: '#B45309',
+        main: '#B45309',      // Muted amber (was #D97706)
+        light: '#D97706',
+        dark: '#92400E',
         contrastText: '#ffffff',
       },
       error: {
-        main: '#DC2626',
-        light: '#EF4444',
-        dark: '#B91C1C',
+        main: '#B91C1C',      // Muted red (was #DC2626)
+        light: '#DC2626',
+        dark: '#991B1B',
         contrastText: '#ffffff',
       },
       info: {
-        main: '#0284C7',
+        main: '#0284C7',      // Keep original blue for info sections
         light: '#0EA5E9',
         dark: '#0369A1',
         contrastText: '#ffffff',

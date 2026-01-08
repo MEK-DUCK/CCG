@@ -13,6 +13,8 @@ import {
 import { Save, CalendarMonth, Add } from '@mui/icons-material'
 import { quarterlyPlanAPI, contractAPI } from '../api/client'
 import { usePresence, PresenceUser } from '../hooks/usePresence'
+import { useToast } from '../contexts/ToastContext'
+import { useFormShortcuts } from '../hooks/useKeyboardShortcuts'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 import { getQuarterDisplayLabel } from '../utils/fiscalYear'
 
@@ -51,9 +53,14 @@ const getContractYears = (startPeriod: string, endPeriod: string): number => {
 export default function QuarterlyPlanForm({ contractId, contract, existingPlans = [], onPlanCreated, onCancel }: QuarterlyPlanFormProps) {
   const [contractData, setContractData] = useState<any>(contract)
   const [productPlans, setProductPlans] = useState<ProductPlanData[]>([])
+  const [initialProductPlans, setInitialProductPlans] = useState<ProductPlanData[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [selectedYear, setSelectedYear] = useState(1)
   const [editingUser, setEditingUser] = useState<{ user: PresenceUser; field: string } | null>(null)
+  const { showSuccess, showError } = useToast()
+
+  // Check if form has unsaved changes
+  const isDirty = productPlans.length > 0 && JSON.stringify(productPlans) !== JSON.stringify(initialProductPlans)
   
   // Real-time presence tracking for this contract's quarterly plan
   const handleDataChanged = useCallback(() => {
@@ -160,6 +167,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
     }
     
     setProductPlans(newProductPlans)
+    setInitialProductPlans(JSON.parse(JSON.stringify(newProductPlans)))  // Deep copy for comparison
   }, [contractData, existingPlans])
   
   // Legacy support - keeping old variable names for minimal code changes
@@ -197,7 +205,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
     e.preventDefault()
     
     if (!contractId || !contractData) {
-      alert('Contract data not loaded. Please try again.')
+      showError('Contract data not loaded. Please try again.')
       return
     }
 
@@ -206,7 +214,7 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
     for (const plan of yearPlans) {
       const total = getProductTotal(plan)
       if (total < 0) {
-        alert(`${plan.productName} Year ${plan.contractYear}: Quantities cannot be negative`)
+        showError(`${plan.productName} Year ${plan.contractYear}: Quantities cannot be negative`)
         return
       }
     }
@@ -246,17 +254,23 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
         }
       }
 
-      alert('Quarterly plan(s) saved successfully!')
+      showSuccess('Quarterly plan(s) saved successfully!')
       onPlanCreated()
       if (onCancel) onCancel()
     } catch (error: any) {
       console.error('Error saving quarterly plan:', error)
       const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error occurred'
-      alert(`Error saving quarterly plan: ${errorMessage}`)
+      showError(`Error saving quarterly plan: ${errorMessage}`)
     } finally {
       setIsSaving(false)
     }
   }
+
+  // Keyboard shortcut: Ctrl+S to save
+  useFormShortcuts(
+    () => handleSubmit({ preventDefault: () => {} } as React.FormEvent),
+    isDirty && !isSaving
+  )
 
   if (!contractData || productPlans.length === 0) {
     return (
@@ -440,11 +454,15 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
               Cancel
             </Button>
           )}
-          <Button 
-            type="submit" 
-            variant="contained" 
+          <Button
+            type="submit"
+            variant={isDirty ? "contained" : "outlined"}
             startIcon={existingPlans.length > 0 ? <Save /> : <Add />}
-            disabled={isSaving}
+            disabled={isSaving || !isDirty}
+            sx={{
+              transition: 'all 0.2s ease',
+              ...(isDirty ? {} : { color: 'text.secondary', borderColor: 'divider' })
+            }}
           >
             {isSaving ? 'Saving...' : existingPlans.length > 0 ? 'Save Changes' : 'Create Plan'}
           </Button>

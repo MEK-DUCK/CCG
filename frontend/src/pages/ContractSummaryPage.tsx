@@ -26,6 +26,7 @@ import { FileDownload, PictureAsPdf } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan } from '../types'
 import { BADGE_COLORS, getContractTypeColor, getPaymentColor } from '../utils/chipColors'
+import { useToast } from '../contexts/ToastContext'
 
 const formatDateRange = (start?: string, end?: string) => {
   if (!start || !end) return '-'
@@ -39,6 +40,7 @@ const formatDateOnly = (value?: string) => {
 }
 
 export default function ContractSummaryPage() {
+  const { showError } = useToast()
   const [contracts, setContracts] = useState<Contract[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [quarterlyPlans, setQuarterlyPlans] = useState<QuarterlyPlan[]>([])
@@ -289,7 +291,7 @@ export default function ContractSummaryPage() {
       XLSX.writeFile(wb, `Contract_Summary_${selectedYear}_${dateStr}.xlsx`)
     }).catch((error) => {
       console.error('Error exporting to Excel:', error)
-      alert('Error exporting to Excel.')
+      showError('Error exporting to Excel.')
     })
   }
 
@@ -358,7 +360,7 @@ export default function ContractSummaryPage() {
       doc.save(`Contract_Summary_${selectedYear}_${dateStr}.pdf`)
     } catch (error) {
       console.error('Error exporting to PDF:', error)
-      alert(`Error exporting to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      showError(`Error exporting to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 

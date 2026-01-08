@@ -12,6 +12,8 @@ import {
 } from '@mui/material'
 import { Add } from '@mui/icons-material'
 import { cargoAPI } from '../api/client'
+import { useToast } from '../contexts/ToastContext'
+import { useFormShortcuts } from '../hooks/useKeyboardShortcuts'
 import type { Contract } from '../types'
 
 interface CargoFormProps {
@@ -21,6 +23,7 @@ interface CargoFormProps {
 }
 
 export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: CargoFormProps) {
+  const { showSuccess, showError } = useToast()
   const [formData, setFormData] = useState({
     product_name: contract.products?.[0]?.name || '',
     vessel_name: '',
@@ -48,11 +51,11 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!monthlyPlanId) {
-      alert('Please create a monthly plan first')
+      showError('Please create a monthly plan first')
       return
     }
     if (!formData.product_name) {
-      alert('Please select a product first')
+      showError('Please select a product first')
       return
     }
     try {
@@ -92,13 +95,19 @@ export default function CargoForm({ contract, monthlyPlanId, onCargoCreated }: C
         notes: '',
       })
       onCargoCreated()
-      alert('Cargo created successfully!')
+      showSuccess('Cargo created successfully!')
     } catch (error: any) {
       console.error('Error creating cargo:', error)
       const errorMessage = error.response?.data?.detail || error.message || 'Error creating cargo. Please try again.'
-      alert(errorMessage)
+      showError(errorMessage)
     }
   }
+
+  // Keyboard shortcut: Ctrl+S to save
+  useFormShortcuts(
+    () => handleSubmit({ preventDefault: () => {} } as React.FormEvent),
+    !!monthlyPlanId
+  )
 
   return (
     <Paper sx={{ p: 2 }}>

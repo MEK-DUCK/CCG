@@ -41,6 +41,8 @@ import { getContractTypeColor, getPaymentColor } from '../utils/chipColors'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
 import { useConflictHandler } from '../components/Presence'
+import { useToast } from '../contexts/ToastContext'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 
 // Fallback product options if API fails
 const DEFAULT_PRODUCT_OPTIONS = ['JET A-1', 'GASOIL', 'GASOIL 10PPM', 'HFO', 'LSFO']
@@ -83,6 +85,7 @@ const getCalendarYear = (startPeriod: string, contractYear: number): number => {
 
 export default function ContractManagement() {
   const navigate = useNavigate()
+  const { showSuccess, showError } = useToast()
   const [contracts, setContracts] = useState<Contract[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [productOptions, setProductOptions] = useState<string[]>(DEFAULT_PRODUCT_OPTIONS)
@@ -188,7 +191,7 @@ export default function ContractManagement() {
       return loadedContracts
     } catch (error: any) {
       console.error('Error loading data:', error)
-      alert(`Error loading data: ${error?.message || 'Unknown error'}`)
+      showError(`Error loading data: ${error?.message || 'Unknown error'}`)
       setContracts([])
       setCustomers([])
       return []
@@ -497,35 +500,35 @@ export default function ContractManagement() {
 
       // Validate form
       if (!formData.customer_id || !formData.contract_number || !formData.start_period || !formData.end_period) {
-        alert('Please fill in all required fields')
+        showError('Please fill in all required fields')
         return
       }
 
       if (formData.products.length === 0) {
-        alert('Please add at least one product')
+        showError('Please add at least one product')
         return
       }
 
       // Validate products
       for (const product of formData.products) {
         if (!product.name || !productOptions.includes(product.name)) {
-          alert(`Invalid product. Must be one of: ${productOptions.join(', ')}`)
+          showError(`Invalid product. Must be one of: ${productOptions.join(', ')}`)
           return
         }
         // Validate quantities based on mode
         const useMinMax = isMinMaxMode(product)
         if (useMinMax) {
           if (!product.max_quantity || product.max_quantity <= 0) {
-            alert(`Maximum quantity must be greater than 0 for ${product.name}`)
+            showError(`Maximum quantity must be greater than 0 for ${product.name}`)
             return
           }
           if (product.min_quantity !== undefined && product.min_quantity > product.max_quantity) {
-            alert(`Minimum quantity cannot exceed maximum quantity for ${product.name}`)
+            showError(`Minimum quantity cannot exceed maximum quantity for ${product.name}`)
             return
           }
         } else {
           if (!product.total_quantity || product.total_quantity <= 0) {
-            alert(`Total quantity must be greater than 0 for ${product.name}`)
+            showError(`Total quantity must be greater than 0 for ${product.name}`)
             return
           }
         }
@@ -615,7 +618,7 @@ export default function ContractManagement() {
       }
       
       // Show success message
-      alert(editingContract ? 'Contract updated successfully!' : 'Contract created successfully!')
+      showSuccess(editingContract ? 'Contract updated successfully!' : 'Contract created successfully!')
       
       // Close dialog
       handleClose()
@@ -634,9 +637,16 @@ export default function ContractManagement() {
       console.error('Error saving contract:', error)
       console.error('Error details:', error?.response?.data)
       const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error occurred'
-      alert(`Error saving contract: ${errorMessage}`)
+      showError(`Error saving contract: ${errorMessage}`)
     }
   }
+
+  // Keyboard shortcuts for dialog: Ctrl+S to save, Escape to close
+  useKeyboardShortcuts({
+    onSave: open ? handleSubmit : undefined,
+    onEscape: open ? handleClose : undefined,
+    enabled: open,
+  })
 
   const handleDelete = async (id: number) => {
     if (window.confirm('Are you sure you want to delete this contract?')) {
@@ -648,7 +658,7 @@ export default function ContractManagement() {
         }
       } catch (error) {
         console.error('Error deleting contract:', error)
-        alert('Error deleting contract. Please try again.')
+        showError('Error deleting contract. Please try again.')
       }
     }
   }
@@ -754,13 +764,13 @@ export default function ContractManagement() {
           variant="contained"
           startIcon={<Add />}
           onClick={() => handleOpen()}
-          sx={{ 
+          sx={{
             px: 3,
             py: 1,
             fontWeight: 600,
-            bgcolor: '#2563EB',
+            bgcolor: '#475569',
             '&:hover': {
-              bgcolor: '#1D4ED8',
+              bgcolor: '#334155',
             },
           }}
         >
@@ -922,12 +932,12 @@ export default function ContractManagement() {
                       try {
                         if (!contract) {
                           console.error('Contract is null/undefined')
-                          alert('Invalid contract. Please try again.')
+                          showError('Invalid contract. Please try again.')
                           return
                         }
                         if (!contract.id) {
                           console.error('Contract has no ID:', contract)
-                          alert('Contract has no ID. Please try again.')
+                          showError('Contract has no ID. Please try again.')
                           return
                         }
                         setSelectedContract(contract)
@@ -935,7 +945,7 @@ export default function ContractManagement() {
                       } catch (error: any) {
                         console.error('ERROR selecting contract:', error)
                         console.error('Error stack:', error?.stack)
-                        alert(`Error selecting contract: ${error?.message || 'Unknown error'}`)
+                        showError(`Error selecting contract: ${error?.message || 'Unknown error'}`)
                       }
                     }}
                     sx={{ 
@@ -1672,7 +1682,7 @@ export default function ContractManagement() {
                                 border: '1px solid #E2E8F0'
                               }}>
                                 <Typography variant="caption" sx={{ 
-                                  color: '#1D4ED8', 
+                                  color: '#334155', 
                                   fontWeight: 600,
                                   display: 'block',
                                   mb: 1
@@ -2007,7 +2017,7 @@ export default function ContractManagement() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClose}>Cancel</Button>
+          <Button onClick={handleClose} variant="outlined">Cancel</Button>
           <Button
             onClick={handleSubmit}
             variant="contained"

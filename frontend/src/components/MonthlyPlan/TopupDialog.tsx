@@ -14,6 +14,7 @@ import {
 } from '@mui/material'
 import { TrendingUp } from '@mui/icons-material'
 import { monthlyPlanAPI, MonthlyPlanTopUpRequest } from '../../api/client'
+import { useToast } from '../../contexts/ToastContext'
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -63,24 +64,26 @@ export default function TopupDialog({
   setIsAddingTopup,
   onSuccess,
 }: TopupDialogProps) {
+  const { showSuccess, showError } = useToast()
+
   const handleClose = () => {
     onClose()
   }
 
   const handleSubmit = async () => {
     if (!topupForm.quantity || !topupForm.authority_reference) {
-      alert('Please fill in quantity and authority reference')
+      showError('Please fill in quantity and authority reference')
       return
     }
-    
+
     if (!topupEntry || !topupEntry.entry.id) {
-      alert('No monthly plan selected. This should not happen - please close the dialog and try again.')
+      showError('No monthly plan selected. Please close the dialog and try again.')
       return
     }
-    
+
     // For combie cargos, require product selection
     if (topupEntry.entry.is_combi && !topupForm.selected_product) {
-      alert('Please select which product the top-up is for')
+      showError('Please select which product the top-up is for')
       return
     }
     
@@ -110,14 +113,14 @@ export default function TopupDialog({
       
       handleClose()
       const productInfo = topupEntry.entry.is_combi ? ` for ${topupForm.selected_product}` : ''
-      alert(`Authority top-up of ${parseFloat(topupForm.quantity).toLocaleString()} KT${productInfo} added successfully!`)
-      
+      showSuccess(`Authority top-up of ${parseFloat(topupForm.quantity).toLocaleString()} KT${productInfo} added successfully!`)
+
       // Reload data
       onSuccess()
     } catch (error: any) {
       console.error('Error adding authority top-up:', error)
       const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error'
-      alert(`Error adding top-up: ${errorMessage}`)
+      showError(`Error adding top-up: ${errorMessage}`)
     } finally {
       setIsAddingTopup(false)
     }

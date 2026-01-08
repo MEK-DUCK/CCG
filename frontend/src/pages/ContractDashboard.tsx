@@ -25,6 +25,7 @@ import { ArrowBack } from '@mui/icons-material'
 import { contractAPI, cargoAPI, quarterlyPlanAPI, monthlyPlanAPI, customerAPI } from '../api/client'
 import type { Contract, Cargo, QuarterlyPlan, MonthlyPlan, Customer, CargoStatus } from '../types'
 import { getContractTypeColor } from '../utils/chipColors'
+import { useToast } from '../contexts/ToastContext'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -52,6 +53,7 @@ export default function ContractDashboard() {
   const navigate = useNavigate()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const { showError } = useToast()
 
   const [contract, setContract] = useState<Contract | null>(null)
   const [customer, setCustomer] = useState<Customer | null>(null)
@@ -101,7 +103,7 @@ export default function ContractDashboard() {
       }
     } catch (error) {
       console.error('Error loading contract data:', error)
-      alert('Error loading contract data')
+      showError('Error loading contract data')
     } finally {
       setLoading(false)
     }

@@ -1,116 +1,117 @@
 /**
  * Centralized Chip Color System
  * All chip colors in the app should reference this file for consistency.
- * Uses light pastel backgrounds with darker text of the same hue.
+ * Uses muted, calm colors with subtle differentiation.
+ * Design principle: Calm, professional, minimal visual noise.
  */
 
 // ============================================
 // CONTRACT TYPE
 // ============================================
 export const CONTRACT_TYPE_COLORS = {
-  FOB: { bgcolor: '#E0F2FE', color: '#0369A1' },  // Sky
-  CIF: { bgcolor: '#FFEDD5', color: '#C2410C' },  // Orange
+  FOB: { bgcolor: '#F1F5F9', color: '#475569' },  // Slate (neutral)
+  CIF: { bgcolor: '#FEF3C7', color: '#92400E' },  // Muted amber
 } as const
 
 // ============================================
 // PAYMENT METHOD
 // ============================================
 export const PAYMENT_COLORS = {
-  'T/T': { bgcolor: '#D1FAE5', color: '#047857' },  // Mint/Emerald
-  'LC': { bgcolor: '#EDE9FE', color: '#6D28D9' },   // Lavender/Violet
+  'T/T': { bgcolor: '#F1F5F9', color: '#475569' },  // Slate
+  'LC': { bgcolor: '#F5F3FF', color: '#6D28D9' },   // Soft violet
 } as const
 
 // ============================================
 // LC STATUS
 // ============================================
 export const LC_STATUS_COLORS = {
-  'LC in Order': { bgcolor: '#DCFCE7', color: '#166534' },      // Green
-  'LC Not in Order': { bgcolor: '#FFE4E6', color: '#BE123C' },  // Rose
-  'Pending LC': { bgcolor: '#FEF9C3', color: '#A16207' },       // Yellow
-  'LC Memo Issued': { bgcolor: '#CFFAFE', color: '#0E7490' },   // Cyan
-  'Financial Hold': { bgcolor: '#FAE8FF', color: '#A21CAF' },   // Fuchsia
+  'LC in Order': { bgcolor: '#F0FDF4', color: '#166534' },      // Soft green
+  'LC Not in Order': { bgcolor: '#FEF2F2', color: '#991B1B' },  // Soft red
+  'Pending LC': { bgcolor: '#FFFBEB', color: '#92400E' },       // Soft amber
+  'LC Memo Issued': { bgcolor: '#F0F9FF', color: '#0C4A6E' },   // Soft sky
+  'Financial Hold': { bgcolor: '#FDF4FF', color: '#86198F' },   // Soft fuchsia
 } as const
 
 // ============================================
-// PRODUCTS (each product gets a unique hue)
+// PRODUCTS (muted, professional colors)
 // ============================================
 export const PRODUCT_COLORS = {
-  JET: { bgcolor: '#E0E7FF', color: '#4338CA' },        // Indigo
-  GASOIL: { bgcolor: '#FEF3C7', color: '#B45309' },     // Amber
-  FUEL_OIL: { bgcolor: '#FAE8FF', color: '#A21CAF' },   // Fuchsia
-  MOGAS: { bgcolor: '#FCE7F3', color: '#BE185D' },      // Pink
-  LPG: { bgcolor: '#CCFBF1', color: '#0F766E' },        // Teal
-  NAPHTHA: { bgcolor: '#ECFCCB', color: '#4D7C0F' },    // Lime
-  DEFAULT: { bgcolor: '#F1F5F9', color: '#475569' },    // Slate
+  JET: { bgcolor: '#EEF2FF', color: '#4338CA' },        // Soft indigo
+  GASOIL: { bgcolor: '#FFFBEB', color: '#92400E' },     // Soft amber
+  FUEL_OIL: { bgcolor: '#FDF4FF', color: '#86198F' },   // Soft fuchsia
+  MOGAS: { bgcolor: '#FDF2F8', color: '#9D174D' },      // Soft pink
+  LPG: { bgcolor: '#F0FDFA', color: '#115E59' },        // Soft teal
+  NAPHTHA: { bgcolor: '#F7FEE7', color: '#3F6212' },    // Soft lime
+  DEFAULT: { bgcolor: '#F8FAFC', color: '#64748B' },    // Light slate
 } as const
 
 // ============================================
-// CARGO STATUS (progression: gray → yellow → blue → green)
+// CARGO STATUS (progression: gray → amber → slate → soft green)
 // ============================================
 export const CARGO_STATUS_COLORS = {
-  'Planned': { bgcolor: '#F1F5F9', color: '#475569' },              // Slate
-  'Pending Nomination': { bgcolor: '#FEF9C3', color: '#A16207' },   // Yellow
-  'Pending TL Approval': { bgcolor: '#FFEDD5', color: '#C2410C' },  // Orange
-  'Nomination Released': { bgcolor: '#CFFAFE', color: '#0E7490' },  // Cyan
-  'Loading': { bgcolor: '#DBEAFE', color: '#1D4ED8' },              // Blue
-  'Completed Loading': { bgcolor: '#DCFCE7', color: '#166534' },    // Green
-  'Discharge Complete': { bgcolor: '#D1FAE5', color: '#047857' },   // Emerald
+  'Planned': { bgcolor: '#F8FAFC', color: '#64748B' },              // Light slate
+  'Pending Nomination': { bgcolor: '#FFFBEB', color: '#92400E' },   // Soft amber
+  'Pending TL Approval': { bgcolor: '#FEF3C7', color: '#92400E' },  // Amber
+  'Nomination Released': { bgcolor: '#F0F9FF', color: '#0C4A6E' },  // Soft sky
+  'Loading': { bgcolor: '#EFF6FF', color: '#1E40AF' },              // Soft blue
+  'Completed Loading': { bgcolor: '#F0FDF4', color: '#166534' },    // Soft green
+  'Discharge Complete': { bgcolor: '#ECFDF5', color: '#065F46' },   // Soft emerald
 } as const
 
 // ============================================
 // SPECIAL BADGES
 // ============================================
 export const BADGE_COLORS = {
-  COMBI: { bgcolor: '#DDD6FE', color: '#7C3AED' },     // Violet
-  SPOT: { bgcolor: '#C7D2FE', color: '#4F46E5' },      // Indigo
-  TBA: { bgcolor: '#F8FAFC', color: '#64748B', borderStyle: 'dashed' },  // Gray dashed
-  OVERDUE: { bgcolor: '#FEE2E2', color: '#DC2626' },   // Red
-  COMPLETED: { bgcolor: '#D1FAE5', color: '#047857' }, // Emerald
+  COMBI: { bgcolor: '#F5F3FF', color: '#6D28D9' },     // Soft violet
+  SPOT: { bgcolor: '#EEF2FF', color: '#4338CA' },      // Soft indigo
+  TBA: { bgcolor: '#F8FAFC', color: '#94A3B8', borderStyle: 'dashed' },  // Gray dashed
+  OVERDUE: { bgcolor: '#FEF2F2', color: '#991B1B' },   // Soft red
+  COMPLETED: { bgcolor: '#ECFDF5', color: '#065F46' }, // Soft emerald
 } as const
 
 // ============================================
 // TNG STATUS
 // ============================================
 export const TNG_STATUS_COLORS = {
-  NORMAL: { bgcolor: '#F1F5F9', color: '#475569' },      // Slate
-  DUE_SOON: { bgcolor: '#FEF9C3', color: '#A16207' },    // Yellow
-  OVERDUE: { bgcolor: '#FEE2E2', color: '#DC2626' },     // Red
-  ISSUED: { bgcolor: '#CFFAFE', color: '#0E7490' },      // Cyan
-  REVISED: { bgcolor: '#DBEAFE', color: '#1D4ED8' },     // Blue
-  LEAD_DAYS: { bgcolor: '#E0E7FF', color: '#3730A3' },   // Indigo
+  NORMAL: { bgcolor: '#F8FAFC', color: '#64748B' },      // Light slate
+  DUE_SOON: { bgcolor: '#FFFBEB', color: '#92400E' },    // Soft amber
+  OVERDUE: { bgcolor: '#FEF2F2', color: '#991B1B' },     // Soft red
+  ISSUED: { bgcolor: '#F0F9FF', color: '#0C4A6E' },      // Soft sky
+  REVISED: { bgcolor: '#EFF6FF', color: '#1E40AF' },     // Soft blue
+  LEAD_DAYS: { bgcolor: '#EEF2FF', color: '#3730A3' },   // Soft indigo
 } as const
 
 // ============================================
-// CALENDAR EVENTS (slightly brighter for visibility)
+// CALENDAR EVENTS (slightly more visible but still calm)
 // ============================================
 export const CALENDAR_COLORS = {
-  FOB_LAYCAN: { bg: '#7DD3FC', border: '#0EA5E9', text: '#000000' },      // Sky
-  CIF_LOADING: { bg: '#FDBA74', border: '#F97316', text: '#000000' },     // Orange
-  TNG_DUE: { bg: '#FDE047', border: '#EAB308', text: '#000000' },         // Yellow
-  ND_DUE: { bg: '#FDA4AF', border: '#F43F5E', text: '#000000' },          // Rose
+  FOB_LAYCAN: { bg: '#BAE6FD', border: '#38BDF8', text: '#0C4A6E' },      // Sky
+  CIF_LOADING: { bg: '#FED7AA', border: '#FB923C', text: '#7C2D12' },     // Orange
+  TNG_DUE: { bg: '#FEF08A', border: '#FACC15', text: '#713F12' },         // Yellow
+  ND_DUE: { bg: '#FECACA', border: '#F87171', text: '#7F1D1D' },          // Rose
   // TBA versions (lighter)
-  TBA_FOB: { bg: '#BAE6FD', border: '#7DD3FC', text: '#000000' },         // Sky lighter
-  TBA_CIF: { bg: '#FED7AA', border: '#FDBA74', text: '#000000' },         // Orange lighter
+  TBA_FOB: { bg: '#E0F2FE', border: '#BAE6FD', text: '#0C4A6E' },         // Sky lighter
+  TBA_CIF: { bg: '#FFEDD5', border: '#FED7AA', text: '#7C2D12' },         // Orange lighter
 } as const
 
 // ============================================
 // PLAN TYPE (Monthly vs Quarterly)
 // ============================================
 export const PLAN_TYPE_COLORS = {
-  MONTHLY: { bgcolor: '#DBEAFE', color: '#1D4ED8' },   // Blue
-  QUARTERLY: { bgcolor: '#EDE9FE', color: '#6D28D9' }, // Violet
+  MONTHLY: { bgcolor: '#EFF6FF', color: '#1E40AF' },   // Soft blue
+  QUARTERLY: { bgcolor: '#F5F3FF', color: '#6D28D9' }, // Soft violet
 } as const
 
 // ============================================
 // ADMIN CHIPS
 // ============================================
 export const ADMIN_COLORS = {
-  CUSTOMER_ID: { bgcolor: '#F1F5F9', color: '#475569' },   // Slate
-  PRODUCT_CODE: { bgcolor: '#E0E7FF', color: '#3730A3' },  // Indigo
-  PORT_CODE: { bgcolor: '#D1FAE5', color: '#047857' },     // Emerald
-  INSPECTOR_CODE: { bgcolor: '#CFFAFE', color: '#0E7490' }, // Cyan
-  ACTIVE: { bgcolor: '#DCFCE7', color: '#166534' },        // Green
-  INACTIVE: { bgcolor: '#F1F5F9', color: '#64748B' },      // Gray
+  CUSTOMER_ID: { bgcolor: '#F8FAFC', color: '#64748B' },   // Light slate
+  PRODUCT_CODE: { bgcolor: '#EEF2FF', color: '#3730A3' },  // Soft indigo
+  PORT_CODE: { bgcolor: '#ECFDF5', color: '#065F46' },     // Soft emerald
+  INSPECTOR_CODE: { bgcolor: '#F0F9FF', color: '#0C4A6E' }, // Soft sky
+  ACTIVE: { bgcolor: '#F0FDF4', color: '#166534' },        // Soft green
+  INACTIVE: { bgcolor: '#F8FAFC', color: '#94A3B8' },      // Gray
 } as const
 
 // ============================================
@@ -122,7 +123,7 @@ export const ADMIN_COLORS = {
  */
 export const getProductColor = (productName: string): { bgcolor: string; color: string } => {
   const name = (productName || '').toUpperCase()
-  
+
   if (name.includes('JET') || name.includes('KERO') || name.includes('PARAFFIN')) {
     return PRODUCT_COLORS.JET
   }
@@ -141,7 +142,7 @@ export const getProductColor = (productName: string): { bgcolor: string; color: 
   if (name.includes('NAPHTHA') || name.includes('CONDENSATE')) {
     return PRODUCT_COLORS.NAPHTHA
   }
-  
+
   return PRODUCT_COLORS.DEFAULT
 }
 
@@ -163,7 +164,7 @@ export const getPaymentColor = (method: 'T/T' | 'LC' | string): { bgcolor: strin
  * Get LC status chip props
  */
 export const getLCStatusColor = (status: string): { bgcolor: string; color: string } => {
-  return LC_STATUS_COLORS[status as keyof typeof LC_STATUS_COLORS] || { bgcolor: '#F1F5F9', color: '#475569' }
+  return LC_STATUS_COLORS[status as keyof typeof LC_STATUS_COLORS] || { bgcolor: '#F8FAFC', color: '#64748B' }
 }
 
 /**
@@ -186,4 +187,3 @@ export const getTngStatusColor = (state: 'normal' | 'due_soon' | 'overdue' | 'is
   }
   return map[state] || TNG_STATUS_COLORS.NORMAL
 }
-

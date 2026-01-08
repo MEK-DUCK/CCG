@@ -28,6 +28,7 @@ import { FileDownload, PictureAsPdf } from '@mui/icons-material'
 import { customerAPI, contractAPI, quarterlyPlanAPI, monthlyPlanAPI, cargoAPI } from '../api/client'
 import type { Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo } from '../types'
 import { getContractTypeColor, BADGE_COLORS } from '../utils/chipColors'
+import { useToast } from '../contexts/ToastContext'
 
 // Column configuration for resizable columns
 const COLUMN_CONFIG = [
@@ -85,6 +86,7 @@ const getCurrentQuarter = (): 'Q1' | 'Q2' | 'Q3' | 'Q4' => {
 export default function LiftingPlanPage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const { showError } = useToast()
   const PRODUCT_FILTERS = ['GASOIL', 'JET A-1', 'FUEL OIL'] as const
   const [selectedQuarter, setSelectedQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>(getCurrentQuarter())
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()) // Default to current year
@@ -548,7 +550,7 @@ export default function LiftingPlanPage() {
       XLSX.writeFile(wb, filename)
     }).catch((error) => {
       console.error('Error exporting to Excel:', error)
-      alert('Error exporting to Excel. Please make sure the xlsx package is installed.')
+      showError('Error exporting to Excel. Please make sure the xlsx package is installed.')
     })
   }
 
@@ -648,7 +650,7 @@ export default function LiftingPlanPage() {
       doc.save(filename)
     } catch (error) {
       console.error('Error exporting to PDF:', error)
-      alert(`Error exporting to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      showError(`Error exporting to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 

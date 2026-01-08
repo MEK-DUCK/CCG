@@ -11,6 +11,7 @@ import {
   Button,
 } from '@mui/material'
 import { Add } from '@mui/icons-material'
+import { useToast } from '../../contexts/ToastContext'
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -70,26 +71,21 @@ export default function CrossContractCombiDialog({
   onToggleItem,
   onQuantityChange,
 }: CrossContractCombiDialogProps) {
+  const { showError, showInfo } = useToast()
+
   const handleCreate = () => {
     if (!crossContractEntry) return
     
     // Validate all items have quantities
     const invalidItems = selectedItems.filter(item => !item.quantity || parseFloat(item.quantity) <= 0)
     if (invalidItems.length > 0) {
-      alert('Please enter quantities for all selected products')
+      showError('Please enter quantities for all selected products')
       return
     }
-    
+
     // For now, show info message - full implementation requires cargo creation
-    alert(
-      `Cross-contract combi feature is ready!\n\n` +
-      `To create the combi:\n` +
-      `1. First save a cargo in this contract\n` +
-      `2. Then use the cross-contract combi API to link products from:\n` +
-      selectedItems.map(item => `   • ${item.contractNumber} - ${item.productName}: ${item.quantity} KT`).join('\n') +
-      `\n\nThis will be fully integrated in the next update.`
-    )
-    
+    showInfo('Cross-contract combi feature will be fully integrated in the next update.')
+
     onClose()
   }
 
@@ -235,7 +231,7 @@ export default function CrossContractCombiDialog({
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose} variant="outlined">Cancel</Button>
         <Button
           variant="contained"
           disabled={selectedItems.length === 0 || selectedItems.some(item => !item.quantity || parseFloat(item.quantity) <= 0)}

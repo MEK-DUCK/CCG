@@ -19,6 +19,7 @@ import Layout from './components/Layout'
 import ProtectedRoute, { PublicOnlyRoute } from './components/ProtectedRoute'
 import { AuthProvider } from './contexts/AuthContext'
 import { ThemeContextProvider, useThemeMode } from './contexts/ThemeContext'
+import { ToastProvider } from './contexts/ToastContext'
 import { createAppTheme } from './theme'
 
 function AppContent() {
@@ -28,6 +29,7 @@ function AppContent() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      <ToastProvider>
       <AuthProvider>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
@@ -119,6 +121,7 @@ function AppContent() {
           </Routes>
         </Router>
       </AuthProvider>
+      </ToastProvider>
     </ThemeProvider>
   )
 }

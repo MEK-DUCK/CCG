@@ -79,6 +79,12 @@ Combi cargos allow multiple products to be loaded on a single vessel, sharing th
 - **Role-Based Access**: User management with different permission levels
 - **Auto-Logout**: Automatic session handling for expired tokens
 
+### User Experience
+- **Toast Notifications**: Professional success/error/warning/info toasts replace browser alerts
+- **Keyboard Shortcuts**: Ctrl+S (Cmd+S on Mac) to save forms, Escape to close dialogs
+- **Standardized UI**: Consistent button styles and color coding across all pages
+- **Auto-Seeding**: Default products, load ports, and inspectors are automatically created on first startup
+
 ## Technology Stack
 
 ### Backend
@@ -157,11 +163,13 @@ oil-lifting-program/
 │   │   │   └── CrossContractCombiDialog.tsx
 │   │   │   └── ...
 │   │   ├── contexts/
-│   │   │   └── AuthContext.tsx  # Authentication context
+│   │   │   ├── AuthContext.tsx  # Authentication context
+│   │   │   └── ToastContext.tsx # Global toast notifications
 │   │   ├── hooks/
 │   │   │   ├── usePresence.ts   # WebSocket presence hook
 │   │   │   ├── useRealTimeSync.ts # Real-time data sync hook
-│   │   │   └── useAutosave.ts   # Debounced autosave hook
+│   │   │   ├── useAutosave.ts   # Debounced autosave hook
+│   │   │   └── useKeyboardShortcuts.ts # Keyboard shortcut hooks
 │   │   ├── pages/               # Page components
 │   │   ├── types/               # TypeScript types
 │   │   ├── App.tsx
@@ -482,6 +490,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES=10080
 - Individual quantities are tracked per product within the combi group
 - Port operation status changes apply to all cargos in the combi group simultaneously
 - Combi cargos are displayed as a single unified row in Active Loadings and Port Movement tabs
+
+### Keyboard Shortcuts
+- **Ctrl+S / Cmd+S**: Save the current form (works in all dialogs and forms)
+- **Escape**: Close the current dialog (doesn't trigger when in dropdown menus)
 
 ## Troubleshooting
 

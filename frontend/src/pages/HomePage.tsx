@@ -57,6 +57,7 @@ import { usePresence, PresenceUser } from '../hooks/usePresence'
 import { useRealTimeSync, DataSyncEvent } from '../hooks/useRealTimeSync'
 import { EditingWarningBanner, ActiveUsersIndicator } from '../components/Presence'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import { VersionHistoryDialog } from '../components/VersionHistory'
 
 interface TabPanelProps {
@@ -125,6 +126,7 @@ export default function HomePage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const { user } = useAuth()
+  const { showSuccess, showError, showWarning } = useToast()
 
   const [dataChangedNotification, setDataChangedNotification] = useState<string | null>(null)
 
@@ -323,7 +325,7 @@ export default function HomePage() {
       })
       .catch((error) => {
         console.error('Error exporting to Excel:', error)
-        alert('Error exporting to Excel. Please make sure the xlsx package is installed.')
+        showError('Error exporting to Excel. Please make sure the xlsx package is installed.')
       })
   }
 
@@ -1076,7 +1078,7 @@ export default function HomePage() {
   const handleEditCargo = async (cargo: Cargo) => {
     // Prevent editing temporary/optimistic cargos that haven't been saved yet
     if (cargo.cargo_id?.startsWith('TEMP-')) {
-      alert('Please wait for the cargo to finish saving before editing.')
+      showWarning('Please wait for the cargo to finish saving before editing.')
       return
     }
     setEditingCargo(cargo)
@@ -1234,7 +1236,7 @@ export default function HomePage() {
       }, 100)
     } catch (error: any) {
       console.error('Error generating nomination:', error)
-      alert(`Error generating nomination: ${error.response?.data?.detail || error.message || 'Unknown error'}`)
+      showError(`Error generating nomination: ${error.response?.data?.detail || error.message || 'Unknown error'}`)
     }
   }
 
@@ -1247,7 +1249,7 @@ export default function HomePage() {
     )
     
     if (existingCargo) {
-      alert(`This monthly plan already has a cargo assigned (Cargo ID: ${existingCargo.cargo_id}, Vessel: ${existingCargo.vessel_name}). Please edit the existing cargo instead of creating a new one.`)
+      showWarning(`This monthly plan already has a cargo assigned (Cargo ID: ${existingCargo.cargo_id}, Vessel: ${existingCargo.vessel_name}). Please edit the existing cargo instead.`)
       // Optionally, open the edit dialog for the existing cargo
       handleEditCargo(existingCargo)
       return
@@ -1275,7 +1277,7 @@ export default function HomePage() {
     }
     
     if (!contract) {
-      alert('Could not find contract for this monthly plan')
+      showError('Could not find contract for this monthly plan')
       return
     }
     
@@ -1283,7 +1285,7 @@ export default function HomePage() {
     // For now, we'll use the first product, but ideally we should let user select
     const contractProducts = contract.products || []
     if (contractProducts.length === 0) {
-      alert('This contract has no products. Please add products to the contract first.')
+      showError('This contract has no products. Please add products to the contract first.')
       return
     }
     
@@ -1393,7 +1395,7 @@ export default function HomePage() {
       if (editingCargo) {
         const hasPorts = Array.isArray(cargoFormData.load_ports) && cargoFormData.load_ports.filter(Boolean).length > 0
         if ((cargoFormData.status === 'Loading' || cargoFormData.status === 'Completed Loading') && !hasPorts) {
-          alert('Please select at least one Load Port before setting status to Loading.')
+          showError('Please select at least one Load Port before setting status to Loading.')
           return
         }
 
@@ -1599,7 +1601,7 @@ export default function HomePage() {
             
             // Reopen dialog with original data (prevents missing sections/state after failures)
             handleEditCargo(originalCargo)
-            alert('Error updating cargo. Changes have been reverted. Please try again.')
+            showError('Error updating cargo. Changes have been reverted. Please try again.')
           })
         
         // Continue with duplicate cargo creation if needed (this happens in background)
@@ -1667,11 +1669,11 @@ export default function HomePage() {
         }
         
         // Show success message immediately
-        alert('Vessel updated successfully!' + (isChangingToCompletedLoading && isCIF ? ' A copy will be created for In-Road CIF tracking.' : ''))
+        showSuccess('Vessel updated successfully!' + (isChangingToCompletedLoading && isCIF ? ' A copy will be created for In-Road CIF tracking.' : ''))
       } else {
         // Create new cargo for monthly plan (or multiple cargos for combie)
         if (!cargoMonthlyPlanId || !cargoContractId || !cargoContract || !cargoProductName) {
-          alert('Missing monthly plan, contract, or product information. Please try clicking on the row again.')
+          showError('Missing monthly plan, contract, or product information. Please try clicking on the row again.')
           return
         }
 
@@ -1679,7 +1681,7 @@ export default function HomePage() {
 
         // Validate required fields
         if (!cargoFormData.vessel_name) {
-          alert('Please fill in vessel name')
+          showError('Please fill in vessel name')
           return
         }
 
@@ -1776,14 +1778,14 @@ export default function HomePage() {
             return [...withoutOptimistic, ...createdCargos]
           })
           
-          alert(isCombieCargo ? `Combie cargo created successfully! (${createdCargos.length} products)` : 'Cargo created successfully!')
+          showSuccess(isCombieCargo ? `Combie cargo created successfully! (${createdCargos.length} products)` : 'Cargo created successfully!')
           } catch (error: any) {
           // Remove optimistic cargos on error
             setPortMovement(prevCargos =>
             prevCargos.filter(cargo => !optimisticCargos.some(oc => oc.id === cargo.id))
           )
           const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error'
-          alert(`Error creating cargo: ${errorMessage}`)
+          showError(`Error creating cargo: ${errorMessage}`)
         }
 
         // Refresh data
@@ -1796,7 +1798,7 @@ export default function HomePage() {
     } catch (error: any) {
       console.error('Error in handleCargoSubmit:', error)
       const errorMessage = error?.response?.data?.detail || error?.response?.data?.message || error?.message || 'Unknown error occurred'
-      alert(`Error saving vessel: ${errorMessage}`)
+      showError(`Error saving vessel: ${errorMessage}`)
     }
   }
 
@@ -2456,7 +2458,7 @@ export default function HomePage() {
       if (error?.response?.status === 409) {
         // Version conflict - reload data and notify user
         await loadTngData()
-        alert('Data was modified. Please try again.')
+        showWarning('Data was modified. Please try again.')
       }
     }
   }
@@ -2491,7 +2493,7 @@ export default function HomePage() {
       if (error?.response?.status === 409) {
         // Version conflict - reload data and notify user
         await loadTngData()
-        alert('Data was modified. Please try again.')
+        showWarning('Data was modified. Please try again.')
       }
     }
   }
@@ -2508,7 +2510,7 @@ export default function HomePage() {
       if (error?.response?.status === 409) {
         // Version conflict - reload data and notify user
         await loadTngData()
-        alert('Data was modified. Please try again.')
+        showWarning('Data was modified. Please try again.')
       }
     }
   }
@@ -2542,7 +2544,7 @@ export default function HomePage() {
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Error generating TNG document:', error)
-      alert('Failed to generate TNG document. Please try again.')
+      showError('Failed to generate TNG document. Please try again.')
     }
   }
 
@@ -3161,7 +3163,7 @@ export default function HomePage() {
       const allCargos = [...portMovement, ...completedCargos, ...inRoadCIF]
       const cargo = allCargos.find(c => c.id === cargoId)
       if (cargo?.cargo_id?.startsWith('TEMP-')) {
-        alert('Please wait for the cargo to finish saving.')
+        showWarning('Please wait for the cargo to finish saving.')
         return
       }
 
@@ -3182,7 +3184,7 @@ export default function HomePage() {
       // Use the cargo we already found (or find it if not already)
       const cargoToUpdate = cargo || allCargos.find(c => c.id === cargoId)
       if (!cargoToUpdate) {
-        alert('Cargo not found')
+        showError('Cargo not found')
         return
       }
       
@@ -3227,11 +3229,11 @@ export default function HomePage() {
           setPortMovement(revertCargoInList)
           setCompletedCargos(revertCargoInList)
           setInRoadCIF(revertCargoInList)
-          alert('Error updating task. Changes have been reverted. Please try again.')
+          showError('Error updating task. Changes have been reverted. Please try again.')
         })
     } catch (error) {
       console.error('Error updating task:', error)
-      alert('Error updating task. Please try again.')
+      showError('Error updating task. Please try again.')
     }
   }
 
@@ -5657,7 +5659,7 @@ export default function HomePage() {
                               const nextStatus = e.target.value as CargoStatus
                               const hasPorts = Array.isArray(cargoFormData.load_ports) && cargoFormData.load_ports.filter(Boolean).length > 0
                               if ((nextStatus === 'Loading' || nextStatus === 'Completed Loading') && !hasPorts) {
-                                alert('Please select at least one Load Port before setting status to Loading.')
+                                showError('Please select at least one Load Port before setting status to Loading.')
                                 return
                               }
                               setCargoFormData({ ...cargoFormData, status: nextStatus })

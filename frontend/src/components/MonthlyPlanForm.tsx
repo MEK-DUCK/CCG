@@ -51,6 +51,8 @@ import {
   CrossContractCombiDialog,
   type TopupFormData,
 } from './MonthlyPlan'
+import { useToast } from '../contexts/ToastContext'
+import { useFormShortcuts } from '../hooks/useKeyboardShortcuts'
 
 interface MonthlyPlanFormProps {
   contractId: number
@@ -95,7 +97,9 @@ interface MonthlyPlanEntry {
 }
 
 export default function MonthlyPlanForm({ contractId, contract: propContract, quarterlyPlans, onPlanCreated, isSpotContract = false, isRangeContract = false }: MonthlyPlanFormProps) {
+  const { showSuccess, showError, showWarning } = useToast()
   const [monthEntries, setMonthEntries] = useState<Record<string, MonthlyPlanEntry[]>>({})
+  const [initialMonthEntries, setInitialMonthEntries] = useState<Record<string, MonthlyPlanEntry[]>>({})
   const [existingMonthlyPlans, setExistingMonthlyPlans] = useState<any[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [contractType, setContractType] = useState<'FOB' | 'CIF' | null>(null)
@@ -513,6 +517,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           })
           
           setMonthEntries(entries)
+          setInitialMonthEntries(JSON.parse(JSON.stringify(entries)))
         } catch (error) {
           console.error('Error loading Range/SPOT monthly plans:', error)
         }
@@ -679,11 +684,12 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         })
         
         setMonthEntries(entries)
+        setInitialMonthEntries(JSON.parse(JSON.stringify(entries)))
       } catch (error) {
         console.error('Error loading existing monthly plans:', error)
       }
     }
-    
+
     loadExistingMonthlyPlans()
   }, [quarterlyPlans, products, skipQuarterlyPlan, contractId, selectedYear, contract, numContractYears])
 
@@ -938,7 +944,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           }))
         } catch (error: any) {
           console.error('Error deleting cargos:', error)
-          alert(`Failed to delete cargo(s): ${error?.response?.data?.detail || error?.message || 'Unknown error'}`)
+          showError(`Failed to delete cargo(s): ${error?.response?.data?.detail || error?.message || 'Unknown error'}`)
           return
         }
       }
@@ -1013,6 +1019,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       }
       
       handleCloseMoveDialog()
+      showSuccess(`Entry ${moveAction === 'DEFER' ? 'deferred' : 'advanced'} successfully!`)
       onPlanCreated() // Refresh the data
       // Reload adjustments after move
       if (!skipQuarterlyPlan) {
@@ -1025,7 +1032,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       }
     } catch (error: any) {
       console.error('Error moving monthly plan:', error)
-      alert(error.response?.data?.detail || 'Failed to move cargo. Please try again.')
+      showError(error.response?.data?.detail || 'Failed to move entry. Please try again.')
     } finally {
       setIsMoving(false)
     }
@@ -1043,7 +1050,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
       setEligibleContracts(response.data.eligible_contracts || [])
     } catch (error: any) {
       console.error('Error loading eligible contracts:', error)
-      alert('Failed to load eligible contracts for cross-contract combi')
+      showError('Failed to load eligible contracts for cross-contract combi')
       setCrossContractDialogOpen(false)
     } finally {
       setIsLoadingEligible(false)
@@ -1266,15 +1273,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     }, 0)
   }
 
+  // Check if form has unsaved changes
+  const isDirty = Object.keys(monthEntries).length > 0 &&
+    JSON.stringify(monthEntries) !== JSON.stringify(initialMonthEntries)
+
   const handleSave = async () => {
     if (isSaving) {
-      alert('Please wait...')
+      showWarning('Please wait...')
       return
     }
     
     // For non-SPOT/Range contracts, require quarterly plans
     if (!skipQuarterlyPlan && quarterlyPlans.length === 0) {
-      alert('Please create quarterly plans first.')
+      showError('Please create quarterly plans first.')
       return
     }
 
@@ -1286,7 +1297,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           const quantity = parseFloat(entry.quantity || '0')
           if (quantity > 0 && !entry.delivery_month) {
             const [month, year] = key.split('-').map(Number)
-            alert(`Error: Delivery Month is required for CIF contracts. Please select a delivery month for ${getMonthName(month)} ${year}.`)
+            showError(`Delivery Month is required for CIF contracts. Please select a delivery month for ${getMonthName(month)} ${year}.`)
             return
           }
         }
@@ -1303,7 +1314,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
 
           if (totalMonthlyQuantity !== quarterlyQuantity) {
             const quarterLabel = QUARTER_MONTHS[quarter].labels.join('-')
-            alert(`Error: ${product.name} - Total monthly quantities for Contract Quarter ${i + 1} (${quarter} - ${quarterLabel}) (${totalMonthlyQuantity.toLocaleString()} KT) must equal the quarterly quantity (${quarterlyQuantity.toLocaleString()} KT).`)
+            showError(`${product.name} - Total monthly quantities for Quarter ${i + 1} (${quarterLabel}) is ${totalMonthlyQuantity.toLocaleString()} KT but should be ${quarterlyQuantity.toLocaleString()} KT.`)
             return
           }
         }
@@ -1530,16 +1541,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
 
       await Promise.all(createPromises)
       
-      alert('All monthly plans saved successfully!')
+      showSuccess('All monthly plans saved successfully!')
       onPlanCreated()
     } catch (error: any) {
       console.error('Error saving monthly plans:', error)
       const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error occurred'
-      alert(`Error saving monthly plans: ${errorMessage}`)
+      showError(`Error saving monthly plans: ${errorMessage}`)
     } finally {
       setIsSaving(false)
     }
   }
+
+  // Keyboard shortcut: Ctrl+S to save
+  useFormShortcuts(handleSave, isDirty && !isSaving)
 
   // SPOT/Range contracts don't need quarterly plans
   if (!skipQuarterlyPlan && (!quarterlyPlans || quarterlyPlans.length === 0)) {
@@ -1589,7 +1603,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                     key={p.name}
                     label={p.name}
                     size="small"
-                    sx={{ bgcolor: '#DBEAFE', color: '#1D4ED8' }}
+                    sx={{ bgcolor: '#F1F5F9', color: '#334155' }}
                   />
                 ))}
               </Box>
@@ -1982,7 +1996,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           size="small"
                           sx={{ 
                             bgcolor: 'rgba(59, 130, 246, 0.1)', 
-                            color: '#2563EB',
+                            color: '#475569',
                             fontWeight: 500,
                             fontSize: '0.7rem',
                             height: 22
@@ -2308,7 +2322,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                             const entryIndex = monthEntries[key].findIndex(e => e === entry)
                             handleActionMenuOpen(e, month, year, entryIndex, entry, planStatuses[entry.id || 0]?.has_cargos || false)
                           }}
-                          sx={{ textTransform: 'none', color: '#2563EB', minWidth: 'auto', fontSize: '0.75rem' }}
+                          sx={{ textTransform: 'none', color: '#475569', minWidth: 'auto', fontSize: '0.75rem' }}
                         >
                           Edit
                         </Button>
@@ -2457,7 +2471,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                           <Chip 
                             label={entry.product_name}
                             size="small" 
-                            sx={{ mb: 1, bgcolor: '#DBEAFE', color: '#1D4ED8' }} 
+                            sx={{ mb: 1, bgcolor: '#F1F5F9', color: '#334155' }} 
                           />
                         )}
                         
@@ -2611,11 +2625,14 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         {/* Save Button */}
         <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
           <Button
-            variant="contained"
+            variant={isDirty ? "contained" : "outlined"}
             startIcon={<Save />}
             onClick={handleSave}
-            disabled={isSaving}
-            sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' } }}
+            disabled={isSaving || !isDirty}
+            sx={{
+              transition: 'all 0.2s ease',
+              ...(isDirty ? {} : { color: 'text.secondary', borderColor: 'divider' })
+            }}
           >
             {isSaving ? 'Saving...' : 'Save All Monthly Plans'}
           </Button>
@@ -2638,7 +2655,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                   key={p.name}
                   label={p.name}
                   size="small"
-                  sx={{ bgcolor: '#DBEAFE', color: '#1D4ED8' }}
+                  sx={{ bgcolor: '#F1F5F9', color: '#334155' }}
                 />
               ))}
             </Box>
@@ -3116,11 +3133,15 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           
           <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
             <Button
-              variant="contained"
+              variant={isDirty ? "contained" : "outlined"}
               size="large"
               startIcon={<Save />}
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isSaving || !isDirty}
+              sx={{
+                transition: 'all 0.2s ease',
+                ...(isDirty ? {} : { color: 'text.secondary', borderColor: 'divider' })
+              }}
             >
               {isSaving ? 'Saving All Monthly Plans...' : 'Save All Monthly Plans'}
             </Button>
@@ -3283,7 +3304,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                   sx={{ 
                                     mb: 1, 
                                     ml: entry.is_combi ? 1 : 0,
-                                    bgcolor: entry.last_move_action === 'DEFER' ? '#DBEAFE' : '#EDE9FE',
+                                    bgcolor: entry.last_move_action === 'DEFER' ? '#F1F5F9' : '#EDE9FE',
                                     color: entry.last_move_action === 'DEFER' ? '#1E40AF' : '#5B21B6',
                                     '& .MuiChip-icon': { color: 'inherit' }
                                   }} 
@@ -3313,7 +3334,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                                 <Chip 
                                   label={entry.product_name}
                                   size="small" 
-                                  sx={{ mb: 1, bgcolor: '#DBEAFE', color: '#1D4ED8' }} 
+                                  sx={{ mb: 1, bgcolor: '#F1F5F9', color: '#334155' }} 
                                 />
                               )}
                               
@@ -3616,18 +3637,22 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         
         <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
           <Button
-            variant="contained"
+            variant={isDirty ? "contained" : "outlined"}
             size="large"
             startIcon={<Save />}
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || !isDirty}
+            sx={{
+              transition: 'all 0.2s ease',
+              ...(isDirty ? {} : { color: 'text.secondary', borderColor: 'divider' })
+            }}
           >
             {isSaving ? 'Saving All Monthly Plans...' : 'Save All Monthly Plans'}
           </Button>
         </Box>
       </Box>
       )}
-      
+
       {/* Action Menu for existing entries */}
       <Menu
         anchorEl={actionMenuAnchor}
@@ -3641,7 +3666,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           <>
         <MenuItem onClick={() => handleOpenMoveDialog('DEFER')}>
           <ListItemIcon>
-            <ArrowForward fontSize="small" sx={{ color: '#2563EB' }} />
+            <ArrowForward fontSize="small" sx={{ color: '#475569' }} />
           </ListItemIcon>
           <ListItemText primary="Defer to Later Month" />
         </MenuItem>
@@ -3656,7 +3681,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
         <MenuItem 
           onClick={() => {
             if (!actionMenuEntry?.entry.id) {
-              alert('Please save the cargo entry first before adding an authority top-up.')
+              showWarning('Please save the cargo entry first before adding an authority top-up.')
               handleActionMenuClose()
               return
             }

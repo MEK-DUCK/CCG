@@ -40,6 +40,7 @@ import {
 } from '@mui/icons-material'
 import client from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 
 interface User {
   id: number
@@ -139,6 +140,13 @@ export default function UserManagement() {
     }
   }
 
+  // Keyboard shortcuts for create dialog: Ctrl+S to save, Escape to close
+  useKeyboardShortcuts({
+    onSave: createDialog ? handleCreate : undefined,
+    onEscape: createDialog ? () => setCreateDialog(false) : undefined,
+    enabled: createDialog,
+  })
+
   // Update user
   const handleUpdate = async () => {
     if (!editDialog.user) return
@@ -155,6 +163,13 @@ export default function UserManagement() {
       setLoading(false)
     }
   }
+
+  // Keyboard shortcuts for edit dialog: Ctrl+S to save, Escape to close
+  useKeyboardShortcuts({
+    onSave: editDialog.open ? handleUpdate : undefined,
+    onEscape: editDialog.open ? () => setEditDialog({ open: false, user: null }) : undefined,
+    enabled: editDialog.open,
+  })
 
   // Deactivate/Activate user
   const handleToggleStatus = async (user: User) => {
@@ -476,7 +491,7 @@ export default function UserManagement() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateDialog(false)}>Cancel</Button>
+          <Button onClick={() => setCreateDialog(false)} variant="outlined">Cancel</Button>
           <Button
             variant="contained"
             onClick={handleCreate}
@@ -548,7 +563,7 @@ export default function UserManagement() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditDialog({ open: false, user: null })}>Cancel</Button>
+          <Button onClick={() => setEditDialog({ open: false, user: null })} variant="outlined">Cancel</Button>
           <Button
             variant="contained"
             onClick={handleUpdate}

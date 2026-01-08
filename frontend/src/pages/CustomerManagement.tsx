@@ -22,9 +22,12 @@ import {
 } from '@mui/material'
 import { Add, Edit, Delete, People } from '@mui/icons-material'
 import { customerAPI } from '../api/client'
+import { useToast } from '../contexts/ToastContext'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import type { Customer } from '../types'
 
 export default function CustomerManagement() {
+  const { showError } = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [open, setOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
@@ -77,7 +80,7 @@ export default function CustomerManagement() {
         request: error?.request
       })
       if (error?.code !== 'ECONNABORTED') {
-        alert(`Error loading customers: ${error?.message || 'Unknown error'}`)
+        showError(`Error loading customers: ${error?.message || 'Unknown error'}`)
       }
     } finally {
       setIsLoading(false)
@@ -112,7 +115,7 @@ export default function CustomerManagement() {
     }
     
     if (!formData.name || formData.name.trim() === '') {
-      alert('Please enter a customer name')
+      showError('Please enter a customer name')
       return
     }
     
@@ -132,11 +135,18 @@ export default function CustomerManagement() {
     } catch (error: any) {
       console.error('Error saving customer:', error)
       const errorMessage = error?.response?.data?.detail || error?.message || 'Unknown error occurred'
-      alert(`Error saving customer: ${errorMessage}`)
+      showError(`Error saving customer: ${errorMessage}`)
     } finally {
       setIsSubmitting(false)
     }
   }
+
+  // Keyboard shortcuts for dialog: Ctrl+S to save, Escape to close
+  useKeyboardShortcuts({
+    onSave: open ? handleSubmit : undefined,
+    onEscape: open ? handleClose : undefined,
+    enabled: open,
+  })
 
   const handleDelete = async (id: number) => {
     if (window.confirm('Are you sure you want to delete this customer?')) {
@@ -145,7 +155,7 @@ export default function CustomerManagement() {
         loadCustomers()
       } catch (error) {
         console.error('Error deleting customer:', error)
-        alert('Error deleting customer. Please try again.')
+        showError('Error deleting customer. Please try again.')
       }
     }
   }
