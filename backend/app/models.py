@@ -527,9 +527,9 @@ class Cargo(Base):
     
     # Combi cargo support - links multiple cargos sharing same vessel
     combi_group_id = Column(String, nullable=True, index=True)
-    
-    # LC status - stored as string value for database compatibility
-    lc_status = Column(String, nullable=True)
+
+    # LC status for contracts with LC payment method
+    lc_status = Column(Enum(LCStatus), nullable=True)
     
     # NOTE: load_ports column REMOVED - now derived from port_operations relationship
     # Use cargo.get_load_ports_string() or cargo.port_operations for port data

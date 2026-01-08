@@ -167,7 +167,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   // For CIF contracts in Year 1, also include the pre-month (month before contract start)
   const getYearContractMonths = (): Array<{ month: number, year: number }> => {
     if (!contract?.start_period || contractMonths.length === 0) return contractMonths
-    
+
+    // For SPOT/RANGE contracts, don't filter by fiscal year - just return all contract months
+    // These contracts are short-term and don't follow quarterly planning
+    if (isSpotContract || isRangeContract) {
+      return contractMonths
+    }
+
     const fiscalStartMonth = contract.fiscal_start_month || new Date(contract.start_period).getMonth() + 1
     const contractStartYear = new Date(contract.start_period).getFullYear()
     

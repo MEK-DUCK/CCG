@@ -214,7 +214,11 @@ def ensure_schema():
                         conn.execute(text('ALTER TABLE cargos ADD COLUMN IF NOT EXISTS nd_completed BOOLEAN DEFAULT FALSE'))
                     else:
                         conn.execute(text('ALTER TABLE cargos ADD COLUMN nd_completed BOOLEAN DEFAULT 0'))
-        
+
+            # Convert lc_status from VARCHAR to enum type (PostgreSQL only)
+            if dialect == "postgresql":
+                _convert_lc_status_to_enum()
+
         # Contracts migrations - add cif_destination for delivery window calculation
         if insp.has_table("contracts"):
             cols = [c.get("name") for c in insp.get_columns("contracts")]
@@ -858,6 +862,60 @@ def _convert_contract_products_to_jsonb():
                     logger.info(f"Converted contract_products.{col_name} from TEXT to JSONB")
         except Exception as e:
             logger.debug(f"JSONB conversion for {col_name} skipped or failed: {e}")
+
+
+def _convert_lc_status_to_enum():
+    """Convert lc_status column from VARCHAR to lcstatus enum type (PostgreSQL only).
+
+    This migration:
+    1. Creates the lcstatus enum type if it doesn't exist
+    2. Converts the column from VARCHAR to the enum type
+    """
+    try:
+        with engine.begin() as conn:
+            # Check current column type
+            result = conn.execute(text("""
+                SELECT data_type FROM information_schema.columns
+                WHERE table_name = 'cargos' AND column_name = 'lc_status'
+            """))
+            row = result.fetchone()
+
+            if row and row[0] == 'character varying':
+                # Column is still VARCHAR, need to convert to enum
+                # First ensure the enum type exists
+                result = conn.execute(text("""
+                    SELECT 1 FROM pg_type WHERE typname = 'lcstatus'
+                """))
+                if not result.fetchone():
+                    # Create the enum type
+                    conn.execute(text("""
+                        CREATE TYPE lcstatus AS ENUM (
+                            'Pending LC',
+                            'LC in Order',
+                            'LC Not in Order',
+                            'LC Memo Issued',
+                            'Financial Hold'
+                        )
+                    """))
+                    logger.info("Created lcstatus enum type")
+
+                # Convert the column - first set any invalid values to NULL
+                conn.execute(text("""
+                    UPDATE cargos SET lc_status = NULL
+                    WHERE lc_status IS NOT NULL
+                    AND lc_status NOT IN ('Pending LC', 'LC in Order', 'LC Not in Order', 'LC Memo Issued', 'Financial Hold')
+                """))
+
+                # Now convert the column type
+                conn.execute(text("""
+                    ALTER TABLE cargos
+                    ALTER COLUMN lc_status TYPE lcstatus
+                    USING lc_status::lcstatus
+                """))
+                logger.info("Converted cargos.lc_status from VARCHAR to lcstatus enum")
+
+    except Exception as e:
+        logger.debug(f"lc_status enum conversion skipped or failed: {e}")
 
 
 def _ensure_monthly_plans_product_not_null():

@@ -495,10 +495,7 @@ async def create_cargo(
     
     # Generate system cargo_id
     cargo_id = f"CARGO-{uuid.uuid4().hex[:8].upper()}"
-    
-    # For lc_status, use enum VALUE for database storage
-    lc_status_for_db = cargo.lc_status.value if cargo.lc_status else None
-    
+
     # Get combi_group_id - either from cargo payload or inherit from monthly plan
     combi_group_id = cargo.combi_group_id
     if not combi_group_id and monthly_plan and monthly_plan.combi_group_id:
@@ -514,7 +511,7 @@ async def create_cargo(
         product_id=product_id,  # Normalized product reference
         contract_id=cargo.contract_id,
         contract_type=contract.contract_type,
-        lc_status=lc_status_for_db,
+        lc_status=cargo.lc_status,  # Enum handles conversion automatically
         # NOTE: load_ports column removed - now derived from port_operations
         inspector_id=inspector_id,  # Normalized inspector reference
         cargo_quantity=cargo.cargo_quantity,
@@ -997,17 +994,18 @@ async def update_cargo(
                 except ValueError:
                     raise to_http_exception(invalid_status(status_value, [e.value for e in CargoStatus]))
     
-    # Convert lc_status to string VALUE (database stores enum VALUE, not enum NAME)
+    # Validate and convert lc_status - enum column handles conversion automatically
     if 'lc_status' in update_data and update_data['lc_status'] is not None:
         lc_status_value = update_data['lc_status']
         if lc_status_value == '':
             update_data['lc_status'] = None
-        elif isinstance(lc_status_value, LCStatus):
-            update_data['lc_status'] = lc_status_value.value
         elif isinstance(lc_status_value, str):
+            # Validate the string value
             valid_values = [e.value for e in LCStatus]
             if lc_status_value not in valid_values:
                 raise to_http_exception(invalid_status(lc_status_value, valid_values))
+            # Convert string to enum for proper storage
+            update_data['lc_status'] = LCStatus(lc_status_value)
     
     # Guardrail: prevent putting a cargo into Loading lifecycle without at least one load port
     def _coerce_load_ports_to_str(val) -> Optional[str]:
@@ -1109,12 +1107,13 @@ async def update_cargo(
         elif field == 'lc_status' and value is not None:
             old_lc_status = db_cargo.lc_status
             if isinstance(value, LCStatus):
-                db_cargo.lc_status = value.value
-            elif isinstance(value, str):
                 db_cargo.lc_status = value
+            elif isinstance(value, str):
+                # Convert string to enum
+                db_cargo.lc_status = LCStatus(value)
             else:
                 raise HTTPException(status_code=400, detail=f"Invalid lc_status type: {type(value)}")
-            
+
             if 'monthly_plan_id' not in update_data or update_data['monthly_plan_id'] == old_monthly_plan_id:
                 if old_lc_status != db_cargo.lc_status:
                     log_cargo_action(
@@ -1295,17 +1294,16 @@ def sync_combi_cargo_group(
                     except ValueError:
                         raise to_http_exception(invalid_status(status_value, [e.value for e in CargoStatus]))
         
-        # Convert lc_status if present
+        # Validate and convert lc_status - enum column handles conversion automatically
         if 'lc_status' in update_data and update_data['lc_status'] is not None:
             lc_status_value = update_data['lc_status']
             if lc_status_value == '':
                 update_data['lc_status'] = None
-            elif isinstance(lc_status_value, LCStatus):
-                update_data['lc_status'] = lc_status_value.value
             elif isinstance(lc_status_value, str):
                 valid_values = [e.value for e in LCStatus]
                 if lc_status_value not in valid_values:
                     raise to_http_exception(invalid_status(lc_status_value, valid_values))
+                update_data['lc_status'] = LCStatus(lc_status_value)
         
         # Update all cargos in the group atomically
         updated_cargos = []
