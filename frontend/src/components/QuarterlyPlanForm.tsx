@@ -391,13 +391,22 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
 
                   {/* Total for this year */}
                   <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-                    <Typography 
-                      variant="body1" 
-                      sx={{ fontWeight: 'bold', color: total > 0 ? 'success.main' : 'text.secondary' }}
+                    <Typography
+                      variant="body1"
+                      sx={{
+                        fontWeight: 'bold',
+                        color: total > plan.totalQuantity
+                          ? 'error.main'  // Red if exceeds contract total
+                          : total === plan.totalQuantity
+                            ? 'success.main'  // Green if matches exactly
+                            : total > 0
+                              ? 'warning.main'  // Amber if partial
+                              : 'text.secondary'  // Grey if zero
+                      }}
                     >
                       Year {plan.contractYear} Total: {total.toLocaleString()} KT
                     </Typography>
-                    
+
                     {/* Adjustment Notes - show if there are deferred/advanced quantities */}
                     {plan.adjustmentNotes && (
                       <Box sx={{ 
