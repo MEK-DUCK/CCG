@@ -2,7 +2,7 @@
 SQLAlchemy models for the Oil Lifting Program.
 """
 from typing import Optional
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Enum, Text, Boolean, UniqueConstraint, JSON
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Enum, Text, Boolean, UniqueConstraint, CheckConstraint, Index, JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -202,7 +202,11 @@ class Contract(Base):
     Contains one or more products with quantities via ContractProduct relationship.
     """
     __tablename__ = "contracts"
-    
+    __table_args__ = (
+        CheckConstraint('end_period >= start_period', name='chk_contracts_date_range'),
+        CheckConstraint('fiscal_start_month >= 1 AND fiscal_start_month <= 12', name='chk_contracts_fiscal_month'),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     contract_id = Column(String, unique=True, index=True)  # System generated
     contract_number = Column(String, nullable=False)
@@ -347,7 +351,13 @@ class AuthorityAmendment(Base):
     Replaces the old JSON authority_amendments column.
     """
     __tablename__ = "authority_amendments"
-    
+    __table_args__ = (
+        CheckConstraint(
+            "amendment_type IN ('increase_max', 'decrease_max', 'increase_min', 'decrease_min', 'set_min', 'set_max')",
+            name='chk_amendment_type'
+        ),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     contract_id = Column(Integer, ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
@@ -399,7 +409,16 @@ class QuarterlyPlan(Base):
     Each QuarterlyPlan represents one contract year with 4 quarters.
     """
     __tablename__ = "quarterly_plans"
-    
+    __table_args__ = (
+        CheckConstraint('q1_quantity >= 0', name='chk_quarterly_q1'),
+        CheckConstraint('q2_quantity >= 0', name='chk_quarterly_q2'),
+        CheckConstraint('q3_quantity >= 0', name='chk_quarterly_q3'),
+        CheckConstraint('q4_quantity >= 0', name='chk_quarterly_q4'),
+        CheckConstraint('contract_year >= 1', name='chk_quarterly_contract_year'),
+        Index('idx_quarterly_plans_contract', 'contract_id'),
+        Index('idx_quarterly_plans_product', 'product_id'),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
 
     # Foreign key to products table - normalized reference
@@ -437,7 +456,15 @@ class MonthlyPlan(Base):
     For SPOT contracts, can link directly to contract without quarterly plan.
     """
     __tablename__ = "monthly_plans"
-    
+    __table_args__ = (
+        CheckConstraint('month >= 1 AND month <= 12', name='chk_monthly_plans_month'),
+        CheckConstraint('year >= 2020 AND year <= 2100', name='chk_monthly_plans_year'),
+        CheckConstraint('month_quantity >= 0', name='chk_monthly_plans_quantity'),
+        Index('idx_monthly_plans_year_month', 'year', 'month'),
+        Index('idx_monthly_plans_contract_year_month', 'contract_id', 'year', 'month'),
+        Index('idx_monthly_plans_product', 'product_id'),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     month = Column(Integer, nullable=False)  # 1-12
     year = Column(Integer, nullable=False)
@@ -516,7 +543,14 @@ class Cargo(Base):
     Tracks vessel details, loading operations, and status.
     """
     __tablename__ = "cargos"
-    
+    __table_args__ = (
+        CheckConstraint('cargo_quantity > 0', name='chk_cargos_quantity'),
+        Index('idx_cargos_status', 'status'),
+        Index('idx_cargos_contract_id', 'contract_id'),
+        Index('idx_cargos_customer_id', 'customer_id'),
+        Index('idx_cargos_product_id', 'product_id'),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     cargo_id = Column(String, unique=True, index=True)  # System generated (e.g., CARGO-XXXX)
     vessel_name = Column(String, nullable=False)
@@ -622,6 +656,9 @@ class CargoPortOperation(Base):
     __tablename__ = "cargo_port_operations"
     __table_args__ = (
         UniqueConstraint('cargo_id', 'load_port_id', name='uq_cargo_port_operations_cargo_port'),
+        CheckConstraint("status IN ('Planned', 'Loading', 'Completed Loading')", name='chk_port_op_status'),
+        Index('idx_cargo_port_ops_cargo', 'cargo_id'),
+        Index('idx_cargo_port_ops_status', 'status'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -739,7 +776,13 @@ class QuarterlyPlanAdjustment(Base):
     Created when monthly plans are deferred/advanced across quarters.
     """
     __tablename__ = "quarterly_plan_adjustments"
-    
+    __table_args__ = (
+        CheckConstraint(
+            "adjustment_type IN ('DEFER_OUT', 'DEFER_IN', 'ADVANCE_OUT', 'ADVANCE_IN')",
+            name='chk_adjustment_type'
+        ),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     quarterly_plan_id = Column(Integer, ForeignKey("quarterly_plans.id"), nullable=False)
     
@@ -844,6 +887,7 @@ class EntityVersion(Base):
     __table_args__ = (
         # Unique constraint: one version number per entity
         UniqueConstraint('entity_type', 'entity_id', 'version_number', name='uq_entity_versions_type_id_version'),
+        Index('idx_entity_versions_lookup', 'entity_type', 'entity_id'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
