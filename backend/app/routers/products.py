@@ -8,6 +8,7 @@ from typing import List
 from app.database import get_db
 from app import models, schemas
 from app.general_audit_utils import log_general_action
+from app.auth import require_auth
 import logging
 
 router = APIRouter()
@@ -15,7 +16,11 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/", response_model=schemas.Product)
-def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db)):
+def create_product(
+    product: schemas.ProductCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """Create a new product."""
     try:
         # Check for duplicate code
@@ -68,7 +73,8 @@ def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db)
 @router.get("/", response_model=List[schemas.Product])
 def read_products(
     include_inactive: bool = Query(False, description="Include inactive products"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """Get all products, ordered by sort_order then name."""
     try:
@@ -85,7 +91,8 @@ def read_products(
 @router.get("/names", response_model=List[str])
 def read_product_names(
     include_inactive: bool = Query(False, description="Include inactive products"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """Get just the product names for dropdowns."""
     try:
@@ -100,7 +107,11 @@ def read_product_names(
 
 
 @router.get("/{product_id}", response_model=schemas.Product)
-def read_product(product_id: int, db: Session = Depends(get_db)):
+def read_product(
+    product_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """Get a specific product by ID."""
     try:
         product = db.query(models.Product).filter(models.Product.id == product_id).first()
@@ -115,7 +126,12 @@ def read_product(product_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{product_id}", response_model=schemas.Product)
-def update_product(product_id: int, product: schemas.ProductUpdate, db: Session = Depends(get_db)):
+def update_product(
+    product_id: int,
+    product: schemas.ProductUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """Update a product."""
     try:
         db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
@@ -174,7 +190,11 @@ def update_product(product_id: int, product: schemas.ProductUpdate, db: Session 
 
 
 @router.delete("/{product_id}")
-def delete_product(product_id: int, db: Session = Depends(get_db)):
+def delete_product(
+    product_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """Delete a product. Consider using is_active=false instead for products in use."""
     try:
         db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
@@ -215,7 +235,10 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/seed-defaults")
-def seed_default_products(db: Session = Depends(get_db)):
+def seed_default_products(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """Seed the database with default products if none exist."""
     try:
         existing = db.query(models.Product).count()

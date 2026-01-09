@@ -13,6 +13,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 from app.database import get_db
+from app.auth import require_auth
+from app import models
 from app.models import (
     Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo,
     CargoAuditLog, MonthlyPlanAuditLog, QuarterlyPlanAuditLog, ContractAuditLog,
@@ -27,7 +29,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # =============================================================================
 
 @router.get("/stats")
-def get_database_stats(db: Session = Depends(get_db)):
+def get_database_stats(db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Get overview statistics for all tables."""
     
     # Count records in each table
@@ -105,7 +107,7 @@ def get_database_stats(db: Session = Depends(get_db)):
 
 
 @router.get("/analytics")
-def get_analytics(db: Session = Depends(get_db)):
+def get_analytics(db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Get analytics data for inspector usage and port statistics."""
     
     # Inspector usage statistics (from normalized inspector_id FK)
@@ -350,7 +352,7 @@ def update_contract_admin(
 
 
 @router.delete("/contracts/{contract_id}")
-def delete_contract_admin(contract_id: int, db: Session = Depends(get_db)):
+def delete_contract_admin(contract_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Delete a contract and all related data (admin only)."""
     contract = db.query(Contract).filter(Contract.id == contract_id).first()
     if not contract:
@@ -444,7 +446,7 @@ def update_quarterly_plan_admin(
 
 
 @router.delete("/quarterly-plans/{plan_id}")
-def delete_quarterly_plan_admin(plan_id: int, db: Session = Depends(get_db)):
+def delete_quarterly_plan_admin(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Delete a quarterly plan and all related monthly plans (admin only)."""
     plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == plan_id).first()
     if not plan:
@@ -564,7 +566,7 @@ def update_monthly_plan_admin(
 
 
 @router.delete("/monthly-plans/{plan_id}")
-def delete_monthly_plan_admin(plan_id: int, db: Session = Depends(get_db)):
+def delete_monthly_plan_admin(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Delete a monthly plan and all related cargos (admin only)."""
     plan = db.query(MonthlyPlan).filter(MonthlyPlan.id == plan_id).first()
     if not plan:
@@ -736,7 +738,7 @@ def update_cargo_admin(
 
 
 @router.delete("/cargos/{cargo_id}")
-def delete_cargo_admin(cargo_id: int, db: Session = Depends(get_db)):
+def delete_cargo_admin(cargo_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Delete a cargo (admin only)."""
     cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
     if not cargo:
@@ -866,7 +868,7 @@ def get_all_audit_logs(
 # =============================================================================
 
 @router.get("/integrity-check")
-def check_data_integrity(db: Session = Depends(get_db)):
+def check_data_integrity(db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Run comprehensive data integrity checks."""
     from sqlalchemy.orm import joinedload
     from app.models import ContractProduct
@@ -1054,7 +1056,7 @@ def update_customer_admin(
 
 
 @router.delete("/customers/{customer_id}")
-def delete_customer_admin(customer_id: int, db: Session = Depends(get_db)):
+def delete_customer_admin(customer_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Delete a customer and all related contracts (admin only)."""
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:

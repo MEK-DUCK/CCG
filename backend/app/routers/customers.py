@@ -8,13 +8,18 @@ import traceback
 from app.database import get_db
 from app import models, schemas
 from app.general_audit_utils import log_general_action
+from app.auth import require_auth
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 @router.post("/", response_model=schemas.Customer)
-def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(get_db)):
+def create_customer(
+    customer: schemas.CustomerCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     try:
         # Generate system customer_id
         customer_id = f"CUST-{uuid.uuid4().hex[:8].upper()}"
@@ -49,6 +54,7 @@ def read_customers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     try:
         customers = db.query(models.Customer).offset(skip).limit(limit).all()
@@ -59,14 +65,23 @@ def read_customers(
         raise HTTPException(status_code=500, detail=f"Error loading customers: {str(e)}")
 
 @router.get("/{customer_id}", response_model=schemas.Customer)
-def read_customer(customer_id: int, db: Session = Depends(get_db)):
+def read_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
     if customer is None:
         raise HTTPException(status_code=404, detail="Customer not found")
     return customer
 
 @router.put("/{customer_id}", response_model=schemas.Customer)
-def update_customer(customer_id: int, customer: schemas.CustomerUpdate, db: Session = Depends(get_db)):
+def update_customer(
+    customer_id: int,
+    customer: schemas.CustomerUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     try:
         db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
         if db_customer is None:
@@ -103,7 +118,11 @@ def update_customer(customer_id: int, customer: schemas.CustomerUpdate, db: Sess
         raise HTTPException(status_code=500, detail=f"Error updating customer: {str(e)}")
 
 @router.delete("/{customer_id}")
-def delete_customer(customer_id: int, db: Session = Depends(get_db)):
+def delete_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     try:
         db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
         if db_customer is None:

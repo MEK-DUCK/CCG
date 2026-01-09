@@ -8,6 +8,7 @@ import json
 
 from app.database import get_db
 from app import models, schemas
+from app.auth import require_auth
 from app.quarterly_plan_audit_utils import log_quarterly_plan_action
 from app.errors import (
     quarterly_plan_not_found,
@@ -91,7 +92,7 @@ def _validate_monthly_plans_fit_quarterly(db: Session, plan_id: int, new_quantit
 
 
 @router.post("/", response_model=schemas.QuarterlyPlan)
-def create_quarterly_plan(plan: schemas.QuarterlyPlanCreate, db: Session = Depends(get_db)):
+def create_quarterly_plan(plan: schemas.QuarterlyPlanCreate, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     from sqlalchemy.orm import joinedload
     
     # Verify contract exists
@@ -202,6 +203,7 @@ def read_quarterly_plans(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     try:
         from sqlalchemy.orm import joinedload
@@ -218,7 +220,7 @@ def read_quarterly_plans(
 
 
 @router.get("/{plan_id}", response_model=schemas.QuarterlyPlan)
-def read_quarterly_plan(plan_id: int, db: Session = Depends(get_db)):
+def read_quarterly_plan(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     from sqlalchemy.orm import joinedload
     plan = db.query(models.QuarterlyPlan).options(
         joinedload(models.QuarterlyPlan.product)
@@ -229,7 +231,7 @@ def read_quarterly_plan(plan_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{plan_id}/adjustments")
-def get_quarterly_plan_adjustments(plan_id: int, db: Session = Depends(get_db)):
+def get_quarterly_plan_adjustments(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """
     Get all authority-approved adjustments for a quarterly plan.
     Returns the history of cross-quarter defer/advance operations.
@@ -262,7 +264,7 @@ def get_quarterly_plan_adjustments(plan_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/contract/{contract_id}/adjustments")
-def get_contract_quarterly_adjustments(contract_id: int, db: Session = Depends(get_db)):
+def get_contract_quarterly_adjustments(contract_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """
     Get all authority-approved adjustments for all quarterly plans of a contract.
     Useful for displaying adjustment history in the quarterly plan view.
@@ -302,7 +304,7 @@ def get_contract_quarterly_adjustments(contract_id: int, db: Session = Depends(g
 
 
 @router.put("/{plan_id}", response_model=schemas.QuarterlyPlan)
-def update_quarterly_plan(plan_id: int, plan: schemas.QuarterlyPlanUpdate, db: Session = Depends(get_db)):
+def update_quarterly_plan(plan_id: int, plan: schemas.QuarterlyPlanUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """
     Update a quarterly plan with optimistic locking.
     
@@ -412,7 +414,7 @@ def update_quarterly_plan(plan_id: int, plan: schemas.QuarterlyPlanUpdate, db: S
 
 
 @router.delete("/{plan_id}")
-def delete_quarterly_plan(plan_id: int, db: Session = Depends(get_db)):
+def delete_quarterly_plan(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     db_plan = db.query(models.QuarterlyPlan).filter(models.QuarterlyPlan.id == plan_id).first()
     if db_plan is None:
         raise to_http_exception(quarterly_plan_not_found(plan_id))

@@ -6,8 +6,10 @@ from enum import Enum
 from typing import Optional, Any, Dict
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 import logging
 import traceback
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,9 @@ class ErrorCode(str, Enum):
     # System errors (500)
     DATABASE_ERROR = "DATABASE_ERROR"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+
+    # Status transition errors
+    INVALID_STATUS_TRANSITION = "INVALID_STATUS_TRANSITION"
 
 
 class AppError(Exception):
@@ -155,7 +160,7 @@ def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     """Handle unexpected errors with safe logging."""
     # Log full traceback for debugging
     logger.error(f"Unexpected error at {request.url.path}: {str(exc)}", exc_info=True)
-    
+
     # Return safe error message to client (no internal details)
     return JSONResponse(
         status_code=500,
@@ -166,6 +171,93 @@ def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
             }
         }
     )
+
+
+def handle_database_error(request: Request, exc: SQLAlchemyError) -> JSONResponse:
+    """Handle SQLAlchemy database errors with sanitized messages."""
+    # Log full error for debugging (internal only)
+    logger.error(f"Database error at {request.url.path}: {str(exc)}", exc_info=True)
+
+    # Return sanitized error message
+    user_message = sanitize_db_error(exc)
+    return JSONResponse(
+        status_code=400 if isinstance(exc, IntegrityError) else 500,
+        content={
+            "error": {
+                "code": ErrorCode.DATABASE_ERROR.value,
+                "message": user_message
+            }
+        }
+    )
+
+
+def sanitize_db_error(exc: Exception) -> str:
+    """
+    Convert database exceptions to user-friendly messages.
+    Never expose SQL statements, table names, or internal details.
+    """
+    error_str = str(exc).lower()
+
+    # Check for common integrity errors and provide helpful messages
+    if isinstance(exc, IntegrityError):
+        if 'unique constraint' in error_str or 'duplicate' in error_str:
+            # Try to extract a meaningful field name without exposing internals
+            if 'contract_number' in error_str:
+                return "A contract with this number already exists."
+            if 'customer_id' in error_str or 'customer' in error_str:
+                return "This customer already exists or is referenced elsewhere."
+            if 'email' in error_str:
+                return "This email address is already in use."
+            if 'product' in error_str:
+                return "This product already exists or conflicts with an existing entry."
+            return "A record with these values already exists. Please use unique values."
+
+        if 'foreign key' in error_str:
+            if 'customer' in error_str:
+                return "The specified customer does not exist."
+            if 'contract' in error_str:
+                return "The specified contract does not exist."
+            if 'product' in error_str:
+                return "The specified product does not exist."
+            return "Referenced record does not exist. Please check your selection."
+
+        if 'not null' in error_str or 'null value' in error_str:
+            return "A required field is missing. Please fill in all required fields."
+
+        if 'check constraint' in error_str:
+            return "The provided value does not meet the required constraints."
+
+    # Generic database error message
+    return "A database error occurred. Please try again or contact support if the problem persists."
+
+
+def wrap_db_operation(operation_name: str = "operation"):
+    """
+    Decorator to wrap database operations with sanitized error handling.
+
+    Usage:
+        @wrap_db_operation("creating contract")
+        def create_contract(...):
+            ...
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except IntegrityError as e:
+                logger.error(f"Integrity error in {operation_name}: {str(e)}", exc_info=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail=sanitize_db_error(e)
+                )
+            except SQLAlchemyError as e:
+                logger.error(f"Database error in {operation_name}: {str(e)}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail=sanitize_db_error(e)
+                )
+        return wrapper
+    return decorator
 
 
 # =============================================================================
@@ -264,6 +356,14 @@ def invalid_move_direction(action: str, message: str) -> BusinessRuleError:
         message=message,
         code=ErrorCode.INVALID_MOVE_DIRECTION,
         details={"action": action}
+    )
+
+
+def invalid_status_transition(current_status: str, target_status: str, reason: str) -> BusinessRuleError:
+    return BusinessRuleError(
+        message=reason,
+        code=ErrorCode.INVALID_STATUS_TRANSITION,
+        details={"current_status": current_status, "target_status": target_status}
     )
 
 

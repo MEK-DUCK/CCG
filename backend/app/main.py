@@ -16,7 +16,8 @@ import app.models  # noqa: F401 - This registers all model classes with Base.met
 from app.routers import customers, contracts, quarterly_plans, monthly_plans, cargos, audit_logs, documents
 from app.routers import config_router, admin, products, load_ports, inspectors, discharge_ports
 from app.routers import auth_router, users, presence_router, version_history_router
-from app.errors import AppError, handle_app_error, handle_unexpected_error
+from app.errors import AppError, handle_app_error, handle_unexpected_error, handle_database_error
+from sqlalchemy.exc import SQLAlchemyError
 from app.rate_limiter import limiter, rate_limit_exceeded_handler
 
 # Configure logging
@@ -74,6 +75,9 @@ app.state.limiter = limiter
 
 # Register rate limit exceeded handler
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Register SQLAlchemy error handler (sanitizes SQL error messages)
+app.add_exception_handler(SQLAlchemyError, handle_database_error)
 
 # =============================================================================
 # CORS Configuration
@@ -242,9 +246,28 @@ from fastapi.exceptions import RequestValidationError
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Log validation errors with full details for debugging."""
     logger.error(f"Validation error for {request.method} {request.url.path}: {exc.errors()}")
+
+    # Sanitize errors to ensure JSON serializability
+    # The 'ctx' field can contain non-serializable objects like ValueError
+    sanitized_errors = []
+    for error in exc.errors():
+        sanitized = {
+            "type": error.get("type"),
+            "loc": error.get("loc"),
+            "msg": error.get("msg"),
+            "input": error.get("input") if not callable(error.get("input")) else str(error.get("input")),
+        }
+        # Convert ctx.error to string if present
+        if "ctx" in error and isinstance(error["ctx"], dict):
+            ctx = {}
+            for k, v in error["ctx"].items():
+                ctx[k] = str(v) if isinstance(v, Exception) else v
+            sanitized["ctx"] = ctx
+        sanitized_errors.append(sanitized)
+
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors()}
+        content={"detail": sanitized_errors}
     )
 
 

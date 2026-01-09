@@ -14,7 +14,7 @@ import logging
 
 from app.database import get_db
 from app.presence import presence_manager
-from app.auth import decode_token
+from app.auth import decode_token, require_auth
 from app import models
 
 logger = logging.getLogger(__name__)
@@ -183,7 +183,8 @@ async def presence_websocket(
 def get_presence(
     resource_type: str,
     resource_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Get current users viewing a resource.

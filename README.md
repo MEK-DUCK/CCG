@@ -78,6 +78,10 @@ Combi cargos allow multiple products to be loaded on a single vessel, sharing th
 - **JWT Authentication**: Secure token-based authentication with 7-day expiration
 - **Role-Based Access**: User management with different permission levels
 - **Auto-Logout**: Automatic session handling for expired tokens
+- **Password Policy**: Strong password requirements (8+ chars, uppercase, lowercase, digit, special character)
+- **Rate Limiting**: Protection against brute-force attacks on authentication endpoints
+- **Input Validation**: Server-side validation of all inputs with sanitized error messages
+- **Cascade Protection**: Contracts with associated data cannot be accidentally deleted
 
 ### User Experience
 - **Toast Notifications**: Professional success/error/warning/info toasts replace browser alerts
@@ -338,6 +342,14 @@ On the HomePage tabs (Port Movement, Active Loadings, Completed Cargos, In-Road 
 
 ### CIF Cargo Status Flow
 - **Planned** → **Loading** → **Completed Loading** → **In-Road CIF** tab → **Discharge Complete** → **Completed Cargos** tab
+
+### Status Transition Rules
+The system enforces proper cargo status progression:
+- **Pre-loading statuses** (Planned, Pending Nomination, Pending TL Approval, Nomination Released) can transition freely among themselves
+- Must go through **Loading** before reaching **Completed Loading** (no skipping)
+- Must go through **Completed Loading** before reaching **Discharge Complete** (CIF only)
+- **FOB cargos** cannot be set to Discharge Complete (delivery complete at loading port)
+- Backward transitions are allowed to fix mistakes
 
 ### CIF Delivery Month Tracking
 - CIF contracts track quantities by **delivery month** (when cargo arrives), not loading month

@@ -8,6 +8,7 @@ import traceback
 
 from app.database import get_db
 from app import models, schemas
+from app.auth import require_auth
 from sqlalchemy import desc, union_all
 from sqlalchemy.sql import select
 from sqlalchemy import func
@@ -107,7 +108,8 @@ def get_cargo_audit_logs(
     start_date: Optional[date] = Query(None, description="Filter by start date"),
     end_date: Optional[date] = Query(None, description="Filter by end date"),
     limit: int = Query(100, ge=1, le=1000, description="Limit number of results"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """Get cargo audit logs with optional filters"""
     query = db.query(models.CargoAuditLog)
@@ -146,7 +148,8 @@ def get_monthly_plan_audit_logs(
     year: Optional[int] = Query(None, description="Filter by year"),
     action: Optional[str] = Query(None, description="Filter by action"),
     limit: int = Query(100, ge=1, le=1000, description="Limit number of results"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """Get monthly plan audit logs with optional filters, including product_name from quarterly plan or contract"""
     # Join with QuarterlyPlan -> Product to get product_name
@@ -219,7 +222,8 @@ def get_quarterly_plan_audit_logs(
     contract_id: Optional[int] = Query(None, description="Filter by contract ID"),
     action: Optional[str] = Query(None, description="Filter by action"),
     limit: int = Query(100, ge=1, le=1000, description="Limit number of results"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """Get quarterly plan audit logs with optional filters"""
     query = db.query(models.QuarterlyPlanAuditLog)
@@ -247,7 +251,8 @@ def get_reconciliation_logs(
     year: Optional[int] = Query(None, description="Filter by year"),
     action: Optional[str] = Query(None, description="Filter by action"),
     limit: int = Query(100, ge=1, le=1000, description="Limit number of results"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """Get reconciliation logs - shows monthly and quarterly plan changes only, with product_name"""
     # Join monthly plan logs with QuarterlyPlan and Contract to get product_name

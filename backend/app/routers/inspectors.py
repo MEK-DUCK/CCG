@@ -8,6 +8,7 @@ from typing import List
 from app.database import get_db
 from app import models, schemas
 from app.general_audit_utils import log_general_action
+from app.auth import require_auth
 import logging
 
 router = APIRouter()
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/", response_model=schemas.Inspector)
-def create_inspector(inspector: schemas.InspectorCreate, db: Session = Depends(get_db)):
+def create_inspector(inspector: schemas.InspectorCreate, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Create a new inspector."""
     try:
         # Check for duplicate code
@@ -100,7 +101,7 @@ def read_inspector_names(
 
 
 @router.get("/{inspector_id}", response_model=schemas.Inspector)
-def read_inspector(inspector_id: int, db: Session = Depends(get_db)):
+def read_inspector(inspector_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Get a specific inspector by ID."""
     try:
         inspector = db.query(models.Inspector).filter(models.Inspector.id == inspector_id).first()
@@ -115,7 +116,7 @@ def read_inspector(inspector_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{inspector_id}", response_model=schemas.Inspector)
-def update_inspector(inspector_id: int, inspector: schemas.InspectorUpdate, db: Session = Depends(get_db)):
+def update_inspector(inspector_id: int, inspector: schemas.InspectorUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Update an inspector."""
     try:
         db_inspector = db.query(models.Inspector).filter(models.Inspector.id == inspector_id).first()
@@ -174,7 +175,7 @@ def update_inspector(inspector_id: int, inspector: schemas.InspectorUpdate, db: 
 
 
 @router.delete("/{inspector_id}")
-def delete_inspector(inspector_id: int, db: Session = Depends(get_db)):
+def delete_inspector(inspector_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Delete an inspector. Consider using is_active=false instead for inspectors in use."""
     try:
         db_inspector = db.query(models.Inspector).filter(models.Inspector.id == inspector_id).first()
@@ -215,7 +216,7 @@ def delete_inspector(inspector_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/seed-defaults")
-def seed_default_inspectors(db: Session = Depends(get_db)):
+def seed_default_inspectors(db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Seed the database with default inspectors if none exist."""
     try:
         existing = db.query(models.Inspector).count()

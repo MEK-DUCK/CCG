@@ -9,6 +9,7 @@ from typing import List
 from app.database import get_db
 from app import models, schemas
 from app.general_audit_utils import log_general_action
+from app.auth import require_auth
 import logging
 
 router = APIRouter()
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/", response_model=schemas.DischargePort)
-def create_discharge_port(port: schemas.DischargePortCreate, db: Session = Depends(get_db)):
+def create_discharge_port(port: schemas.DischargePortCreate, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Create a new discharge port."""
     try:
         # Check for duplicate name
@@ -95,7 +96,7 @@ def read_discharge_port_names(
 
 
 @router.get("/by-name/{port_name}", response_model=schemas.DischargePort)
-def read_discharge_port_by_name(port_name: str, db: Session = Depends(get_db)):
+def read_discharge_port_by_name(port_name: str, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Get a specific discharge port by name (for TNG generation and delivery window calc)."""
     try:
         port = db.query(models.DischargePort).filter(models.DischargePort.name == port_name).first()
@@ -110,7 +111,7 @@ def read_discharge_port_by_name(port_name: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{port_id}", response_model=schemas.DischargePort)
-def read_discharge_port(port_id: int, db: Session = Depends(get_db)):
+def read_discharge_port(port_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Get a specific discharge port by ID."""
     try:
         port = db.query(models.DischargePort).filter(models.DischargePort.id == port_id).first()
@@ -125,7 +126,7 @@ def read_discharge_port(port_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{port_id}", response_model=schemas.DischargePort)
-def update_discharge_port(port_id: int, port: schemas.DischargePortUpdate, db: Session = Depends(get_db)):
+def update_discharge_port(port_id: int, port: schemas.DischargePortUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Update a discharge port."""
     try:
         db_port = db.query(models.DischargePort).filter(models.DischargePort.id == port_id).first()
@@ -176,7 +177,7 @@ def update_discharge_port(port_id: int, port: schemas.DischargePortUpdate, db: S
 
 
 @router.delete("/{port_id}")
-def delete_discharge_port(port_id: int, db: Session = Depends(get_db)):
+def delete_discharge_port(port_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Delete a discharge port. Consider using is_active=false instead for ports in use."""
     try:
         db_port = db.query(models.DischargePort).filter(models.DischargePort.id == port_id).first()
@@ -216,7 +217,7 @@ def delete_discharge_port(port_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/seed-defaults")
-def seed_default_discharge_ports(db: Session = Depends(get_db)):
+def seed_default_discharge_ports(db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Seed the database with default discharge ports if none exist."""
     from app.startup import DEFAULT_DISCHARGE_PORTS
     

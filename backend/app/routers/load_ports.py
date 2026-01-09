@@ -8,6 +8,7 @@ from typing import List
 from app.database import get_db
 from app import models, schemas
 from app.general_audit_utils import log_general_action
+from app.auth import require_auth
 import logging
 
 router = APIRouter()
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/", response_model=schemas.LoadPort)
-def create_load_port(port: schemas.LoadPortCreate, db: Session = Depends(get_db)):
+def create_load_port(port: schemas.LoadPortCreate, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Create a new load port."""
     try:
         # Check for duplicate code
@@ -101,7 +102,7 @@ def read_load_port_codes(
 
 
 @router.get("/{port_id}", response_model=schemas.LoadPort)
-def read_load_port(port_id: int, db: Session = Depends(get_db)):
+def read_load_port(port_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Get a specific load port by ID."""
     try:
         port = db.query(models.LoadPort).filter(models.LoadPort.id == port_id).first()
@@ -116,7 +117,7 @@ def read_load_port(port_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{port_id}", response_model=schemas.LoadPort)
-def update_load_port(port_id: int, port: schemas.LoadPortUpdate, db: Session = Depends(get_db)):
+def update_load_port(port_id: int, port: schemas.LoadPortUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Update a load port."""
     try:
         db_port = db.query(models.LoadPort).filter(models.LoadPort.id == port_id).first()
@@ -175,7 +176,7 @@ def update_load_port(port_id: int, port: schemas.LoadPortUpdate, db: Session = D
 
 
 @router.delete("/{port_id}")
-def delete_load_port(port_id: int, db: Session = Depends(get_db)):
+def delete_load_port(port_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Delete a load port. Consider using is_active=false instead for ports in use."""
     try:
         db_port = db.query(models.LoadPort).filter(models.LoadPort.id == port_id).first()
@@ -216,7 +217,7 @@ def delete_load_port(port_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/seed-defaults")
-def seed_default_load_ports(db: Session = Depends(get_db)):
+def seed_default_load_ports(db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Seed the database with default load ports if none exist."""
     try:
         existing = db.query(models.LoadPort).count()

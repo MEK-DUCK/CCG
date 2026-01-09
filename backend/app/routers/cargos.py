@@ -33,6 +33,7 @@ from app.errors import (
     combi_group_not_found,
     invalid_load_port,
     invalid_status,
+    invalid_status_transition,
     load_port_required_for_loading,
     to_http_exception,
     ValidationError,
@@ -40,9 +41,107 @@ from app.errors import (
 )
 from app.version_history import version_service
 from app.utils.quantity import get_product_id_by_name, get_product_name_by_id
+from app.auth import require_auth
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# =============================================================================
+# STATUS TRANSITION VALIDATION
+# =============================================================================
+# Pre-loading statuses: cargo is being prepared/nominated
+PRE_LOADING_STATUSES = {
+    CargoStatus.PLANNED,
+    CargoStatus.PENDING_NOMINATION,
+    CargoStatus.PENDING_TL_APPROVAL,
+    CargoStatus.NOMINATION_RELEASED,
+}
+
+
+def validate_status_transition(
+    current_status: CargoStatus,
+    target_status: CargoStatus,
+    contract_type: str = None
+) -> tuple[bool, Optional[str]]:
+    """
+    Validate cargo status transitions.
+
+    Valid transitions:
+    - Pre-loading statuses (Planned, Pending Nomination, Pending TL Approval, Nomination Released)
+      can transition freely among themselves
+    - Any pre-loading status can transition to Loading
+    - Loading can transition to Completed Loading (or back to pre-loading to fix mistakes)
+    - Completed Loading can transition to Discharge Complete (CIF only) or back to Loading
+    - Discharge Complete can go back to Completed Loading (to fix mistakes)
+
+    NOT allowed:
+    - Skipping from any pre-loading status directly to Completed Loading
+    - Skipping from any pre-loading status directly to Discharge Complete
+    - Skipping from Loading directly to Discharge Complete
+    - FOB cargos cannot transition to Discharge Complete
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    # Same status - always allowed (no change)
+    if current_status == target_status:
+        return True, None
+
+    # Transitions within pre-loading statuses are always allowed
+    if current_status in PRE_LOADING_STATUSES and target_status in PRE_LOADING_STATUSES:
+        return True, None
+
+    # From pre-loading to Loading - allowed
+    if current_status in PRE_LOADING_STATUSES and target_status == CargoStatus.LOADING:
+        return True, None
+
+    # From pre-loading directly to Completed Loading - NOT allowed (must go through Loading)
+    if current_status in PRE_LOADING_STATUSES and target_status == CargoStatus.COMPLETED_LOADING:
+        return False, "Cannot skip to 'Completed Loading'. Cargo must be set to 'Loading' first."
+
+    # From pre-loading directly to Discharge Complete - NOT allowed
+    if current_status in PRE_LOADING_STATUSES and target_status == CargoStatus.DISCHARGE_COMPLETE:
+        return False, "Cannot skip to 'Discharge Complete'. Cargo must go through 'Loading' and 'Completed Loading' first."
+
+    # From Loading to Completed Loading - allowed
+    if current_status == CargoStatus.LOADING and target_status == CargoStatus.COMPLETED_LOADING:
+        return True, None
+
+    # From Loading back to pre-loading statuses - allowed (to fix mistakes)
+    if current_status == CargoStatus.LOADING and target_status in PRE_LOADING_STATUSES:
+        return True, None
+
+    # From Loading directly to Discharge Complete - NOT allowed (must go through Completed Loading)
+    if current_status == CargoStatus.LOADING and target_status == CargoStatus.DISCHARGE_COMPLETE:
+        return False, "Cannot skip to 'Discharge Complete'. Cargo must be set to 'Completed Loading' first."
+
+    # From Completed Loading to Discharge Complete - allowed for CIF only
+    if current_status == CargoStatus.COMPLETED_LOADING and target_status == CargoStatus.DISCHARGE_COMPLETE:
+        if contract_type and contract_type.upper() == "FOB":
+            return False, "FOB cargos cannot be set to 'Discharge Complete'. FOB delivery is complete at loading port."
+        return True, None
+
+    # From Completed Loading back to Loading - allowed (to fix mistakes)
+    if current_status == CargoStatus.COMPLETED_LOADING and target_status == CargoStatus.LOADING:
+        return True, None
+
+    # From Completed Loading back to pre-loading - allowed (rare, but to fix major mistakes)
+    if current_status == CargoStatus.COMPLETED_LOADING and target_status in PRE_LOADING_STATUSES:
+        return True, None
+
+    # From Discharge Complete back to Completed Loading - allowed (to fix mistakes)
+    if current_status == CargoStatus.DISCHARGE_COMPLETE and target_status == CargoStatus.COMPLETED_LOADING:
+        return True, None
+
+    # From Discharge Complete back to Loading or pre-loading - allowed (rare)
+    if current_status == CargoStatus.DISCHARGE_COMPLETE and target_status in (PRE_LOADING_STATUSES | {CargoStatus.LOADING}):
+        return True, None
+
+    # Any other transition not explicitly defined - block it with generic message
+    current_val = current_status.value if current_status else "None"
+    target_val = target_status.value if target_status else "None"
+    return False, f"Invalid status transition from '{current_val}' to '{target_val}'."
 
 
 def _get_inspector_id_by_name(db: Session, inspector_name: Optional[str]) -> Optional[int]:
@@ -430,7 +529,8 @@ def update_cargo_status(cargo: models.Cargo, db: Session):
 async def create_cargo(
     cargo: schemas.CargoCreate,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     logger.info(f"Creating cargo: vessel={cargo.vessel_name}, contract={cargo.contract_id}, monthly_plan={cargo.monthly_plan_id}")
     
@@ -612,7 +712,8 @@ def read_cargos(
     year: Optional[int] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     try:
         from sqlalchemy.orm import joinedload
@@ -647,7 +748,12 @@ def read_cargos(
 
 
 @router.get("/port-movement", response_model=List[schemas.Cargo])
-def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, db: Session = Depends(get_db)):
+def read_port_movement(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """Get cargos for specified month (defaults to current month), excluding completed cargos"""
     try:
         if month is None or year is None:
@@ -683,7 +789,12 @@ def read_port_movement(month: Optional[int] = None, year: Optional[int] = None, 
 
 
 @router.get("/completed-cargos", response_model=List[schemas.Cargo])
-def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = None, db: Session = Depends(get_db)):
+def read_completed_cargos(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """Get FOB completed cargos and CIF cargos after loading completion (including discharge complete), optionally filtered by month/year"""
     try:
         from sqlalchemy import or_, and_
@@ -731,7 +842,10 @@ def read_completed_cargos(month: Optional[int] = None, year: Optional[int] = Non
 
 
 @router.get("/active-loadings", response_model=List[schemas.Cargo])
-def read_active_loadings(db: Session = Depends(get_db)):
+def read_active_loadings(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """
     Return cargos that have at least one per-port operation in Loading or Completed Loading,
     regardless of month/year. Excludes cargos that have completed their lifecycle.
@@ -764,7 +878,10 @@ def read_active_loadings(db: Session = Depends(get_db)):
 
 
 @router.get("/in-road-cif", response_model=List[schemas.Cargo])
-def read_in_road_cif(db: Session = Depends(get_db)):
+def read_in_road_cif(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """Get CIF cargos that completed loading but not discharge"""
     try:
         from sqlalchemy import and_
@@ -787,7 +904,10 @@ def read_in_road_cif(db: Session = Depends(get_db)):
 
 
 @router.get("/completed-in-road-cif", response_model=List[schemas.Cargo])
-def read_completed_in_road_cif(db: Session = Depends(get_db)):
+def read_completed_in_road_cif(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """Get CIF cargos that have Discharge Complete status"""
     try:
         from sqlalchemy import and_
@@ -808,7 +928,11 @@ def read_completed_in_road_cif(db: Session = Depends(get_db)):
 
 
 @router.get("/{cargo_id}", response_model=schemas.Cargo)
-def read_cargo(cargo_id: int, db: Session = Depends(get_db)):
+def read_cargo(
+    cargo_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     from sqlalchemy.orm import joinedload
     cargo = db.query(models.Cargo).options(
         joinedload(models.Cargo.product),
@@ -821,7 +945,11 @@ def read_cargo(cargo_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{cargo_id}/port-operations", response_model=List[schemas.CargoPortOperation])
-def list_port_operations(cargo_id: int, db: Session = Depends(get_db)):
+def list_port_operations(
+    cargo_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     cargo = db.query(models.Cargo).filter(models.Cargo.id == cargo_id).first()
     if cargo is None:
         raise to_http_exception(cargo_not_found(cargo_id))
@@ -835,7 +963,8 @@ async def upsert_port_operation(
     port_code: str,
     op: schemas.CargoPortOperationUpdate,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     port_code = (port_code or "").strip().upper()
     
@@ -930,7 +1059,8 @@ async def update_cargo(
     cargo_id: int,
     cargo: schemas.CargoUpdate,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """Update cargo - handles lc_status conversion from string to enum.
     
@@ -984,7 +1114,7 @@ async def update_cargo(
                 if enum_item.value == status_value:
                     status_enum = enum_item
                     break
-            
+
             if status_enum:
                 update_data['status'] = status_enum
             else:
@@ -993,7 +1123,25 @@ async def update_cargo(
                     update_data['status'] = status_enum
                 except ValueError:
                     raise to_http_exception(invalid_status(status_value, [e.value for e in CargoStatus]))
-    
+
+        # Validate status transition
+        target_status = update_data['status']
+        current_status = db_cargo.status
+        # Get contract_type for CIF/FOB validation
+        contract_type_val = db_cargo.contract_type
+        if contract_type_val and hasattr(contract_type_val, 'value'):
+            contract_type_val = contract_type_val.value
+
+        is_valid, error_msg = validate_status_transition(
+            current_status=current_status,
+            target_status=target_status,
+            contract_type=contract_type_val
+        )
+        if not is_valid:
+            current_val = current_status.value if current_status else "None"
+            target_val = target_status.value if target_status else "None"
+            raise to_http_exception(invalid_status_transition(current_val, target_val, error_msg))
+
     # Validate and convert lc_status - enum column handles conversion automatically
     if 'lc_status' in update_data and update_data['lc_status'] is not None:
         lc_status_value = update_data['lc_status']
@@ -1247,7 +1395,8 @@ async def update_cargo(
 def sync_combi_cargo_group(
     combi_group_id: str,
     update: schemas.CargoUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Atomically update all cargos in a combi group with shared fields.
@@ -1293,7 +1442,25 @@ def sync_combi_cargo_group(
                         update_data['status'] = CargoStatus(status_value)
                     except ValueError:
                         raise to_http_exception(invalid_status(status_value, [e.value for e in CargoStatus]))
-        
+
+            # Validate status transition for all cargos in the group
+            target_status = update_data['status']
+            for cargo in cargos:
+                current_status = cargo.status
+                contract_type_val = cargo.contract_type
+                if contract_type_val and hasattr(contract_type_val, 'value'):
+                    contract_type_val = contract_type_val.value
+
+                is_valid, error_msg = validate_status_transition(
+                    current_status=current_status,
+                    target_status=target_status,
+                    contract_type=contract_type_val
+                )
+                if not is_valid:
+                    current_val = current_status.value if current_status else "None"
+                    target_val = target_status.value if target_status else "None"
+                    raise to_http_exception(invalid_status_transition(current_val, target_val, error_msg))
+
         # Validate and convert lc_status - enum column handles conversion automatically
         if 'lc_status' in update_data and update_data['lc_status'] is not None:
             lc_status_value = update_data['lc_status']
@@ -1304,7 +1471,7 @@ def sync_combi_cargo_group(
                 if lc_status_value not in valid_values:
                     raise to_http_exception(invalid_status(lc_status_value, valid_values))
                 update_data['lc_status'] = LCStatus(lc_status_value)
-        
+
         # Update all cargos in the group atomically
         updated_cargos = []
         for cargo in cargos:
@@ -1391,11 +1558,12 @@ def sync_combi_cargo_group(
 
 @router.delete("/{cargo_id}")
 async def delete_cargo(
-    cargo_id: int, 
-    request: Request, 
+    cargo_id: int,
+    request: Request,
     reason: Optional[str] = Query(default=None, description="Reason for deletion"),
     permanent: bool = Query(default=False, description="Permanently delete (skip recycle bin)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Delete a cargo.
@@ -1474,7 +1642,8 @@ async def delete_cargo(
 @router.post("/cross-contract-combi", response_model=schemas.CrossContractCombiResponse)
 async def create_cross_contract_combi(
     combi_data: schemas.CrossContractCombiCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Create a cross-contract combi cargo - multiple products from different contracts
@@ -1639,7 +1808,8 @@ async def delete_combi_group(
     reason: Optional[str] = Query(None, description="Optional reason for deletion"),
     user_id: Optional[int] = Query(None, description="User ID for audit logging"),
     user_initials: Optional[str] = Query(None, description="User initials for audit logging"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Delete an entire combi group (all cargos sharing the same combi_group_id).

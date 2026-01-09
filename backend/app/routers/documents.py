@@ -15,6 +15,7 @@ from app.database import get_db
 from app import models
 from app.models import CargoPortOperation
 from app.utils.quantity import get_product_name_by_id
+from app.auth import require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,11 @@ def get_inspector_info(db: Session, customer_name: str, inspector_name: str):
     return None, None
 
 @router.get("/cargos/{cargo_id}/nomination")
-def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
+def generate_nomination_excel(
+    cargo_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """Generate nomination Excel file for a specific cargo"""
     from sqlalchemy.orm import joinedload
     # Get cargo data with port_operations and inspector loaded
@@ -428,9 +433,10 @@ def generate_nomination_excel(cargo_id: int, db: Session = Depends(get_db)):
 
 @router.get("/tng/{monthly_plan_id}")
 def generate_tng_document(
-    monthly_plan_id: int, 
+    monthly_plan_id: int,
     format: str = Query("docx", description="Output format: docx or pdf"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """Generate Tonnage Memo (TNG) document for a monthly plan (or combi group)"""
     from docx import Document

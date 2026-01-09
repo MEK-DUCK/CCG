@@ -5,6 +5,7 @@ from typing import List
 from app.database import get_db
 from app import models, schemas
 from app.models import ContractCategory
+from app.auth import require_auth
 from app.utils.fiscal_year import calculate_contract_years, generate_quarterly_plan_periods, generate_monthly_plan_periods
 from app.contract_audit_utils import log_contract_action, log_contract_field_changes, get_contract_snapshot
 from app.utils.quantity import get_product_name_by_id
@@ -299,7 +300,11 @@ def _sync_authority_amendments(db: Session, contract: models.Contract, amendment
 
 
 @router.post("/", response_model=schemas.Contract)
-def create_contract(contract: schemas.ContractCreate, db: Session = Depends(get_db)):
+def create_contract(
+    contract: schemas.ContractCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth)
+):
     logger.info(f"Received contract creation request: {contract}")
     try:
         # Verify customer exists
@@ -422,6 +427,7 @@ def read_contracts(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     try:
         from sqlalchemy import desc
@@ -461,7 +467,8 @@ def get_eligible_contracts_for_cross_combi(
     contract_id: int,
     month: int = Query(..., ge=1, le=12, description="Month for the combi cargo"),
     year: int = Query(..., ge=2020, le=2100, description="Year for the combi cargo"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Get contracts eligible for cross-contract combi with the specified contract.
@@ -565,7 +572,11 @@ def get_eligible_contracts_for_cross_combi(
 
 
 @router.get("/{contract_id}", response_model=schemas.Contract)
-def read_contract(contract_id: int, db: Session = Depends(get_db)):
+def read_contract(
+    contract_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     try:
         has_remarks = _contracts_has_column(db, "remarks")
         has_additives_required = _contracts_has_column(db, "additives_required")
@@ -594,7 +605,12 @@ def read_contract(contract_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error loading contract: {str(e)}")
 
 @router.put("/{contract_id}", response_model=schemas.Contract)
-def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Session = Depends(get_db)):
+def update_contract(
+    contract_id: int,
+    contract: schemas.ContractUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     """
     Update a contract with optimistic locking.
     
@@ -703,12 +719,54 @@ def update_contract(contract_id: int, contract: schemas.ContractUpdate, db: Sess
 
 
 @router.delete("/{contract_id}")
-def delete_contract(contract_id: int, db: Session = Depends(get_db)):
+def delete_contract(
+    contract_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
+):
     try:
         db_contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
         if db_contract is None:
             raise HTTPException(status_code=404, detail="Contract not found")
-        
+
+        # =========================================================================
+        # SAFEGUARD: Prevent deletion if contract has associated data
+        # =========================================================================
+
+        # Check for cargos
+        cargo_count = db.query(models.Cargo).filter(models.Cargo.contract_id == contract_id).count()
+        if cargo_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot delete contract: {cargo_count} cargo(s) are associated with this contract. Please delete all cargos first."
+            )
+
+        # Check for monthly plans
+        monthly_plan_count = db.query(models.MonthlyPlan).filter(
+            models.MonthlyPlan.contract_id == contract_id
+        ).count()
+        if monthly_plan_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot delete contract: {monthly_plan_count} monthly plan(s) exist. Please delete all monthly plans first."
+            )
+
+        # Check for quarterly plans with allocations (non-zero quantities)
+        quarterly_plans_with_data = db.query(models.QuarterlyPlan).filter(
+            models.QuarterlyPlan.contract_id == contract_id,
+            (models.QuarterlyPlan.q1_quantity > 0) |
+            (models.QuarterlyPlan.q2_quantity > 0) |
+            (models.QuarterlyPlan.q3_quantity > 0) |
+            (models.QuarterlyPlan.q4_quantity > 0)
+        ).count()
+        if quarterly_plans_with_data > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot delete contract: {quarterly_plans_with_data} quarterly plan(s) have quantity allocations. Please zero out all quarterly plans first."
+            )
+
+        # =========================================================================
+
         # Capture contract info for audit log before deletion
         contract_number = db_contract.contract_number
         customer = db.query(models.Customer).filter(models.Customer.id == db_contract.customer_id).first()
@@ -767,7 +825,8 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db)):
 def get_all_authorities(
     contract_id: int | None = Query(None, description="Filter by contract ID"),
     product_name: str | None = Query(None, description="Filter by product name"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Get all authority amendments and top-ups across all contracts.

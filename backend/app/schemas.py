@@ -1,10 +1,48 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 from typing import Optional, List, Union
 from datetime import date, datetime
 from app.models import ContractType, ContractCategory, CargoStatus, PaymentMethod, LCStatus
+import re
+import html
+
+
+def sanitize_text(value: Optional[str]) -> Optional[str]:
+    """
+    Sanitize text input to prevent XSS and remove control characters.
+    - Strips HTML tags
+    - Removes null bytes and control characters (except newline, tab)
+    - Escapes remaining HTML entities
+    """
+    if value is None:
+        return None
+
+    # Remove null bytes and control characters (except \n, \r, \t)
+    value = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', value)
+
+    # Strip HTML tags
+    value = re.sub(r'<[^>]*>', '', value)
+
+    # Escape any remaining HTML entities for safety
+    value = html.escape(value, quote=False)
+
+    return value.strip() if value else value
+
+
+class SanitizedModel(BaseModel):
+    """Base model that sanitizes all string fields."""
+
+    @model_validator(mode='before')
+    @classmethod
+    def sanitize_strings(cls, values):
+        """Sanitize all string values in the model."""
+        if isinstance(values, dict):
+            for key, val in values.items():
+                if isinstance(val, str):
+                    values[key] = sanitize_text(val)
+        return values
 
 # Product Schemas (for admin-managed product configuration)
-class ProductBase(BaseModel):
+class ProductBase(SanitizedModel):
     code: str = Field(..., min_length=1, max_length=20, description="Short code e.g., JETA1")
     name: str = Field(..., min_length=1, max_length=64, description="Display name e.g., JET A-1")
     description: Optional[str] = Field(None, max_length=255)
@@ -31,7 +69,7 @@ class Product(ProductBase):
 
 
 # Load Port Schemas (for admin-managed port configuration)
-class LoadPortBase(BaseModel):
+class LoadPortBase(SanitizedModel):
     code: str = Field(..., min_length=1, max_length=10, description="Short code e.g., MAA")
     name: str = Field(..., min_length=1, max_length=100, description="Full name e.g., Mina Al Ahmadi")
     country: Optional[str] = Field(None, max_length=50)
@@ -60,7 +98,7 @@ class LoadPort(LoadPortBase):
 
 
 # Inspector Schemas (for admin-managed inspector configuration)
-class InspectorBase(BaseModel):
+class InspectorBase(SanitizedModel):
     code: str = Field(..., min_length=1, max_length=20, description="Short code e.g., SGS")
     name: str = Field(..., min_length=1, max_length=100, description="Full name e.g., SGS SA")
     description: Optional[str] = Field(None, max_length=255)
@@ -87,7 +125,7 @@ class Inspector(InspectorBase):
 
 
 # Discharge Port Schemas (for admin-managed CIF discharge port configuration)
-class DischargePortBase(BaseModel):
+class DischargePortBase(SanitizedModel):
     name: str = Field(..., min_length=1, max_length=100, description="Port name e.g., Shell Haven, Rotterdam")
     restrictions: Optional[str] = Field(None, description="Full restriction text for TNG memo")
     voyage_days_suez: Optional[int] = Field(None, ge=0, description="Voyage duration via Suez route (days)")
@@ -116,7 +154,7 @@ class DischargePort(DischargePortBase):
 
 
 # Customer Schemas
-class CustomerBase(BaseModel):
+class CustomerBase(SanitizedModel):
     name: str = Field(..., min_length=1, max_length=255)
 
 class CustomerCreate(CustomerBase):
@@ -138,27 +176,27 @@ class Customer(CustomerBase):
 class YearQuantity(BaseModel):
     year: int = Field(..., ge=1)  # Contract year (1, 2, 3, etc.)
     # Fixed quantity mode (legacy/simple)
-    quantity: Optional[float] = Field(None, ge=0)  # Fixed quantity for this year in KT
-    optional_quantity: Optional[float] = Field(0, ge=0)  # Optional quantity for this year in KT
+    quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Fixed quantity for this year in KT (max 10M)
+    optional_quantity: Optional[float] = Field(0, ge=0, le=10000000)  # Optional quantity for this year in KT (max 10M)
     # Min/Max quantity mode (range-based)
-    min_quantity: Optional[float] = Field(None, ge=0)  # Minimum quantity for this year in KT
-    max_quantity: Optional[float] = Field(None, ge=0)  # Maximum quantity for this year in KT
+    min_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Minimum quantity for this year in KT (max 10M)
+    max_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Maximum quantity for this year in KT (max 10M)
 
 
 # Contract Product Schema (for products array in contract)
 class ContractProduct(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)  # JET A-1, GASOIL, GASOIL 10PPM, HFO, LSFO
     # Fixed quantity mode (legacy/simple) - total_quantity = fixed amount, optional_quantity = extra allowed
-    total_quantity: Optional[float] = Field(None, ge=0)  # Total fixed quantity in KT (sum of all years)
-    optional_quantity: Optional[float] = Field(0, ge=0)  # Optional quantity in KT (on top of total)
+    total_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Total fixed quantity in KT (max 10M)
+    optional_quantity: Optional[float] = Field(0, ge=0, le=10000000)  # Optional quantity in KT (max 10M)
     # Min/Max quantity mode (range-based) - customer can lift anywhere between min and max
-    min_quantity: Optional[float] = Field(None, ge=0)  # Minimum contract quantity in KT
-    max_quantity: Optional[float] = Field(None, ge=0)  # Maximum contract quantity in KT
+    min_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Minimum contract quantity in KT (max 10M)
+    max_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Maximum contract quantity in KT (max 10M)
     # Per-year breakdown (for multi-year contracts)
     year_quantities: Optional[List[YearQuantity]] = None  # Per-year quantities for multi-year contracts
     # Original quantities (before amendments) - read-only, set by backend
-    original_min_quantity: Optional[float] = Field(None, ge=0)  # Original min before amendments
-    original_max_quantity: Optional[float] = Field(None, ge=0)  # Original max before amendments
+    original_min_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Original min before amendments (max 10M)
+    original_max_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Original max before amendments (max 10M)
     original_year_quantities: Optional[List[YearQuantity]] = None  # Original per-year quantities
     
     @model_validator(mode="after")
@@ -186,9 +224,9 @@ class AuthorityAmendment(BaseModel):
     product_name: str = Field(..., min_length=1, max_length=64)  # Must match a product in the contract
     amendment_type: str = Field(..., pattern="^(increase_max|decrease_max|increase_min|decrease_min|set_min|set_max)$")
     # Either specify the change amount OR the new absolute value
-    quantity_change: Optional[float] = Field(None)  # Amount to add/subtract (positive value)
-    new_min_quantity: Optional[float] = Field(None, ge=0)  # New absolute min value (if set_min)
-    new_max_quantity: Optional[float] = Field(None, ge=0)  # New absolute max value (if set_max)
+    quantity_change: Optional[float] = Field(None, le=10000000)  # Amount to add/subtract (positive value, max 10M)
+    new_min_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # New absolute min value (if set_min, max 10M)
+    new_max_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # New absolute max value (if set_max, max 10M)
     authority_reference: str = Field(..., min_length=1, max_length=100)  # Reference number
     reason: Optional[str] = Field(None, max_length=500)  # Reason for the amendment
     effective_date: Optional[str] = None  # When the amendment takes effect
@@ -202,7 +240,7 @@ class AuthorityTopUp(BaseModel):
     Used when customer gets authority to load more than contracted amount.
     """
     product_name: str = Field(..., min_length=1, max_length=64)  # Must match a product in the contract
-    quantity: float = Field(..., gt=0)  # Top-up quantity in KT (must be positive)
+    quantity: float = Field(..., gt=0, le=10000000)  # Top-up quantity in KT (must be positive, max 10M)
     authority_reference: str = Field(..., min_length=1, max_length=100)  # Reference number (e.g., AUTH-2024-001)
     reason: str | None = Field(default=None, max_length=500)  # Reason for the top-up
     authorization_date: str | None = None  # Date of authorization (renamed to avoid conflict, stored as string in JSON)
@@ -217,13 +255,13 @@ class AuthorityTopUpRequest(BaseModel):
     Request to add authority top-up to a specific monthly plan cargo.
     Used when authorization is received to load more than originally planned.
     """
-    quantity: float = Field(..., gt=0)  # Additional quantity in KT
+    quantity: float = Field(..., gt=0, le=10000000)  # Additional quantity in KT (max 10M)
     authority_reference: str = Field(..., min_length=1, max_length=100)  # Reference number
     reason: str | None = Field(default=None, max_length=500)  # Reason for the top-up
     authorization_date: date | None = None  # Date of authorization (renamed to avoid conflict)
 
 # Contract Schemas
-class ContractBase(BaseModel):
+class ContractBase(SanitizedModel):
     contract_number: str = Field(..., min_length=1, max_length=255)
     contract_type: ContractType
     contract_category: Optional[ContractCategory] = ContractCategory.TERM  # TERM, SEMI_TERM, or SPOT
@@ -231,7 +269,7 @@ class ContractBase(BaseModel):
     start_period: date
     end_period: date
     fiscal_start_month: Optional[int] = Field(1, ge=1, le=12)  # When Q1 starts (1=Jan, 7=Jul, etc.)
-    products: List[ContractProduct]  # List of products with quantities (fixed or min/max)
+    products: List[ContractProduct] = Field(..., min_length=1)  # At least one product required
     authority_amendments: Optional[List[AuthorityAmendment]] = None  # Mid-contract min/max adjustments
     discharge_ranges: Optional[str] = Field(None, max_length=10000)
     additives_required: Optional[bool] = None
@@ -311,10 +349,10 @@ class Contract(ContractBase):
 class QuarterlyPlanBase(BaseModel):
     product_name: Optional[str] = None  # Product name - makes quarterly plan product-specific
     contract_year: Optional[int] = Field(1, ge=1)  # Which year of the contract (1, 2, etc.)
-    q1_quantity: float = Field(0, ge=0)
-    q2_quantity: float = Field(0, ge=0)
-    q3_quantity: float = Field(0, ge=0)
-    q4_quantity: float = Field(0, ge=0)
+    q1_quantity: float = Field(0, ge=0, le=10000000)  # Max 10M KT
+    q2_quantity: float = Field(0, ge=0, le=10000000)  # Max 10M KT
+    q3_quantity: float = Field(0, ge=0, le=10000000)  # Max 10M KT
+    q4_quantity: float = Field(0, ge=0, le=10000000)  # Max 10M KT
     adjustment_notes: Optional[str] = None  # Notes about deferred/advanced quantities
 
 class QuarterlyPlanCreate(QuarterlyPlanBase):
@@ -323,10 +361,10 @@ class QuarterlyPlanCreate(QuarterlyPlanBase):
 class QuarterlyPlanUpdate(BaseModel):
     product_name: Optional[str] = None
     contract_year: Optional[int] = Field(None, ge=1)
-    q1_quantity: Optional[float] = Field(None, ge=0)
-    q2_quantity: Optional[float] = Field(None, ge=0)
-    q3_quantity: Optional[float] = Field(None, ge=0)
-    q4_quantity: Optional[float] = Field(None, ge=0)
+    q1_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Max 10M KT
+    q2_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Max 10M KT
+    q3_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Max 10M KT
+    q4_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Max 10M KT
     adjustment_notes: Optional[str] = None  # Notes about deferred/advanced quantities
     version: Optional[int] = None  # Optimistic locking - send to detect conflicts
 
@@ -341,10 +379,10 @@ class QuarterlyPlan(QuarterlyPlanBase):
         from_attributes = True
 
 # Monthly Plan Schemas
-class MonthlyPlanBase(BaseModel):
+class MonthlyPlanBase(SanitizedModel):
     month: int = Field(..., ge=1, le=12)
     year: int
-    month_quantity: float = Field(..., ge=0)
+    month_quantity: float = Field(..., ge=0, le=10000000)  # Max 10M KT
     number_of_liftings: int = Field(1, ge=0)
     planned_lifting_sizes: Optional[str] = None
     laycan_5_days: Optional[str] = None  # For FOB contracts only
@@ -359,7 +397,7 @@ class MonthlyPlanBase(BaseModel):
     combi_group_id: Optional[str] = None  # UUID to link combi monthly plans (multiple products, same vessel/laycan)
     product_name: Optional[str] = None  # Product name - stored for ALL contract types (TERM, SPOT, SEMI_TERM)
     # Authority Top-Up fields
-    authority_topup_quantity: Optional[float] = Field(None, ge=0)  # Additional KT authorized
+    authority_topup_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Additional KT authorized (max 10M)
     authority_topup_reference: Optional[str] = Field(None, max_length=100)  # Reference number
     authority_topup_reason: Optional[str] = Field(None, max_length=500)  # Reason for top-up
     authority_topup_date: Optional[date] = None  # Date of authorization
@@ -397,7 +435,7 @@ class MonthlyPlanCreate(MonthlyPlanBase):
 class MonthlyPlanUpdate(BaseModel):
     month: Optional[int] = Field(None, ge=1, le=12)
     year: Optional[int] = None
-    month_quantity: Optional[float] = Field(None, ge=0)
+    month_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Max 10M KT
     number_of_liftings: Optional[int] = Field(None, ge=0)
     planned_lifting_sizes: Optional[str] = None
     laycan_5_days: Optional[str] = None
@@ -412,7 +450,7 @@ class MonthlyPlanUpdate(BaseModel):
     combi_group_id: Optional[str] = None
     product_name: Optional[str] = None
     # Authority Top-Up fields
-    authority_topup_quantity: Optional[float] = Field(None, ge=0)
+    authority_topup_quantity: Optional[float] = Field(None, ge=0, le=10000000)  # Max 10M KT
     authority_topup_reference: Optional[str] = Field(None, max_length=100)
     authority_topup_reason: Optional[str] = Field(None, max_length=500)
     authority_topup_date: Optional[date] = None
@@ -550,11 +588,11 @@ class MonthlyPlanEnriched(MonthlyPlanBase):
 
 
 # Cargo Schemas
-class CargoBase(BaseModel):
+class CargoBase(SanitizedModel):
     vessel_name: str
     load_ports: str
     inspector_name: Optional[str] = None
-    cargo_quantity: float = Field(..., gt=0)
+    cargo_quantity: float = Field(..., gt=0, le=10000000)  # Max 10M KT
     laycan_window: Optional[str] = None
     # Manual vessel operation fields
     eta: Optional[str] = None  # ETA (manual entry)
@@ -601,7 +639,7 @@ class CrossContractCombiCargoItem(BaseModel):
     contract_id: int
     monthly_plan_id: int
     product_name: str
-    cargo_quantity: float = Field(..., gt=0)
+    cargo_quantity: float = Field(..., gt=0, le=10000000)  # Max 10M KT
 
 
 class CrossContractCombiCreate(BaseModel):
@@ -643,7 +681,7 @@ class CargoUpdate(BaseModel):
     vessel_name: Optional[str] = None
     load_ports: Optional[str] = None
     inspector_name: Optional[str] = None
-    cargo_quantity: Optional[float] = Field(None, gt=0)
+    cargo_quantity: Optional[float] = Field(None, gt=0, le=10000000)  # Max 10M KT
     laycan_window: Optional[str] = None
     # Manual vessel operation fields
     eta: Optional[str] = None  # ETA (manual entry)
@@ -843,7 +881,7 @@ class WeeklyQuantityComparisonResponse(BaseModel):
 
 from app.models import UserRole, UserStatus
 
-class UserBase(BaseModel):
+class UserBase(SanitizedModel):
     email: str = Field(..., description="User email address")
     full_name: str = Field(..., min_length=1, max_length=255, description="Full name")
     initials: str = Field(..., min_length=2, max_length=4, description="User initials for audit logs (e.g., MEK)")
@@ -903,17 +941,50 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str = Field(..., description="Refresh token from login")
 
 
+def validate_password_strength(password: str) -> str:
+    """
+    Validate password meets security requirements:
+    - Minimum 8 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one digit
+    - At least one special character
+    """
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters long")
+    if not re.search(r'[A-Z]', password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not re.search(r'[a-z]', password):
+        raise ValueError("Password must contain at least one lowercase letter")
+    if not re.search(r'\d', password):
+        raise ValueError("Password must contain at least one digit")
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;\'`~]', password):
+        raise ValueError("Password must contain at least one special character (!@#$%^&*etc.)")
+    return password
+
+
 class SetPasswordRequest(BaseModel):
     """For setting password via invite or reset token"""
     token: str = Field(..., description="Invite or reset token")
-    password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+    password: str = Field(..., min_length=8, description="New password (min 8 chars, with uppercase, lowercase, digit, and special char)")
+
+    @field_validator('password')
+    @classmethod
+    def password_strength(cls, v):
+        return validate_password_strength(v)
+
 
 class ForgotPasswordRequest(BaseModel):
     email: str = Field(..., description="User email")
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., description="Current password")
-    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+    new_password: str = Field(..., min_length=8, description="New password (min 8 chars, with uppercase, lowercase, digit, and special char)")
+
+    @field_validator('new_password')
+    @classmethod
+    def password_strength(cls, v):
+        return validate_password_strength(v)
 
 class MessageResponse(BaseModel):
     message: str

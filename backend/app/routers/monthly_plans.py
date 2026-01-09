@@ -20,7 +20,7 @@ from app.errors import (
     to_http_exception,
 )
 from app.config import MIN_YEAR, MAX_YEAR, get_fiscal_quarter_field
-from app.auth import get_current_user
+from app.auth import get_current_user, require_auth
 from app.utils.quantity import (
     parse_contract_products,
     get_contract_quantity_limits,
@@ -174,7 +174,7 @@ def get_cargo_info(monthly_plan_id: int, db: Session) -> Dict:
 
 
 @router.post("/", response_model=schemas.MonthlyPlan)
-def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(get_db)):
+def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     # Validate month/year
     if plan.month < 1 or plan.month > 12:
         raise HTTPException(status_code=400, detail=f"Invalid month: {plan.month}. Must be 1-12.")
@@ -319,6 +319,7 @@ def read_monthly_plans(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     try:
         query = db.query(models.MonthlyPlan).options(
@@ -344,7 +345,8 @@ def get_monthly_plans_bulk(
     months: str = Query(..., description="Comma-separated months, e.g., '1,2,3'"),
     year: int = Query(..., description="Year to filter by"),
     include_zero_quantity: bool = Query(False, description="Include plans with 0 quantity"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Get all monthly plans for given months/year across ALL contracts in a single query.
@@ -402,7 +404,8 @@ def get_monthly_plans_bulk(
 def get_cif_monthly_plans_for_tng(
     months: str = Query(None, description="Comma-separated months, e.g., '1,2,3' (optional)"),
     year: int = Query(None, description="Year to filter by (optional)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Get all monthly plans for CIF contracts that need TNG tracking.
@@ -467,7 +470,7 @@ def get_cif_monthly_plans_for_tng(
 
 
 @router.get("/{plan_id}", response_model=schemas.MonthlyPlan)
-def read_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
+def read_monthly_plan(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     plan = db.query(models.MonthlyPlan).options(
         joinedload(models.MonthlyPlan.product)
     ).filter(models.MonthlyPlan.id == plan_id).first()
@@ -478,10 +481,10 @@ def read_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
 
 @router.put("/{plan_id}", response_model=schemas.MonthlyPlan)
 async def update_monthly_plan(
-    plan_id: int, 
-    plan: schemas.MonthlyPlanUpdate, 
+    plan_id: int,
+    plan: schemas.MonthlyPlanUpdate,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(get_current_user)
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Update a monthly plan with optimistic locking.
@@ -719,10 +722,10 @@ def _format_delivery_month(month_num: int, year: int) -> str:
 
 @router.put("/{plan_id}/move", response_model=schemas.MonthlyPlan)
 async def move_monthly_plan(
-    plan_id: int, 
-    move_request: schemas.MonthlyPlanMoveRequest, 
+    plan_id: int,
+    move_request: schemas.MonthlyPlanMoveRequest,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(get_current_user)
+    current_user: models.User = Depends(require_auth),
 ):
     """
     Move a monthly plan to a different month (defer or advance).
@@ -1041,7 +1044,7 @@ async def move_monthly_plan(
 
 
 @router.delete("/{plan_id}")
-def delete_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
+def delete_monthly_plan(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
     if db_plan is None:
         raise to_http_exception(monthly_plan_not_found(plan_id))
@@ -1081,7 +1084,7 @@ def delete_monthly_plan(plan_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/status/bulk")
-def get_monthly_plans_status_bulk(plan_ids: List[int], db: Session = Depends(get_db)):
+def get_monthly_plans_status_bulk(plan_ids: List[int], db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Get status for multiple monthly plans in a single request (optimization)"""
     if not plan_ids:
         return []
@@ -1116,7 +1119,7 @@ def get_monthly_plans_status_bulk(plan_ids: List[int], db: Session = Depends(get
 
 
 @router.get("/{plan_id}/status")
-def get_monthly_plan_status(plan_id: int, db: Session = Depends(get_db)):
+def get_monthly_plan_status(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """Get monthly plan status including cargo information and lock status"""
     db_plan = db.query(models.MonthlyPlan).filter(models.MonthlyPlan.id == plan_id).first()
     if db_plan is None:
@@ -1139,7 +1142,7 @@ def get_monthly_plan_status(plan_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{plan_id}/authority-topup", response_model=schemas.MonthlyPlan)
-def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: Session = Depends(get_db)):
+def add_authority_topup(plan_id: int, topup: schemas.AuthorityTopUpRequest, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
     """
     Add an authority top-up to a specific monthly plan.
     
