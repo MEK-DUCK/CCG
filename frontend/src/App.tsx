@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -18,14 +17,10 @@ import SetPasswordPage from './pages/SetPasswordPage'
 import Layout from './components/Layout'
 import ProtectedRoute, { PublicOnlyRoute } from './components/ProtectedRoute'
 import { AuthProvider } from './contexts/AuthContext'
-import { ThemeContextProvider, useThemeMode } from './contexts/ThemeContext'
 import { ToastProvider } from './contexts/ToastContext'
-import { createAppTheme } from './theme'
+import { theme } from './theme'
 
-function AppContent() {
-  const { mode } = useThemeMode()
-  const theme = useMemo(() => createAppTheme(mode), [mode])
-
+function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -123,14 +118,6 @@ function AppContent() {
       </AuthProvider>
       </ToastProvider>
     </ThemeProvider>
-  )
-}
-
-function App() {
-  return (
-    <ThemeContextProvider>
-      <AppContent />
-    </ThemeContextProvider>
   )
 }
 

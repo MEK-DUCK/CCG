@@ -21,9 +21,8 @@ import {
   Divider,
   Chip,
 } from '@mui/material'
-import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize, AdminPanelSettings, Logout, KeyboardArrowDown, Event, DarkMode, LightMode } from '@mui/icons-material'
+import { Storage, People, Description, Menu, Close, CalendarMonth, History, Dashboard, Summarize, AdminPanelSettings, Logout, KeyboardArrowDown, Event } from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
-import { useThemeMode } from '../contexts/ThemeContext'
 
 interface LayoutProps {
   children: ReactNode
@@ -37,25 +36,6 @@ export default function Layout({ children }: LayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null)
   const { user, logout, isAdmin } = useAuth()
-  const { isDark, toggleTheme } = useThemeMode()
-
-  // Theme-aware colors
-  const colors = {
-    text: {
-      primary: theme.palette.text.primary,
-      secondary: theme.palette.text.secondary,
-    },
-    background: {
-      default: theme.palette.background.default,
-      paper: theme.palette.background.paper,
-    },
-    border: isDark ? 'rgba(148, 163, 184, 0.15)' : 'rgba(148, 163, 184, 0.12)',
-    hover: isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(71, 85, 105, 0.08)',
-    selected: isDark ? 'rgba(148, 163, 184, 0.15)' : 'rgba(71, 85, 105, 0.1)',
-    selectedHover: isDark ? 'rgba(148, 163, 184, 0.2)' : 'rgba(71, 85, 105, 0.15)',
-    iconBg: isDark ? 'rgba(148, 163, 184, 0.15)' : 'rgba(71, 85, 105, 0.1)',
-    icon: isDark ? '#94A3B8' : '#475569',
-  }
 
   // Filter nav items based on user role
   const navItems = [
@@ -85,17 +65,12 @@ export default function Layout({ children }: LayoutProps) {
     setMobileOpen(false)
   }
 
-  const handleToggleTheme = () => {
-    toggleTheme()
-    setUserMenuAnchor(null)
-  }
-
   const drawer = (
-    <Box sx={{ width: 280, bgcolor: colors.background.paper, height: '100%' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2.5, borderBottom: `1px solid ${colors.border}` }}>
-        <Box 
-          sx={{ 
-            display: 'flex', 
+    <Box sx={{ width: 280, bgcolor: '#FFFFFF', height: '100%' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2.5, borderBottom: '1px solid rgba(148, 163, 184, 0.12)' }}>
+        <Box
+          sx={{
+            display: 'flex',
             alignItems: 'center',
             cursor: 'pointer',
             transition: 'opacity 0.15s ease',
@@ -108,15 +83,15 @@ export default function Layout({ children }: LayoutProps) {
             handleDrawerToggle()
           }}
         >
-          <Typography variant="h6" component="div" sx={{ fontWeight: 600, color: colors.text.primary, fontSize: '1rem' }}>
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600, color: '#1E293B', fontSize: '1rem' }}>
             CCG-3 Program
           </Typography>
         </Box>
-        <IconButton 
-          onClick={handleDrawerToggle} 
-          sx={{ 
-            color: colors.text.secondary,
-            '&:hover': { backgroundColor: colors.hover }
+        <IconButton
+          onClick={handleDrawerToggle}
+          sx={{
+            color: '#64748B',
+            '&:hover': { backgroundColor: 'rgba(71, 85, 105, 0.08)' }
           }}
         >
           <Close fontSize="small" />
@@ -134,30 +109,30 @@ export default function Layout({ children }: LayoutProps) {
                 px: 1.5,
                 transition: 'all 0.15s ease',
                 '&.Mui-selected': {
-                  backgroundColor: colors.selected,
-                  color: colors.icon,
+                  backgroundColor: 'rgba(71, 85, 105, 0.1)',
+                  color: '#475569',
                   '& .MuiListItemIcon-root': {
-                    color: colors.icon,
+                    color: '#475569',
                   },
                   '&:hover': {
-                    backgroundColor: colors.selectedHover,
+                    backgroundColor: 'rgba(71, 85, 105, 0.15)',
                   },
                 },
                 '&:hover': {
-                  backgroundColor: colors.hover,
+                  backgroundColor: 'rgba(71, 85, 105, 0.08)',
                 },
               }}
             >
-              <ListItemIcon sx={{ color: colors.text.secondary, minWidth: 36 }}>
+              <ListItemIcon sx={{ color: '#64748B', minWidth: 36 }}>
                 {item.icon}
               </ListItemIcon>
-              <ListItemText 
-                primary={item.label} 
-                primaryTypographyProps={{ 
-                  fontSize: '0.875rem', 
+              <ListItemText
+                primary={item.label}
+                primaryTypographyProps={{
+                  fontSize: '0.875rem',
                   fontWeight: location.pathname === item.path ? 600 : 500,
-                  color: location.pathname === item.path ? colors.icon : colors.text.primary
-                }} 
+                  color: location.pathname === item.path ? '#475569' : '#1E293B'
+                }}
               />
             </ListItemButton>
           </ListItem>
@@ -165,7 +140,7 @@ export default function Layout({ children }: LayoutProps) {
       </List>
       {/* User info in mobile drawer */}
       {user && (
-        <Box sx={{ mt: 'auto', p: 2, borderTop: `1px solid ${colors.border}` }}>
+        <Box sx={{ mt: 'auto', p: 2, borderTop: '1px solid rgba(148, 163, 184, 0.12)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
             <Box sx={{
               width: 40,
@@ -181,28 +156,10 @@ export default function Layout({ children }: LayoutProps) {
               </Typography>
             </Box>
             <Box>
-              <Typography sx={{ fontWeight: 600, fontSize: '0.875rem', color: colors.text.primary }}>{user.full_name}</Typography>
-              <Typography sx={{ fontSize: '0.75rem', color: colors.text.secondary }}>{user.email}</Typography>
+              <Typography sx={{ fontWeight: 600, fontSize: '0.875rem', color: '#1E293B' }}>{user.full_name}</Typography>
+              <Typography sx={{ fontSize: '0.75rem', color: '#64748B' }}>{user.email}</Typography>
             </Box>
           </Box>
-          {/* Dark mode toggle for mobile */}
-          <Button
-            fullWidth
-            variant="outlined"
-            startIcon={isDark ? <LightMode /> : <DarkMode />}
-            onClick={toggleTheme}
-            sx={{
-              mb: 1.5,
-              color: colors.text.primary,
-              borderColor: colors.border,
-              '&:hover': {
-                bgcolor: colors.hover,
-                borderColor: colors.text.secondary,
-              },
-            }}
-          >
-            {isDark ? 'Light Mode' : 'Dark Mode'}
-          </Button>
           <Button
             fullWidth
             variant="outlined"
@@ -215,7 +172,7 @@ export default function Layout({ children }: LayoutProps) {
               color: '#DC2626',
               borderColor: '#FCA5A5',
               '&:hover': {
-                bgcolor: isDark ? 'rgba(220, 38, 38, 0.15)' : '#FEE2E2',
+                bgcolor: '#FEE2E2',
                 borderColor: '#DC2626',
               },
             }}
@@ -228,15 +185,15 @@ export default function Layout({ children }: LayoutProps) {
   )
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: colors.background.default }}>
-      <AppBar 
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: '#F1F5F9' }}>
+      <AppBar
         position="sticky"
         elevation={0}
         sx={{
-          backgroundColor: isDark ? 'rgba(30, 41, 59, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+          backgroundColor: 'rgba(255, 255, 255, 0.85)',
           backdropFilter: 'blur(16px) saturate(180%)',
           WebkitBackdropFilter: 'blur(16px) saturate(180%)',
-          borderBottom: `1px solid ${colors.border}`,
+          borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
         }}
       >
         <Toolbar
@@ -253,18 +210,18 @@ export default function Layout({ children }: LayoutProps) {
             <>
               <IconButton
                 onClick={handleDrawerToggle}
-                sx={{ 
+                sx={{
                   position: 'absolute',
                   left: 8,
-                  color: colors.icon,
-                  '&:hover': { backgroundColor: colors.hover }
+                  color: '#475569',
+                  '&:hover': { backgroundColor: 'rgba(71, 85, 105, 0.08)' }
                 }}
               >
                 <Menu />
               </IconButton>
-              <Box 
-                sx={{ 
-                  display: 'flex', 
+              <Box
+                sx={{
+                  display: 'flex',
                   alignItems: 'center',
                   cursor: 'pointer',
                   transition: 'opacity 0.15s ease',
@@ -274,13 +231,13 @@ export default function Layout({ children }: LayoutProps) {
                 }}
                 onClick={() => navigate('/')}
               >
-                <Typography 
-                  variant="h6" 
-                  component="div" 
-                  sx={{ 
+                <Typography
+                  variant="h6"
+                  component="div"
+                  sx={{
                     fontWeight: 600,
                     fontSize: '1rem',
-                    color: colors.text.primary,
+                    color: '#1E293B',
                   }}
                 >
                   CCG-3 Program
@@ -289,11 +246,11 @@ export default function Layout({ children }: LayoutProps) {
             </>
           ) : (
             <>
-              <Box 
-                sx={{ 
-                  position: 'absolute', 
-                  left: 24, 
-                  display: 'flex', 
+              <Box
+                sx={{
+                  position: 'absolute',
+                  left: 24,
+                  display: 'flex',
                   alignItems: 'center',
                   cursor: 'pointer',
                   transition: 'opacity 0.15s ease',
@@ -303,13 +260,13 @@ export default function Layout({ children }: LayoutProps) {
                 }}
                 onClick={() => navigate('/')}
               >
-                <Typography 
-                  variant="h6" 
-                  component="div" 
-                  sx={{ 
+                <Typography
+                  variant="h6"
+                  component="div"
+                  sx={{
                     fontWeight: 600,
                     fontSize: '1rem',
-                    color: colors.text.primary,
+                    color: '#1E293B',
                   }}
                 >
                   CCG-3 Program
@@ -327,11 +284,11 @@ export default function Layout({ children }: LayoutProps) {
                       px: 1.5,
                       borderRadius: 2,
                       fontSize: '0.8125rem',
-                      color: colors.icon,
-                      backgroundColor: location.pathname === item.path ? colors.selected : 'transparent',
+                      color: '#475569',
+                      backgroundColor: location.pathname === item.path ? 'rgba(71, 85, 105, 0.1)' : 'transparent',
                       fontWeight: location.pathname === item.path ? 600 : 500,
                       '&:hover': {
-                        backgroundColor: location.pathname === item.path ? colors.selectedHover : colors.hover,
+                        backgroundColor: location.pathname === item.path ? 'rgba(71, 85, 105, 0.15)' : 'rgba(71, 85, 105, 0.08)',
                       },
                       transition: 'all 0.15s ease',
                       '& .MuiButton-startIcon': {
@@ -352,10 +309,10 @@ export default function Layout({ children }: LayoutProps) {
                     endIcon={<KeyboardArrowDown />}
                     sx={{
                       textTransform: 'none',
-                      color: colors.icon,
+                      color: '#475569',
                       borderRadius: 2,
                       px: 1.5,
-                      '&:hover': { bgcolor: colors.hover },
+                      '&:hover': { bgcolor: 'rgba(71, 85, 105, 0.08)' },
                     }}
                   >
                     <Box sx={{
@@ -395,14 +352,14 @@ export default function Layout({ children }: LayoutProps) {
             minWidth: 200,
             borderRadius: 2,
             boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-            bgcolor: colors.background.paper,
-            border: `1px solid ${colors.border}`,
+            bgcolor: '#FFFFFF',
+            border: '1px solid rgba(148, 163, 184, 0.12)',
           }
         }}
       >
         <Box sx={{ px: 2, py: 1.5 }}>
-          <Typography sx={{ fontWeight: 600, color: colors.text.primary }}>{user?.full_name}</Typography>
-          <Typography sx={{ fontSize: '0.75rem', color: colors.text.secondary }}>{user?.email}</Typography>
+          <Typography sx={{ fontWeight: 600, color: '#1E293B' }}>{user?.full_name}</Typography>
+          <Typography sx={{ fontSize: '0.75rem', color: '#64748B' }}>{user?.email}</Typography>
           <Chip
             label={isAdmin ? 'Admin' : 'User'}
             size="small"
@@ -415,22 +372,7 @@ export default function Layout({ children }: LayoutProps) {
             }}
           />
         </Box>
-        <Divider sx={{ borderColor: colors.border }} />
-        {/* Dark Mode Toggle */}
-        <MenuItem onClick={handleToggleTheme} sx={{ py: 1.5, color: colors.text.primary }}>
-          {isDark ? (
-            <>
-              <LightMode sx={{ mr: 1.5, fontSize: 18, color: '#F59E0B' }} />
-              Light Mode
-            </>
-          ) : (
-            <>
-              <DarkMode sx={{ mr: 1.5, fontSize: 18, color: '#6366F1' }} />
-              Dark Mode
-            </>
-          )}
-        </MenuItem>
-        <Divider sx={{ borderColor: colors.border }} />
+        <Divider sx={{ borderColor: 'rgba(148, 163, 184, 0.12)' }} />
         <MenuItem onClick={handleLogout} sx={{ color: '#DC2626', py: 1.5 }}>
           <Logout sx={{ mr: 1.5, fontSize: 18 }} />
           Sign Out
@@ -446,12 +388,12 @@ export default function Layout({ children }: LayoutProps) {
           }}
           sx={{
             display: { xs: 'block', md: 'none' },
-            '& .MuiDrawer-paper': { 
-              boxSizing: 'border-box', 
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
               width: 280,
               boxShadow: '0px 25px 50px -12px rgba(15, 23, 42, 0.25)',
               border: 'none',
-              bgcolor: colors.background.paper,
+              bgcolor: '#FFFFFF',
             },
           }}
         >
