@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.auth import require_auth, require_admin
-from app import models
+from app import models, schemas
 from app.models import (
     Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo, Product, CargoStatus,
     CargoAuditLog, MonthlyPlanAuditLog, QuarterlyPlanAuditLog, ContractAuditLog,
@@ -311,7 +311,7 @@ def get_all_contracts_admin(
 @router.put("/contracts/{contract_id}")
 def update_contract_admin(
     contract_id: int,
-    data: dict,
+    data: schemas.AdminContractUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_admin)
 ):
@@ -320,35 +320,14 @@ def update_contract_admin(
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
     
-    # Prevent editing system-generated IDs
-    protected_fields = ["id", "contract_id", "created_at", "updated_at"]
-    for field in protected_fields:
-        if field in data:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Cannot modify system-generated field: {field}"
-            )
+    # Update only provided fields
+    update_data = data.model_dump(exclude_unset=True)
     
-    # Update allowed fields
-    allowed_fields = [
-        "contract_number", "contract_type", "payment_method", 
-        "start_period", "end_period", "products",
-        "remarks", "discharge_ranges", "additives_required",
-        "fax_received", "concluded_memo_received"
-    ]
-    
-    for field in allowed_fields:
-        if field in data:
-            value = data[field]
-            # Handle JSON fields
-            if field in ["products"] and isinstance(value, (list, dict)):
-                value = json.dumps(value)
-            # Handle date fields
-            if field in ["start_period", "end_period"] and value:
-                from datetime import date
-                if isinstance(value, str):
-                    value = date.fromisoformat(value)
-            setattr(contract, field, value)
+    for field, value in update_data.items():
+        # Handle JSON fields
+        if field == "products" and isinstance(value, (list, dict)):
+            value = json.dumps(value)
+        setattr(contract, field, value)
     
     db.commit()
     db.refresh(contract)
@@ -419,7 +398,7 @@ def get_all_quarterly_plans_admin(
 @router.put("/quarterly-plans/{plan_id}")
 def update_quarterly_plan_admin(
     plan_id: int,
-    data: dict,
+    data: schemas.AdminQuarterlyPlanUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_admin)
 ):
@@ -428,23 +407,11 @@ def update_quarterly_plan_admin(
     if not plan:
         raise HTTPException(status_code=404, detail="Quarterly plan not found")
     
-    # Prevent editing system-generated IDs
-    protected_fields = ["id", "created_at", "updated_at"]
-    for field in protected_fields:
-        if field in data:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Cannot modify system-generated field: {field}"
-            )
+    # Update only provided fields
+    update_data = data.model_dump(exclude_unset=True)
     
-    allowed_fields = [
-        "product_name", "q1_quantity", "q2_quantity", "q3_quantity", "q4_quantity",
-        "q1_topup", "q2_topup", "q3_topup", "q4_topup", "contract_id"
-    ]
-    
-    for field in allowed_fields:
-        if field in data:
-            setattr(plan, field, data[field])
+    for field, value in update_data.items():
+        setattr(plan, field, value)
     
     db.commit()
     db.refresh(plan)
@@ -531,7 +498,7 @@ def get_all_monthly_plans_admin(
 @router.put("/monthly-plans/{plan_id}")
 def update_monthly_plan_admin(
     plan_id: int,
-    data: dict,
+    data: schemas.AdminMonthlyPlanUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_admin)
 ):
@@ -540,33 +507,11 @@ def update_monthly_plan_admin(
     if not plan:
         raise HTTPException(status_code=404, detail="Monthly plan not found")
     
-    # Prevent editing system-generated IDs
-    protected_fields = ["id", "created_at", "updated_at"]
-    for field in protected_fields:
-        if field in data:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Cannot modify system-generated field: {field}"
-            )
+    # Update only provided fields
+    update_data = data.model_dump(exclude_unset=True)
     
-    allowed_fields = [
-        "month", "year", "month_quantity", "number_of_liftings",
-        "laycan_5_days", "laycan_2_days", "laycan_2_days_remark",
-        "loading_month", "loading_window", "delivery_month", "delivery_window",
-        "delivery_window_remark", "combi_group_id", "quarterly_plan_id",
-        "authority_topup_quantity", "authority_topup_reference",
-        "authority_topup_reason", "authority_topup_date"
-    ]
-    
-    for field in allowed_fields:
-        if field in data:
-            value = data[field]
-            # Handle date fields
-            if field == "authority_topup_date" and value:
-                from datetime import date
-                if isinstance(value, str):
-                    value = date.fromisoformat(value)
-            setattr(plan, field, value)
+    for field, value in update_data.items():
+        setattr(plan, field, value)
     
     db.commit()
     db.refresh(plan)
@@ -657,13 +602,13 @@ def get_all_cargos_admin(
 @router.put("/cargos/{cargo_id}")
 def update_cargo_admin(
     cargo_id: int,
-    data: dict,
+    data: schemas.AdminCargoUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_admin)
 ):
     """Update any cargo field directly (admin only)."""
     from sqlalchemy.orm import joinedload
-    from app.models import CargoPortOperation
+    from app.models import CargoPortOperation, Inspector
     from app.config import get_load_port_by_code, PortOperationStatus
     
     cargo = db.query(Cargo).options(
@@ -672,75 +617,53 @@ def update_cargo_admin(
     if not cargo:
         raise HTTPException(status_code=404, detail="Cargo not found")
     
-    # Prevent editing system-generated IDs
-    protected_fields = ["id", "cargo_id", "created_at", "updated_at"]
-    for field in protected_fields:
-        if field in data:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Cannot modify system-generated field: {field}"
-            )
+    # Update only provided fields
+    update_data = data.model_dump(exclude_unset=True)
     
-    allowed_fields = [
-        "vessel_name", "product_name", "cargo_quantity", "status",
-        "load_ports", "laycan_window", "eta", "berthed", "commenced", "etc",
-        "lc_status", "combi_group_id", "inspector_name", "notes",
-        "monthly_plan_id", "contract_id", "customer_id"
-    ]
-    
-    for field in allowed_fields:
-        if field in data:
-            value = data[field]
-            # Handle load_ports specially - update via port_operations
-            if field == "load_ports":
-                # Parse the load_ports string
-                port_codes = []
-                if value:
-                    if isinstance(value, str):
-                        port_codes = [p.strip().upper() for p in value.split(",") if p.strip()]
-                    elif isinstance(value, list):
-                        port_codes = [str(p).strip().upper() for p in value if str(p).strip()]
-                
-                # Build map of existing operations by port code
-                existing_by_code = {}
-                for op in (cargo.port_operations or []):
-                    if op.load_port:
-                        existing_by_code[op.load_port.code] = op
-                
-                # Create missing operations
-                for code in port_codes:
-                    if code not in existing_by_code:
-                        load_port = get_load_port_by_code(db, code)
-                        if load_port:
-                            cargo.port_operations.append(
-                                CargoPortOperation(
-                                    load_port_id=load_port.id,
-                                    status=PortOperationStatus.PLANNED.value
-                                )
+    for field, value in update_data.items():
+        # Handle load_ports specially - update via port_operations
+        if field == "load_ports":
+            port_codes = []
+            if value:
+                port_codes = [p.strip().upper() for p in value.split(",") if p.strip()]
+            
+            # Build map of existing operations by port code
+            existing_by_code = {}
+            for op in (cargo.port_operations or []):
+                if op.load_port:
+                    existing_by_code[op.load_port.code] = op
+            
+            # Create missing operations
+            for code in port_codes:
+                if code not in existing_by_code:
+                    load_port = get_load_port_by_code(db, code)
+                    if load_port:
+                        cargo.port_operations.append(
+                            CargoPortOperation(
+                                load_port_id=load_port.id,
+                                status=PortOperationStatus.PLANNED.value
                             )
-                
-                # Remove operations for removed ports
-                for code, op in existing_by_code.items():
-                    if code not in port_codes:
-                        db.delete(op)
-                continue  # Skip setattr for load_ports
+                        )
             
-            # Handle inspector_name specially - convert to inspector_id
-            if field == "inspector_name":
-                from app.models import Inspector
-                if value:
-                    inspector = db.query(Inspector).filter(Inspector.name == value).first()
-                    cargo.inspector_id = inspector.id if inspector else None
-                else:
-                    cargo.inspector_id = None
-                continue  # Skip setattr for inspector_name
-            
-            # Handle enum fields
-            if field == "status" and value:
-                from app.models import CargoStatus
-                if isinstance(value, str):
-                    value = CargoStatus(value)
-            setattr(cargo, field, value)
+            # Remove operations for removed ports
+            for code, op in existing_by_code.items():
+                if code not in port_codes:
+                    db.delete(op)
+            continue
+        
+        # Handle inspector_name specially - convert to inspector_id
+        if field == "inspector_name":
+            if value:
+                inspector = db.query(Inspector).filter(Inspector.name == value).first()
+                cargo.inspector_id = inspector.id if inspector else None
+            else:
+                cargo.inspector_id = None
+            continue
+        
+        # Handle enum fields
+        if field == "status" and value:
+            value = CargoStatus(value)
+        setattr(cargo, field, value)
     
     db.commit()
     db.refresh(cargo)
@@ -1042,7 +965,7 @@ def get_all_customers_admin(
 @router.put("/customers/{customer_id}")
 def update_customer_admin(
     customer_id: int,
-    data: dict,
+    data: schemas.AdminCustomerUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_admin)
 ):
@@ -1051,17 +974,11 @@ def update_customer_admin(
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     
-    # Prevent editing system-generated IDs
-    protected_fields = ["id", "customer_id", "created_at", "updated_at"]
-    for field in protected_fields:
-        if field in data:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Cannot modify system-generated field: {field}"
-            )
+    # Update only provided fields
+    update_data = data.model_dump(exclude_unset=True)
     
-    if "name" in data:
-        customer.name = data["name"]
+    for field, value in update_data.items():
+        setattr(customer, field, value)
     
     db.commit()
     db.refresh(customer)

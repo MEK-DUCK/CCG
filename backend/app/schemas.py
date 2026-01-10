@@ -990,3 +990,91 @@ class MessageResponse(BaseModel):
     message: str
     success: bool = True
 
+
+# =============================================================================
+# ADMIN UPDATE SCHEMAS - with strict validation
+# =============================================================================
+
+class AdminContractUpdate(SanitizedModel):
+    """Schema for admin contract updates with validation."""
+    contract_number: Optional[str] = Field(None, min_length=1, max_length=100)
+    contract_type: Optional[str] = Field(None, description="Contract type enum value")
+    payment_method: Optional[str] = Field(None, description="Payment method enum value")
+    start_period: Optional[date] = None
+    end_period: Optional[date] = None
+    products: Optional[List[dict]] = None
+    remarks: Optional[str] = Field(None, max_length=1000)
+    discharge_ranges: Optional[str] = Field(None, max_length=500)
+    additives_required: Optional[bool] = None
+    fax_received: Optional[bool] = None
+    concluded_memo_received: Optional[bool] = None
+
+    @model_validator(mode='after')
+    def validate_dates(self):
+        if self.start_period and self.end_period:
+            if self.end_period < self.start_period:
+                raise ValueError("end_period must be after start_period")
+        return self
+
+
+class AdminQuarterlyPlanUpdate(SanitizedModel):
+    """Schema for admin quarterly plan updates with validation."""
+    product_name: Optional[str] = Field(None, min_length=1, max_length=64)
+    q1_quantity: Optional[float] = Field(None, ge=0, description="Q1 quantity must be non-negative")
+    q2_quantity: Optional[float] = Field(None, ge=0, description="Q2 quantity must be non-negative")
+    q3_quantity: Optional[float] = Field(None, ge=0, description="Q3 quantity must be non-negative")
+    q4_quantity: Optional[float] = Field(None, ge=0, description="Q4 quantity must be non-negative")
+    q1_topup: Optional[float] = Field(None, ge=0, description="Q1 topup must be non-negative")
+    q2_topup: Optional[float] = Field(None, ge=0, description="Q2 topup must be non-negative")
+    q3_topup: Optional[float] = Field(None, ge=0, description="Q3 topup must be non-negative")
+    q4_topup: Optional[float] = Field(None, ge=0, description="Q4 topup must be non-negative")
+    contract_id: Optional[int] = Field(None, gt=0, description="Contract ID must be positive")
+
+
+class AdminMonthlyPlanUpdate(SanitizedModel):
+    """Schema for admin monthly plan updates with validation."""
+    month: Optional[int] = Field(None, ge=1, le=12, description="Month must be 1-12")
+    year: Optional[int] = Field(None, ge=2000, le=2100, description="Year must be between 2000-2100")
+    month_quantity: Optional[float] = Field(None, ge=0, description="Month quantity must be non-negative")
+    number_of_liftings: Optional[int] = Field(None, ge=0, le=100, description="Number of liftings must be 0-100")
+    laycan_5_days: Optional[str] = Field(None, max_length=100)
+    laycan_2_days: Optional[str] = Field(None, max_length=100)
+    laycan_2_days_remark: Optional[str] = Field(None, max_length=500)
+    loading_month: Optional[str] = Field(None, max_length=50)
+    loading_window: Optional[str] = Field(None, max_length=100)
+    delivery_month: Optional[str] = Field(None, max_length=50)
+    delivery_window: Optional[str] = Field(None, max_length=100)
+    delivery_window_remark: Optional[str] = Field(None, max_length=500)
+    combi_group_id: Optional[str] = Field(None, max_length=50)
+    quarterly_plan_id: Optional[int] = Field(None, gt=0, description="Quarterly plan ID must be positive")
+    authority_topup_quantity: Optional[float] = Field(None, ge=0, description="Authority topup must be non-negative")
+    authority_topup_reference: Optional[str] = Field(None, max_length=100)
+    authority_topup_reason: Optional[str] = Field(None, max_length=500)
+    authority_topup_date: Optional[date] = None
+
+
+class AdminCargoUpdate(SanitizedModel):
+    """Schema for admin cargo updates with validation."""
+    vessel_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    product_name: Optional[str] = Field(None, min_length=1, max_length=64)
+    cargo_quantity: Optional[float] = Field(None, ge=0, description="Cargo quantity must be non-negative")
+    status: Optional[str] = Field(None, description="Cargo status enum value")
+    load_ports: Optional[str] = Field(None, max_length=200, description="Comma-separated port codes")
+    laycan_window: Optional[str] = Field(None, max_length=100)
+    eta: Optional[str] = Field(None, max_length=100)
+    berthed: Optional[str] = Field(None, max_length=100)
+    commenced: Optional[str] = Field(None, max_length=100)
+    etc: Optional[str] = Field(None, max_length=100)
+    lc_status: Optional[str] = Field(None, description="LC status enum value")
+    combi_group_id: Optional[str] = Field(None, max_length=50)
+    inspector_name: Optional[str] = Field(None, max_length=100)
+    notes: Optional[str] = Field(None, max_length=2000)
+    monthly_plan_id: Optional[int] = Field(None, gt=0, description="Monthly plan ID must be positive")
+    contract_id: Optional[int] = Field(None, gt=0, description="Contract ID must be positive")
+    customer_id: Optional[int] = Field(None, gt=0, description="Customer ID must be positive")
+
+
+class AdminCustomerUpdate(SanitizedModel):
+    """Schema for admin customer updates with validation."""
+    name: Optional[str] = Field(None, min_length=1, max_length=200, description="Customer name")
+
