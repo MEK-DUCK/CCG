@@ -13,7 +13,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from app.database import get_db
-from app.auth import require_auth
+from app.auth import require_auth, require_admin
 from app import models
 from app.models import (
     Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo,
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # =============================================================================
 
 @router.get("/stats")
-def get_database_stats(db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
+def get_database_stats(db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Get overview statistics for all tables."""
     
     # Count records in each table
@@ -107,7 +107,7 @@ def get_database_stats(db: Session = Depends(get_db), current_user: models.User 
 
 
 @router.get("/analytics")
-def get_analytics(db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
+def get_analytics(db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Get analytics data for inspector usage and port statistics."""
     
     # Inspector usage statistics (from normalized inspector_id FK)
@@ -269,7 +269,8 @@ def get_analytics(db: Session = Depends(get_db), current_user: models.User = Dep
 def get_all_contracts_admin(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Get all contracts with full details for admin view."""
     from sqlalchemy.orm import joinedload
@@ -308,7 +309,8 @@ def get_all_contracts_admin(
 def update_contract_admin(
     contract_id: int,
     data: dict,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Update any contract field directly (admin only)."""
     contract = db.query(Contract).filter(Contract.id == contract_id).first()
@@ -352,7 +354,7 @@ def update_contract_admin(
 
 
 @router.delete("/contracts/{contract_id}")
-def delete_contract_admin(contract_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
+def delete_contract_admin(contract_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Delete a contract and all related data (admin only)."""
     contract = db.query(Contract).filter(Contract.id == contract_id).first()
     if not contract:
@@ -372,7 +374,8 @@ def delete_contract_admin(contract_id: int, db: Session = Depends(get_db), curre
 def get_all_quarterly_plans_admin(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Get all quarterly plans with full details for admin view."""
     from sqlalchemy.orm import joinedload
@@ -414,7 +417,8 @@ def get_all_quarterly_plans_admin(
 def update_quarterly_plan_admin(
     plan_id: int,
     data: dict,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Update any quarterly plan field directly (admin only)."""
     plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == plan_id).first()
@@ -446,7 +450,7 @@ def update_quarterly_plan_admin(
 
 
 @router.delete("/quarterly-plans/{plan_id}")
-def delete_quarterly_plan_admin(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
+def delete_quarterly_plan_admin(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Delete a quarterly plan and all related monthly plans (admin only)."""
     plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == plan_id).first()
     if not plan:
@@ -466,7 +470,8 @@ def delete_quarterly_plan_admin(plan_id: int, db: Session = Depends(get_db), cur
 def get_all_monthly_plans_admin(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Get all monthly plans with full details for admin view."""
     from sqlalchemy.orm import joinedload
@@ -524,7 +529,8 @@ def get_all_monthly_plans_admin(
 def update_monthly_plan_admin(
     plan_id: int,
     data: dict,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Update any monthly plan field directly (admin only)."""
     plan = db.query(MonthlyPlan).filter(MonthlyPlan.id == plan_id).first()
@@ -566,7 +572,7 @@ def update_monthly_plan_admin(
 
 
 @router.delete("/monthly-plans/{plan_id}")
-def delete_monthly_plan_admin(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
+def delete_monthly_plan_admin(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Delete a monthly plan and all related cargos (admin only)."""
     plan = db.query(MonthlyPlan).filter(MonthlyPlan.id == plan_id).first()
     if not plan:
@@ -586,7 +592,8 @@ def delete_monthly_plan_admin(plan_id: int, db: Session = Depends(get_db), curre
 def get_all_cargos_admin(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Get all cargos with full details for admin view."""
     from sqlalchemy.orm import joinedload
@@ -648,7 +655,8 @@ def get_all_cargos_admin(
 def update_cargo_admin(
     cargo_id: int,
     data: dict,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Update any cargo field directly (admin only)."""
     from sqlalchemy.orm import joinedload
@@ -738,7 +746,7 @@ def update_cargo_admin(
 
 
 @router.delete("/cargos/{cargo_id}")
-def delete_cargo_admin(cargo_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
+def delete_cargo_admin(cargo_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Delete a cargo (admin only)."""
     cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
     if not cargo:
@@ -759,7 +767,8 @@ def get_all_audit_logs(
     log_type: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Get unified audit logs from all sources."""
     logs = []
@@ -868,7 +877,7 @@ def get_all_audit_logs(
 # =============================================================================
 
 @router.get("/integrity-check")
-def check_data_integrity(db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
+def check_data_integrity(db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Run comprehensive data integrity checks."""
     from sqlalchemy.orm import joinedload
     from app.models import ContractProduct
@@ -1005,7 +1014,8 @@ def check_data_integrity(db: Session = Depends(get_db), current_user: models.Use
 def get_all_customers_admin(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Get all customers for admin view."""
     customers = db.query(Customer).offset(skip).limit(limit).all()
@@ -1030,7 +1040,8 @@ def get_all_customers_admin(
 def update_customer_admin(
     customer_id: int,
     data: dict,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
 ):
     """Update a customer (admin only)."""
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
@@ -1056,7 +1067,7 @@ def update_customer_admin(
 
 
 @router.delete("/customers/{customer_id}")
-def delete_customer_admin(customer_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_auth)):
+def delete_customer_admin(customer_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Delete a customer and all related contracts (admin only)."""
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
