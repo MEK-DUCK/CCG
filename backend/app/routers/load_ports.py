@@ -70,7 +70,8 @@ def create_load_port(port: schemas.LoadPortCreate, db: Session = Depends(get_db)
 @router.get("/", response_model=List[schemas.LoadPort])
 def read_load_ports(
     include_inactive: bool = Query(False, description="Include inactive ports"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth)
 ):
     """Get all load ports, ordered by sort_order then name."""
     try:
@@ -87,7 +88,8 @@ def read_load_ports(
 @router.get("/codes", response_model=List[str])
 def read_load_port_codes(
     include_inactive: bool = Query(False, description="Include inactive ports"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth)
 ):
     """Get just the port codes for dropdowns."""
     try:
