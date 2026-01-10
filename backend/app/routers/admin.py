@@ -345,14 +345,21 @@ def update_contract_admin(
 @router.delete("/contracts/{contract_id}")
 def delete_contract_admin(contract_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Delete a contract and all related data (admin only)."""
-    contract = db.query(Contract).filter(Contract.id == contract_id).first()
-    if not contract:
-        raise HTTPException(status_code=404, detail="Contract not found")
-    
-    db.delete(contract)
-    db.commit()
-    
-    return {"success": True, "message": "Contract deleted"}
+    try:
+        contract = db.query(Contract).filter(Contract.id == contract_id).first()
+        if not contract:
+            raise HTTPException(status_code=404, detail="Contract not found")
+        
+        db.delete(contract)
+        db.commit()
+        
+        return {"success": True, "message": "Contract deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting contract {contract_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error deleting contract: {str(e)}")
 
 
 # =============================================================================
@@ -442,14 +449,21 @@ def update_quarterly_plan_admin(
 @router.delete("/quarterly-plans/{plan_id}")
 def delete_quarterly_plan_admin(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Delete a quarterly plan and all related monthly plans (admin only)."""
-    plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == plan_id).first()
-    if not plan:
-        raise HTTPException(status_code=404, detail="Quarterly plan not found")
-    
-    db.delete(plan)
-    db.commit()
-    
-    return {"success": True, "message": "Quarterly plan deleted"}
+    try:
+        plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == plan_id).first()
+        if not plan:
+            raise HTTPException(status_code=404, detail="Quarterly plan not found")
+        
+        db.delete(plan)
+        db.commit()
+        
+        return {"success": True, "message": "Quarterly plan deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting quarterly plan {plan_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error deleting quarterly plan: {str(e)}")
 
 
 # =============================================================================
@@ -555,14 +569,21 @@ def update_monthly_plan_admin(
 @router.delete("/monthly-plans/{plan_id}")
 def delete_monthly_plan_admin(plan_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Delete a monthly plan and all related cargos (admin only)."""
-    plan = db.query(MonthlyPlan).filter(MonthlyPlan.id == plan_id).first()
-    if not plan:
-        raise HTTPException(status_code=404, detail="Monthly plan not found")
-    
-    db.delete(plan)
-    db.commit()
-    
-    return {"success": True, "message": "Monthly plan deleted"}
+    try:
+        plan = db.query(MonthlyPlan).filter(MonthlyPlan.id == plan_id).first()
+        if not plan:
+            raise HTTPException(status_code=404, detail="Monthly plan not found")
+        
+        db.delete(plan)
+        db.commit()
+        
+        return {"success": True, "message": "Monthly plan deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting monthly plan {plan_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error deleting monthly plan: {str(e)}")
 
 
 # =============================================================================
@@ -728,14 +749,21 @@ def update_cargo_admin(
 @router.delete("/cargos/{cargo_id}")
 def delete_cargo_admin(cargo_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Delete a cargo (admin only)."""
-    cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
-    if not cargo:
-        raise HTTPException(status_code=404, detail="Cargo not found")
-    
-    db.delete(cargo)
-    db.commit()
-    
-    return {"success": True, "message": "Cargo deleted"}
+    try:
+        cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+        if not cargo:
+            raise HTTPException(status_code=404, detail="Cargo not found")
+        
+        db.delete(cargo)
+        db.commit()
+        
+        return {"success": True, "message": "Cargo deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting cargo {cargo_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error deleting cargo: {str(e)}")
 
 
 # =============================================================================
@@ -1024,31 +1052,45 @@ def update_customer_admin(
     current_user: models.User = Depends(require_admin)
 ):
     """Update a customer (admin only)."""
-    customer = db.query(Customer).filter(Customer.id == customer_id).first()
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    
-    # Update only provided fields
-    update_data = data.model_dump(exclude_unset=True)
-    
-    for field, value in update_data.items():
-        setattr(customer, field, value)
-    
-    db.commit()
-    db.refresh(customer)
-    
-    return {"success": True, "message": "Customer updated"}
+    try:
+        customer = db.query(Customer).filter(Customer.id == customer_id).first()
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        
+        # Update only provided fields
+        update_data = data.model_dump(exclude_unset=True)
+        
+        for field, value in update_data.items():
+            setattr(customer, field, value)
+        
+        db.commit()
+        db.refresh(customer)
+        
+        return {"success": True, "message": "Customer updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating customer {customer_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error updating customer: {str(e)}")
 
 
 @router.delete("/customers/{customer_id}")
 def delete_customer_admin(customer_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """Delete a customer and all related contracts (admin only)."""
-    customer = db.query(Customer).filter(Customer.id == customer_id).first()
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    
-    db.delete(customer)
-    db.commit()
-    
-    return {"success": True, "message": "Customer deleted"}
+    try:
+        customer = db.query(Customer).filter(Customer.id == customer_id).first()
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        
+        db.delete(customer)
+        db.commit()
+        
+        return {"success": True, "message": "Customer deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting customer {customer_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error deleting customer: {str(e)}")
 
