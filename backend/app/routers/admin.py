@@ -4,7 +4,7 @@ Provides bird's eye view of all data with editing capabilities.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
+from sqlalchemy import func
 from typing import List, Optional, Any
 from datetime import datetime
 import json
@@ -16,7 +16,7 @@ from app.database import get_db
 from app.auth import require_auth, require_admin
 from app import models
 from app.models import (
-    Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo,
+    Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo, Product, CargoStatus,
     CargoAuditLog, MonthlyPlanAuditLog, QuarterlyPlanAuditLog, ContractAuditLog,
     GeneralAuditLog
 )
@@ -185,24 +185,26 @@ def get_analytics(db: Session = Depends(get_db), current_user: models.User = Dep
     # Customer cargo distribution
     customer_stats = []
     try:
-        # Join cargos -> monthly_plans -> quarterly_plans -> contracts -> customers
-        customer_query = db.execute(text('''
-            SELECT 
-                cu.name as customer_name,
-                COUNT(DISTINCT ca.id) as cargo_count
-            FROM cargos ca
-            JOIN monthly_plans mp ON ca.monthly_plan_id = mp.id
-            JOIN quarterly_plans qp ON mp.quarterly_plan_id = qp.id
-            JOIN contracts co ON qp.contract_id = co.id
-            JOIN customers cu ON co.customer_id = cu.id
-            GROUP BY cu.id, cu.name
-            ORDER BY cargo_count DESC
-        ''')).fetchall()
+        # Join cargos -> monthly_plans -> quarterly_plans -> contracts -> customers using ORM
+        customer_query = db.query(
+            Customer.name.label('customer_name'),
+            func.count(func.distinct(Cargo.id)).label('cargo_count')
+        ).join(
+            Contract, Contract.customer_id == Customer.id
+        ).join(
+            QuarterlyPlan, QuarterlyPlan.contract_id == Contract.id
+        ).join(
+            MonthlyPlan, MonthlyPlan.quarterly_plan_id == QuarterlyPlan.id
+        ).join(
+            Cargo, Cargo.monthly_plan_id == MonthlyPlan.id
+        ).group_by(Customer.id, Customer.name).order_by(
+            func.count(func.distinct(Cargo.id)).desc()
+        ).all()
         
         for row in customer_query:
             customer_stats.append({
-                "customer": row[0],
-                "cargo_count": row[1]
+                "customer": row.customer_name,
+                "cargo_count": row.cargo_count
             })
     except Exception as e:
         logger.error(f"Error getting customer stats: {e}")
@@ -227,24 +229,25 @@ def get_analytics(db: Session = Depends(get_db), current_user: models.User = Dep
     # Status enum names: COMPLETED_LOADING, DISCHARGE_COMPLETE are considered completed
     product_stats = []
     try:
-        # Get completed cargo quantities per product using normalized product_id
-        completed_query = db.execute(text('''
-            SELECT 
-                p.name as product_name,
-                SUM(ca.cargo_quantity) as completed_quantity,
-                COUNT(ca.id) as cargo_count
-            FROM cargos ca
-            JOIN products p ON ca.product_id = p.id
-            WHERE ca.status IN ('COMPLETED_LOADING', 'DISCHARGE_COMPLETE')
-            GROUP BY p.name
-            ORDER BY completed_quantity DESC
-        ''')).fetchall()
+        # Get completed cargo quantities per product using ORM
+        completed_statuses = [CargoStatus.COMPLETED_LOADING, CargoStatus.DISCHARGE_COMPLETE]
+        completed_query = db.query(
+            Product.name.label('product_name'),
+            func.sum(Cargo.cargo_quantity).label('completed_quantity'),
+            func.count(Cargo.id).label('cargo_count')
+        ).join(
+            Cargo, Cargo.product_id == Product.id
+        ).filter(
+            Cargo.status.in_(completed_statuses)
+        ).group_by(Product.name).order_by(
+            func.sum(Cargo.cargo_quantity).desc()
+        ).all()
         
         for row in completed_query:
             product_stats.append({
-                "product": row[0],
-                "completed_quantity": float(row[1] or 0),
-                "cargo_count": row[2]
+                "product": row.product_name,
+                "completed_quantity": float(row.completed_quantity or 0),
+                "cargo_count": row.cargo_count
             })
         
     except Exception as e:
