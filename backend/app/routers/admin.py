@@ -316,23 +316,30 @@ def update_contract_admin(
     current_user: models.User = Depends(require_admin)
 ):
     """Update any contract field directly (admin only)."""
-    contract = db.query(Contract).filter(Contract.id == contract_id).first()
-    if not contract:
-        raise HTTPException(status_code=404, detail="Contract not found")
-    
-    # Update only provided fields
-    update_data = data.model_dump(exclude_unset=True)
-    
-    for field, value in update_data.items():
-        # Handle JSON fields
-        if field == "products" and isinstance(value, (list, dict)):
-            value = json.dumps(value)
-        setattr(contract, field, value)
-    
-    db.commit()
-    db.refresh(contract)
-    
-    return {"success": True, "message": "Contract updated"}
+    try:
+        contract = db.query(Contract).filter(Contract.id == contract_id).first()
+        if not contract:
+            raise HTTPException(status_code=404, detail="Contract not found")
+        
+        # Update only provided fields
+        update_data = data.model_dump(exclude_unset=True)
+        
+        for field, value in update_data.items():
+            # Handle JSON fields
+            if field == "products" and isinstance(value, (list, dict)):
+                value = json.dumps(value)
+            setattr(contract, field, value)
+        
+        db.commit()
+        db.refresh(contract)
+        
+        return {"success": True, "message": "Contract updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating contract {contract_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error updating contract: {str(e)}")
 
 
 @router.delete("/contracts/{contract_id}")
@@ -403,20 +410,33 @@ def update_quarterly_plan_admin(
     current_user: models.User = Depends(require_admin)
 ):
     """Update any quarterly plan field directly (admin only)."""
-    plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == plan_id).first()
-    if not plan:
-        raise HTTPException(status_code=404, detail="Quarterly plan not found")
-    
-    # Update only provided fields
-    update_data = data.model_dump(exclude_unset=True)
-    
-    for field, value in update_data.items():
-        setattr(plan, field, value)
-    
-    db.commit()
-    db.refresh(plan)
-    
-    return {"success": True, "message": "Quarterly plan updated"}
+    try:
+        plan = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == plan_id).first()
+        if not plan:
+            raise HTTPException(status_code=404, detail="Quarterly plan not found")
+        
+        # Update only provided fields
+        update_data = data.model_dump(exclude_unset=True)
+        
+        # Validate foreign key if provided
+        if "contract_id" in update_data:
+            contract = db.query(Contract).filter(Contract.id == update_data["contract_id"]).first()
+            if not contract:
+                raise HTTPException(status_code=400, detail=f"Contract with ID {update_data['contract_id']} not found")
+        
+        for field, value in update_data.items():
+            setattr(plan, field, value)
+        
+        db.commit()
+        db.refresh(plan)
+        
+        return {"success": True, "message": "Quarterly plan updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating quarterly plan {plan_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error updating quarterly plan: {str(e)}")
 
 
 @router.delete("/quarterly-plans/{plan_id}")
@@ -503,20 +523,33 @@ def update_monthly_plan_admin(
     current_user: models.User = Depends(require_admin)
 ):
     """Update any monthly plan field directly (admin only)."""
-    plan = db.query(MonthlyPlan).filter(MonthlyPlan.id == plan_id).first()
-    if not plan:
-        raise HTTPException(status_code=404, detail="Monthly plan not found")
-    
-    # Update only provided fields
-    update_data = data.model_dump(exclude_unset=True)
-    
-    for field, value in update_data.items():
-        setattr(plan, field, value)
-    
-    db.commit()
-    db.refresh(plan)
-    
-    return {"success": True, "message": "Monthly plan updated"}
+    try:
+        plan = db.query(MonthlyPlan).filter(MonthlyPlan.id == plan_id).first()
+        if not plan:
+            raise HTTPException(status_code=404, detail="Monthly plan not found")
+        
+        # Update only provided fields
+        update_data = data.model_dump(exclude_unset=True)
+        
+        # Validate foreign key if provided
+        if "quarterly_plan_id" in update_data:
+            qp = db.query(QuarterlyPlan).filter(QuarterlyPlan.id == update_data["quarterly_plan_id"]).first()
+            if not qp:
+                raise HTTPException(status_code=400, detail=f"Quarterly plan with ID {update_data['quarterly_plan_id']} not found")
+        
+        for field, value in update_data.items():
+            setattr(plan, field, value)
+        
+        db.commit()
+        db.refresh(plan)
+        
+        return {"success": True, "message": "Monthly plan updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating monthly plan {plan_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error updating monthly plan: {str(e)}")
 
 
 @router.delete("/monthly-plans/{plan_id}")
@@ -611,64 +644,85 @@ def update_cargo_admin(
     from app.models import CargoPortOperation, Inspector
     from app.config import get_load_port_by_code, PortOperationStatus
     
-    cargo = db.query(Cargo).options(
-        joinedload(Cargo.port_operations).joinedload(CargoPortOperation.load_port)
-    ).filter(Cargo.id == cargo_id).first()
-    if not cargo:
-        raise HTTPException(status_code=404, detail="Cargo not found")
-    
-    # Update only provided fields
-    update_data = data.model_dump(exclude_unset=True)
-    
-    for field, value in update_data.items():
-        # Handle load_ports specially - update via port_operations
-        if field == "load_ports":
-            port_codes = []
-            if value:
-                port_codes = [p.strip().upper() for p in value.split(",") if p.strip()]
-            
-            # Build map of existing operations by port code
-            existing_by_code = {}
-            for op in (cargo.port_operations or []):
-                if op.load_port:
-                    existing_by_code[op.load_port.code] = op
-            
-            # Create missing operations
-            for code in port_codes:
-                if code not in existing_by_code:
-                    load_port = get_load_port_by_code(db, code)
-                    if load_port:
-                        cargo.port_operations.append(
-                            CargoPortOperation(
-                                load_port_id=load_port.id,
-                                status=PortOperationStatus.PLANNED.value
+    try:
+        cargo = db.query(Cargo).options(
+            joinedload(Cargo.port_operations).joinedload(CargoPortOperation.load_port)
+        ).filter(Cargo.id == cargo_id).first()
+        if not cargo:
+            raise HTTPException(status_code=404, detail="Cargo not found")
+        
+        # Update only provided fields
+        update_data = data.model_dump(exclude_unset=True)
+        
+        # Validate foreign keys if provided
+        if "monthly_plan_id" in update_data:
+            mp = db.query(MonthlyPlan).filter(MonthlyPlan.id == update_data["monthly_plan_id"]).first()
+            if not mp:
+                raise HTTPException(status_code=400, detail=f"Monthly plan with ID {update_data['monthly_plan_id']} not found")
+        if "contract_id" in update_data:
+            contract = db.query(Contract).filter(Contract.id == update_data["contract_id"]).first()
+            if not contract:
+                raise HTTPException(status_code=400, detail=f"Contract with ID {update_data['contract_id']} not found")
+        if "customer_id" in update_data:
+            customer = db.query(Customer).filter(Customer.id == update_data["customer_id"]).first()
+            if not customer:
+                raise HTTPException(status_code=400, detail=f"Customer with ID {update_data['customer_id']} not found")
+        
+        for field, value in update_data.items():
+            # Handle load_ports specially - update via port_operations
+            if field == "load_ports":
+                port_codes = []
+                if value:
+                    port_codes = [p.strip().upper() for p in value.split(",") if p.strip()]
+                
+                # Build map of existing operations by port code
+                existing_by_code = {}
+                for op in (cargo.port_operations or []):
+                    if op.load_port:
+                        existing_by_code[op.load_port.code] = op
+                
+                # Create missing operations
+                for code in port_codes:
+                    if code not in existing_by_code:
+                        load_port = get_load_port_by_code(db, code)
+                        if load_port:
+                            cargo.port_operations.append(
+                                CargoPortOperation(
+                                    load_port_id=load_port.id,
+                                    status=PortOperationStatus.PLANNED.value
+                                )
                             )
-                        )
+                
+                # Remove operations for removed ports
+                for code, op in existing_by_code.items():
+                    if code not in port_codes:
+                        db.delete(op)
+                continue
             
-            # Remove operations for removed ports
-            for code, op in existing_by_code.items():
-                if code not in port_codes:
-                    db.delete(op)
-            continue
+            # Handle inspector_name specially - convert to inspector_id
+            if field == "inspector_name":
+                if value:
+                    inspector = db.query(Inspector).filter(Inspector.name == value).first()
+                    cargo.inspector_id = inspector.id if inspector else None
+                else:
+                    cargo.inspector_id = None
+                continue
+            
+            # Handle enum fields
+            if field == "status" and value:
+                value = CargoStatus(value)
+            setattr(cargo, field, value)
         
-        # Handle inspector_name specially - convert to inspector_id
-        if field == "inspector_name":
-            if value:
-                inspector = db.query(Inspector).filter(Inspector.name == value).first()
-                cargo.inspector_id = inspector.id if inspector else None
-            else:
-                cargo.inspector_id = None
-            continue
+        db.commit()
+        db.refresh(cargo)
         
-        # Handle enum fields
-        if field == "status" and value:
-            value = CargoStatus(value)
-        setattr(cargo, field, value)
-    
-    db.commit()
-    db.refresh(cargo)
-    
-    return {"success": True, "message": "Cargo updated"}
+        return {"success": True, "message": "Cargo updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating cargo {cargo_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error updating cargo: {str(e)}")
 
 
 @router.delete("/cargos/{cargo_id}")

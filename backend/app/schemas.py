@@ -1009,6 +1009,24 @@ class AdminContractUpdate(SanitizedModel):
     fax_received: Optional[bool] = None
     concluded_memo_received: Optional[bool] = None
 
+    @field_validator('contract_type')
+    @classmethod
+    def validate_contract_type(cls, v):
+        if v is not None:
+            valid_values = [e.value for e in ContractType]
+            if v not in valid_values:
+                raise ValueError(f"Invalid contract_type. Must be one of: {valid_values}")
+        return v
+
+    @field_validator('payment_method')
+    @classmethod
+    def validate_payment_method(cls, v):
+        if v is not None:
+            valid_values = [e.value for e in PaymentMethod]
+            if v not in valid_values:
+                raise ValueError(f"Invalid payment_method. Must be one of: {valid_values}")
+        return v
+
     @model_validator(mode='after')
     def validate_dates(self):
         if self.start_period and self.end_period:
@@ -1072,6 +1090,24 @@ class AdminCargoUpdate(SanitizedModel):
     monthly_plan_id: Optional[int] = Field(None, gt=0, description="Monthly plan ID must be positive")
     contract_id: Optional[int] = Field(None, gt=0, description="Contract ID must be positive")
     customer_id: Optional[int] = Field(None, gt=0, description="Customer ID must be positive")
+
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, v):
+        if v is not None:
+            valid_values = [e.value for e in CargoStatus]
+            if v not in valid_values:
+                raise ValueError(f"Invalid status. Must be one of: {valid_values}")
+        return v
+
+    @field_validator('lc_status')
+    @classmethod
+    def validate_lc_status(cls, v):
+        if v is not None:
+            valid_values = [e.value for e in LCStatus]
+            if v not in valid_values:
+                raise ValueError(f"Invalid lc_status. Must be one of: {valid_values}")
+        return v
 
 
 class AdminCustomerUpdate(SanitizedModel):
