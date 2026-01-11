@@ -36,7 +36,7 @@ import type {
   WeeklyQuantityComparisonResponse,
   Contract,
 } from '../types'
-import { PLAN_TYPE_COLORS } from '../utils/chipColors'
+import { PLAN_TYPE_COLORS, getProductColor } from '../utils/chipColors'
 import { useResizableColumns, ColumnConfig } from '../hooks/useResizableColumns'
 import ResizableTableCell from '../components/ResizableTableCell'
 
@@ -700,15 +700,10 @@ export default function ReconciliationPage() {
                             <Chip
                               label={productName}
                               size="small"
-                              sx={{ 
-                                fontWeight: 500, 
+                              sx={{
+                                fontWeight: 500,
                                 fontSize: '0.75rem',
-                                bgcolor: productName.includes('GASOIL') ? '#FEF3C7' : 
-                                         productName.includes('JET') ? '#DBEAFE' : 
-                                         productName.includes('FUEL') ? '#F3E8FF' : '#F1F5F9',
-                                color: productName.includes('GASOIL') ? '#92400E' : 
-                                       productName.includes('JET') ? '#1E40AF' : 
-                                       productName.includes('FUEL') ? '#6B21A8' : '#475569',
+                                ...getProductColor(productName)
                               }}
                             />
                           ) : (

@@ -24,7 +24,7 @@ import {
 import { FileDownload, PictureAsPdf, CalendarMonth, ChevronLeft, ChevronRight } from '@mui/icons-material'
 import { customerAPI, contractAPI, quarterlyPlanAPI, monthlyPlanAPI, cargoAPI } from '../api/client'
 import type { Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo } from '../types'
-import { getContractTypeColor, BADGE_COLORS } from '../utils/chipColors'
+import { getContractTypeColor, getProductColor, BADGE_COLORS } from '../utils/chipColors'
 import { useToast } from '../contexts/ToastContext'
 
 // Column configuration for resizable columns
@@ -62,6 +62,7 @@ interface ContractQuarterlyData {
   contractId: number
   contractNumber: string
   productsText: string
+  products: string[]  // Array of product names for chip rendering
   contractType: 'FOB' | 'CIF'
   year: number  // Add year to the interface
   month1Entries: MonthlyPlanEntry[]  // All entries for month 1
@@ -85,7 +86,7 @@ export default function LiftingPlanPage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const { showError } = useToast()
   const PRODUCT_FILTERS = ['GASOIL', 'JET A-1', 'FUEL OIL'] as const
-  const [selectedQuarter, setSelectedQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>(getCurrentQuarter())
+  const [selectedQuarter, setSelectedQuarter] = useState<'ALL' | 'Q1' | 'Q2' | 'Q3' | 'Q4'>(getCurrentQuarter())
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()) // Default to current year
   const [selectedProduct, setSelectedProduct] = useState<string>('GASOIL') // Product filter - defaults to first tab
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -204,7 +205,8 @@ export default function LiftingPlanPage() {
     const dataMap = new Map<number, ContractQuarterlyData>()
     
     // Determine months for selected quarter
-    const quarterMonths: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number[]> = {
+    const quarterMonths: Record<'ALL' | 'Q1' | 'Q2' | 'Q3' | 'Q4', number[]> = {
+      ALL: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], // Full Year
       Q1: [1, 2, 3],   // Jan, Feb, Mar
       Q2: [4, 5, 6],   // Apr, May, Jun
       Q3: [7, 8, 9],   // Jul, Aug, Sep
@@ -279,6 +281,11 @@ export default function LiftingPlanPage() {
         productsText = productNames.length > 0 ? productNames.join(', ') : '-'
       }
 
+      // Determine which products to show based on filter
+      const displayProducts = selectedProduct
+        ? productNames.filter(name => normalizeProductCategory(name) === selectedProduct)
+        : productNames
+
       // Initialize contract entry if not exists
       if (!dataMap.has(contract.id)) {
         dataMap.set(contract.id, {
@@ -287,6 +294,7 @@ export default function LiftingPlanPage() {
           contractId: contract.id,
           contractNumber: contract.contract_number,
           productsText,
+          products: displayProducts,
           contractType: contract.contract_type,
           year: selectedYear,
           month1Entries: [],
@@ -454,8 +462,9 @@ export default function LiftingPlanPage() {
   }
 
 
-  const getMonthName = (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', index: number): string => {
-    const monthNames: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', string[]> = {
+  const getMonthName = (quarter: 'ALL' | 'Q1' | 'Q2' | 'Q3' | 'Q4', index: number): string => {
+    const monthNames: Record<'ALL' | 'Q1' | 'Q2' | 'Q3' | 'Q4', string[]> = {
+      ALL: ['Q1 (Jan-Mar)', 'Q2 (Apr-Jun)', 'Q3 (Jul-Sep)'],  // When ALL, show quarterly totals
       Q1: ['January', 'February', 'March'],
       Q2: ['April', 'May', 'June'],
       Q3: ['July', 'August', 'September'],
@@ -779,7 +788,20 @@ export default function LiftingPlanPage() {
               >
                 <TableCell sx={{ fontWeight: 'medium', width: columnWidths['customer'] }}>{data.customerName}</TableCell>
                 <TableCell sx={{ width: columnWidths['contract'] }}>{data.contractNumber}</TableCell>
-                <TableCell sx={{ width: columnWidths['products'] }}>{data.productsText || '-'}</TableCell>
+                <TableCell sx={{ width: columnWidths['products'] }}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {data.products.length > 0 ? data.products.map((product, idx) => (
+                      <Chip
+                        key={idx}
+                        label={product}
+                        size="small"
+                        sx={{ height: 22, fontSize: '0.7rem', fontWeight: 500, ...getProductColor(product) }}
+                      />
+                    )) : (
+                      <Typography variant="body2" color="text.secondary">-</Typography>
+                    )}
+                  </Box>
+                </TableCell>
                 <TableCell sx={{ width: columnWidths['type'] }}>
                   <Chip 
                     label={data.contractType} 
@@ -1187,15 +1209,15 @@ export default function LiftingPlanPage() {
 
           {/* Quarter Pills */}
           <Box sx={{ display: 'flex', gap: 0.75, justifyContent: { xs: 'flex-start', md: 'center' }, flex: 1 }}>
-            {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map((quarter) => {
+            {(['ALL', 'Q1', 'Q2', 'Q3', 'Q4'] as const).map((quarter) => {
               const isSelected = selectedQuarter === quarter
-              const quarterLabels = { Q1: 'Jan-Mar', Q2: 'Apr-Jun', Q3: 'Jul-Sep', Q4: 'Oct-Dec' }
+              const quarterLabels: Record<string, string> = { ALL: 'Full Year', Q1: 'Jan-Mar', Q2: 'Apr-Jun', Q3: 'Jul-Sep', Q4: 'Oct-Dec' }
               return (
                 <Box
                   key={quarter}
                   onClick={() => setSelectedQuarter(quarter)}
                   sx={{
-                    px: 2,
+                    px: quarter === 'ALL' ? 1.5 : 2,
                     py: 0.75,
                     borderRadius: 2,
                     cursor: 'pointer',

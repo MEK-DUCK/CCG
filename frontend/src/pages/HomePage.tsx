@@ -2815,10 +2815,7 @@ export default function HomePage() {
               const { dueDate, daysUntilDue, isOverdue, isDueSoon } = calculateTngDueDate(primaryPlan)
               const tngIssued = primaryPlan.tng_issued || false
               
-              // For combi, combine product names and sum quantities
-              const productNames = group.isCombi 
-                ? group.plans.map(p => p.product_name || '-').join(' + ')
-                : primaryPlan.product_name || '-'
+              // For combi, sum quantities
               const totalQuantity = group.plans.reduce((sum, p) => sum + (p.month_quantity || 0), 0)
               
               // Highlight row if TNG is due soon or overdue and not yet issued
@@ -2857,20 +2854,33 @@ export default function HomePage() {
                   <TableCell>{customer?.name || '-'}</TableCell>
                   <TableCell>{contract?.contract_number || '-'}</TableCell>
                   <TableCell>
-                    {group.isCombi && (
-                      <Chip 
-                        label="COMBI" 
-                        size="small" 
-                        sx={{ 
-                          mr: 0.5, 
-                          bgcolor: BADGE_COLORS.COMBI.bgcolor, 
-                          color: BADGE_COLORS.COMBI.color,
-                          fontSize: '0.65rem',
-                          height: 18
-                        }} 
-                      />
-                    )}
-                    {productNames}
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
+                      {group.isCombi && (
+                        <Chip
+                          label="COMBI"
+                          size="small"
+                          sx={{
+                            bgcolor: BADGE_COLORS.COMBI.bgcolor,
+                            color: BADGE_COLORS.COMBI.color,
+                            fontSize: '0.65rem',
+                            height: 18
+                          }}
+                        />
+                      )}
+                      {group.plans.map((p, idx) => (
+                        <Chip
+                          key={idx}
+                          label={p.product_name || '-'}
+                          size="small"
+                          sx={{
+                            height: 20,
+                            fontSize: '0.7rem',
+                            fontWeight: 500,
+                            ...getProductColor(p.product_name || '')
+                          }}
+                        />
+                      ))}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     {new Date(2000, (primaryPlan.month || 1) - 1).toLocaleString('default', { month: 'short' })} {primaryPlan.year}
@@ -5251,20 +5261,26 @@ export default function HomePage() {
                                 <TableCell>
                                   {cargo.combi_group_id ? (
                                     // For combie cargos, show all products in the combie group
-                                    // Look in all cargo arrays since not all combie cargos may be in activeLoadings
-                                    <Box>
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                                       {[...portMovement, ...activeLoadings, ...completedCargos, ...inRoadCIF]
                                         .filter(c => c.combi_group_id === cargo.combi_group_id)
                                         .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
                                         .map(c => (
-                                          <Typography key={c.id} variant="body2" sx={{ fontSize: '0.875rem' }}>
-                                            {c.product_name}: {c.cargo_quantity} KT
-                                          </Typography>
+                                          <Chip
+                                            key={c.id}
+                                            label={`${c.product_name}: ${c.cargo_quantity} KT`}
+                                            size="small"
+                                            sx={{ height: 22, fontSize: '0.7rem', fontWeight: 500, ...getProductColor(c.product_name) }}
+                                          />
                                         ))
                                       }
                                     </Box>
                                   ) : (
-                                    cargo.product_name || '-'
+                                    <Chip
+                                      label={cargo.product_name || '-'}
+                                      size="small"
+                                      sx={{ height: 22, fontSize: '0.7rem', fontWeight: 500, ...getProductColor(cargo.product_name || '') }}
+                                    />
                                   )}
                                 </TableCell>
                                 <TableCell sx={{ whiteSpace: 'nowrap' }}>{laycan}</TableCell>
