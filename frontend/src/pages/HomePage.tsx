@@ -4582,16 +4582,221 @@ export default function HomePage() {
 
   return (
     <Box>
-        {/* Header with notifications */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2 }}>
-        {laycanAlerts.totalCount > 0 && (
-          <NotificationBadge
-            alerts={laycanAlerts.alerts}
-            criticalCount={laycanAlerts.criticalCount}
-            warningCount={laycanAlerts.warningCount}
-            infoCount={laycanAlerts.infoCount}
-          />
+        {/* Compact Stats Header */}
+        <Box sx={{ mb: 3 }}>
+          {/* Notifications row */}
+          {laycanAlerts.totalCount > 0 && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <NotificationBadge
+                alerts={laycanAlerts.alerts}
+                criticalCount={laycanAlerts.criticalCount}
+                warningCount={laycanAlerts.warningCount}
+                infoCount={laycanAlerts.infoCount}
+              />
+            </Box>
           )}
+
+          {/* Compact Stats Grid */}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
+              gap: 2,
+            }}
+          >
+            {/* Port Movement Card */}
+            <Paper
+              elevation={0}
+              onClick={() => handleChange({} as React.SyntheticEvent, 0)}
+              sx={{
+                p: 2,
+                borderRadius: 2.5,
+                cursor: 'pointer',
+                border: value === 0 ? '2px solid #3B82F6' : '1px solid #E2E8F0',
+                background: value === 0 ? 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)' : 'white',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 4px 12px rgba(59, 130, 246, 0.15)',
+                  borderColor: '#3B82F6',
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box
+                  sx={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 2,
+                    background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Description sx={{ color: 'white', fontSize: 18 }} />
+                </Box>
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>
+                    {portMovement.length}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                    Port Movement
+                  </Typography>
+                </Box>
+              </Box>
+            </Paper>
+
+            {/* Active Loadings Card */}
+            <Paper
+              elevation={0}
+              onClick={() => handleChange({} as React.SyntheticEvent, 0)}
+              sx={{
+                p: 2,
+                borderRadius: 2.5,
+                cursor: 'pointer',
+                border: activeLoadings.length > 0 ? '2px solid #10B981' : '1px solid #E2E8F0',
+                background: activeLoadings.length > 0 ? 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' : 'white',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.15)',
+                  borderColor: '#10B981',
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box
+                  sx={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 2,
+                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                  }}
+                >
+                  <Description sx={{ color: 'white', fontSize: 18 }} />
+                  {activeLoadings.length > 0 && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        top: -2,
+                        right: -2,
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        bgcolor: '#10B981',
+                        border: '2px solid white',
+                        animation: 'pulse 1.5s infinite',
+                        '@keyframes pulse': {
+                          '0%, 100%': { transform: 'scale(1)' },
+                          '50%': { transform: 'scale(1.2)' },
+                        },
+                      }}
+                    />
+                  )}
+                </Box>
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>
+                    {activeLoadings.length}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                    Active Loadings
+                  </Typography>
+                </Box>
+              </Box>
+            </Paper>
+
+            {/* In-Road CIF Card */}
+            <Paper
+              elevation={0}
+              onClick={() => handleChange({} as React.SyntheticEvent, 2)}
+              sx={{
+                p: 2,
+                borderRadius: 2.5,
+                cursor: 'pointer',
+                border: value === 2 ? '2px solid #8B5CF6' : '1px solid #E2E8F0',
+                background: value === 2 ? 'linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)' : 'white',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 4px 12px rgba(139, 92, 246, 0.15)',
+                  borderColor: '#8B5CF6',
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box
+                  sx={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 2,
+                    background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Description sx={{ color: 'white', fontSize: 18 }} />
+                </Box>
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>
+                    {inRoadCIF.length}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                    In-Road CIF
+                  </Typography>
+                </Box>
+              </Box>
+            </Paper>
+
+            {/* Completed Card */}
+            <Paper
+              elevation={0}
+              onClick={() => handleChange({} as React.SyntheticEvent, 1)}
+              sx={{
+                p: 2,
+                borderRadius: 2.5,
+                cursor: 'pointer',
+                border: value === 1 ? '2px solid #F59E0B' : '1px solid #E2E8F0',
+                background: value === 1 ? 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)' : 'white',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 4px 12px rgba(245, 158, 11, 0.15)',
+                  borderColor: '#F59E0B',
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box
+                  sx={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 2,
+                    background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Description sx={{ color: 'white', fontSize: 18 }} />
+                </Box>
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>
+                    {completedCargos.length}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                    Completed
+                  </Typography>
+                </Box>
+              </Box>
+            </Paper>
+
+          </Box>
         </Box>
 
         {/* Notification when another user makes changes */}
@@ -4610,41 +4815,82 @@ export default function HomePage() {
           </Alert>
         </Snackbar>
 
-      <Paper sx={{ mt: 3 }}>
-        <Box sx={{ borderBottom: '1px solid rgba(148, 163, 184, 0.12)' }}>
-          <Tabs 
-            value={value} 
-            onChange={handleChange} 
+      <Paper
+        elevation={0}
+        sx={{
+          border: '1px solid #E2E8F0',
+          borderRadius: 3,
+          overflow: 'hidden',
+        }}
+      >
+        <Box sx={{
+          borderBottom: '1px solid #E2E8F0',
+          bgcolor: '#F8FAFC',
+        }}>
+          <Tabs
+            value={value}
+            onChange={handleChange}
             aria-label="homepage tabs"
             variant={isMobile ? 'scrollable' : 'standard'}
             scrollButtons={isMobile ? 'auto' : false}
             sx={{
-              px: 1,
+              px: 2,
               '& .MuiTabs-indicator': {
                 height: 3,
                 borderRadius: '3px 3px 0 0',
+                background: 'linear-gradient(90deg, #3B82F6 0%, #1D4ED8 100%)',
               },
               '& .MuiTab-root': {
-                minHeight: isMobile ? 44 : 48,
-                fontSize: isMobile ? '0.75rem' : '0.875rem',
+                minHeight: isMobile ? 48 : 52,
+                fontSize: isMobile ? '0.8rem' : '0.9rem',
                 fontWeight: 500,
-                px: isMobile ? 1.5 : 2,
+                px: isMobile ? 2 : 3,
                 color: '#64748B',
-                transition: 'color 0.15s ease',
+                textTransform: 'none',
+                transition: 'all 0.2s ease',
                 '&.Mui-selected': {
-                  color: '#475569',
+                  color: '#1E293B',
                   fontWeight: 600,
                 },
                 '&:hover': {
                   color: '#334155',
+                  bgcolor: 'rgba(59, 130, 246, 0.04)',
                 },
               },
             }}
           >
-            <Tab label={isMobile ? "Port" : "Port Movement"} />
-            <Tab label={isMobile ? "Completed" : "Completed Cargos"} />
-            <Tab label={isMobile ? "In-Road" : "In-Road CIF Cargos"} />
-            <Tab label={isMobile ? "Completed In-Road" : "Completed In-Road CIF"} />
+            <Tab
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {isMobile ? "Port" : "Port Movement"}
+                  <Chip label={portMovement.length} size="small" sx={{ height: 20, fontSize: '0.7rem', bgcolor: value === 0 ? '#3B82F6' : '#E2E8F0', color: value === 0 ? 'white' : '#64748B' }} />
+                </Box>
+              }
+            />
+            <Tab
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {isMobile ? "Completed" : "Completed Cargos"}
+                  <Chip label={completedCargos.length} size="small" sx={{ height: 20, fontSize: '0.7rem', bgcolor: value === 1 ? '#10B981' : '#E2E8F0', color: value === 1 ? 'white' : '#64748B' }} />
+                </Box>
+              }
+            />
+            <Tab
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {isMobile ? "In-Road" : "In-Road CIF"}
+                  <Chip label={inRoadCIF.length} size="small" sx={{ height: 20, fontSize: '0.7rem', bgcolor: value === 2 ? '#8B5CF6' : '#E2E8F0', color: value === 2 ? 'white' : '#64748B' }} />
+                </Box>
+              }
+            />
+            <Tab
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {isMobile ? "Completed In-Road" : "Completed In-Road CIF"}
+                  <Chip label={completedInRoadCIF.length} size="small" sx={{ height: 20, fontSize: '0.7rem', bgcolor: value === 3 ? '#F59E0B' : '#E2E8F0', color: value === 3 ? 'white' : '#64748B' }} />
+                </Box>
+              }
+            />
             <Tab label={isMobile ? "TNG" : "Tonnage Memos"} />
           </Tabs>
         </Box>

@@ -21,7 +21,7 @@ import {
   InputAdornment,
   Chip,
 } from '@mui/material'
-import { Add, Edit, Delete, People, Search, Refresh, Business } from '@mui/icons-material'
+import { Add, Edit, Delete, People, Search, Refresh } from '@mui/icons-material'
 import { customerAPI } from '../api/client'
 import { useToast } from '../contexts/ToastContext'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
@@ -35,73 +35,6 @@ const CUSTOMER_COLUMNS: ColumnConfig[] = [
   { id: 'name', label: 'Name', defaultWidth: 300, minWidth: 150 },
   { id: 'actions', label: 'Actions', defaultWidth: 120, minWidth: 100 },
 ]
-
-// Stat card component
-function StatCard({
-  title,
-  value,
-  icon: Icon,
-  gradient
-}: {
-  title: string
-  value: string | number
-  icon: React.ElementType
-  gradient: string
-}) {
-  return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: 2.5,
-        borderRadius: 3,
-        background: gradient,
-        color: 'white',
-        position: 'relative',
-        overflow: 'hidden',
-        transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-        '&:hover': {
-          transform: 'translateY(-2px)',
-          boxShadow: '0 8px 25px -5px rgba(0, 0, 0, 0.2)',
-        },
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          width: '100px',
-          height: '100px',
-          background: 'rgba(255, 255, 255, 0.1)',
-          borderRadius: '50%',
-          transform: 'translate(30%, -30%)',
-        },
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <Box>
-          <Typography variant="body2" sx={{ opacity: 0.9, mb: 0.5, fontWeight: 500 }}>
-            {title}
-          </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
-            {value}
-          </Typography>
-        </Box>
-        <Box
-          sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            bgcolor: 'rgba(255, 255, 255, 0.2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon sx={{ fontSize: 24 }} />
-        </Box>
-      </Box>
-    </Paper>
-  )
-}
 
 export default function CustomerManagement() {
   const { showError } = useToast()
@@ -320,28 +253,6 @@ export default function CustomerManagement() {
           </Box>
         </Box>
 
-        {/* Stat Card */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2.5, mb: 3 }}>
-          <StatCard
-            title="Total Customers"
-            value={customers.length}
-            icon={Business}
-            gradient="linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)"
-          />
-          <StatCard
-            title="Active This Month"
-            value={customers.length}
-            icon={People}
-            gradient="linear-gradient(135deg, #10B981 0%, #059669 100%)"
-          />
-          <StatCard
-            title="Search Results"
-            value={filteredCustomers.length}
-            icon={Search}
-            gradient="linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)"
-          />
-        </Box>
-
         {/* Search Bar */}
         <TextField
           placeholder="Search customers by name or ID..."
@@ -495,27 +406,9 @@ export default function CustomerManagement() {
                       />
                     </TableCell>
                     <TableCell sx={{ width: columnWidths['name'] }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <Box
-                          sx={{
-                            width: 36,
-                            height: 36,
-                            borderRadius: 2,
-                            background: `linear-gradient(135deg, ${getCustomerColor(customer.name)} 0%, ${getCustomerColor(customer.name)}dd 100%)`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            fontWeight: 700,
-                            fontSize: '0.875rem',
-                          }}
-                        >
-                          {customer.name.charAt(0).toUpperCase()}
-                        </Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B' }}>
-                          {customer.name}
-                        </Typography>
-                      </Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                        {customer.name}
+                      </Typography>
                     </TableCell>
                     <TableCell sx={{ width: columnWidths['actions'] }} align="right">
                       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
@@ -651,20 +544,4 @@ export default function CustomerManagement() {
       </Dialog>
     </Box>
   )
-}
-
-// Helper function to generate consistent colors for customers
-function getCustomerColor(name: string): string {
-  const colors = [
-    '#3B82F6', // blue
-    '#10B981', // green
-    '#8B5CF6', // purple
-    '#F59E0B', // amber
-    '#EF4444', // red
-    '#EC4899', // pink
-    '#06B6D4', // cyan
-    '#84CC16', // lime
-  ]
-  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  return colors[hash % colors.length]
 }
