@@ -225,12 +225,6 @@ export default function ContractSummaryPage() {
     }
   }
 
-  // Check if any product has been amended for the selected year
-  const hasAmendments = (c: Contract) => c.products.some(p => {
-    const { effectiveMin, effectiveMax, originalMin, originalMax } = getProductYearQuantities(c, p)
-    return effectiveMin !== originalMin || effectiveMax !== originalMax
-  })
-
   // For fixed mode: return total_quantity, for min/max mode: return max_quantity (effective)
   const firmTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
     const { effectiveMax } = getProductYearQuantities(c, p)
@@ -247,18 +241,6 @@ export default function ContractSummaryPage() {
   const minTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
     const { effectiveMin } = getProductYearQuantities(c, p)
     return acc + effectiveMin
-  }, 0)
-
-  // Get original min total (before amendments)
-  const originalMinTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
-    const { originalMin } = getProductYearQuantities(c, p)
-    return acc + originalMin
-  }, 0)
-
-  // Get original max total (before amendments)
-  const originalMaxTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
-    const { originalMax } = getProductYearQuantities(c, p)
-    return acc + originalMax
   }, 0)
 
   const saveRemarks = async (contractId: number) => {
