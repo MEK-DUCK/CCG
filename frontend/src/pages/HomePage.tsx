@@ -550,6 +550,13 @@ export default function HomePage() {
 
   const [isInitialLoad, setIsInitialLoad] = useState(true)
 
+  // Helper function to get authority topup from monthly plan (topup is stored on MonthlyPlan, not Cargo)
+  const getCargoTopup = useCallback((cargo: Cargo): number => {
+    if (!cargo.monthly_plan_id) return 0
+    const monthlyPlan = monthlyPlans.find(mp => mp.id === cargo.monthly_plan_id)
+    return (monthlyPlan as any)?.authority_topup_quantity || 0
+  }, [monthlyPlans])
+
   // Presence tracking for cargo editing - only active when dialog is open with a valid cargo
   const cargoPresence = usePresence(
     'cargo',
@@ -2229,7 +2236,7 @@ export default function HomePage() {
                       <Box>
                         {(() => {
                           const totalQty = combieCargos.reduce((sum, c) => sum + c.cargo_quantity, 0)
-                          const totalTopup = combieCargos.reduce((sum, c) => sum + ((c as any).authority_topup_quantity || 0), 0)
+                          const totalTopup = combieCargos.reduce((sum, c) => sum + (getCargoTopup(c) || 0), 0)
                           return (
                             <>
                               <Typography variant="body2" fontWeight={600}>
@@ -2245,9 +2252,9 @@ export default function HomePage() {
                     ) : (
                       <>
                         {cargo.cargo_quantity}
-                        {((cargo as any).authority_topup_quantity || 0) > 0 && (
+                        {(getCargoTopup(cargo) || 0) > 0 && (
                           <Typography variant="caption" sx={{ display: 'block', color: '#10B981' }}>
-                            (incl. {(cargo as any).authority_topup_quantity} top-up)
+                            (incl. {getCargoTopup(cargo)} top-up)
                           </Typography>
                         )}
                       </>
@@ -3045,7 +3052,7 @@ export default function HomePage() {
                       <Box>
                         {(() => {
                           const totalQty = combieCargos.reduce((sum, c) => sum + c.cargo_quantity, 0)
-                          const totalTopup = combieCargos.reduce((sum, c) => sum + ((c as any).authority_topup_quantity || 0), 0)
+                          const totalTopup = combieCargos.reduce((sum, c) => sum + (getCargoTopup(c) || 0), 0)
                           return (
                             <>
                               <Typography variant="body2" fontWeight={600}>
@@ -3061,9 +3068,9 @@ export default function HomePage() {
                     ) : (
                       <>
                         {cargo.cargo_quantity}
-                        {((cargo as any).authority_topup_quantity || 0) > 0 && (
+                        {(getCargoTopup(cargo) || 0) > 0 && (
                           <Typography variant="caption" sx={{ display: 'block', color: '#10B981' }}>
-                            (incl. {(cargo as any).authority_topup_quantity} top-up)
+                            (incl. {getCargoTopup(cargo)} top-up)
                           </Typography>
                         )}
                       </>
@@ -3437,7 +3444,7 @@ export default function HomePage() {
                       <Box>
                         {(() => {
                           const totalQty = combieCargos.reduce((sum, c) => sum + c.cargo_quantity, 0)
-                          const totalTopup = combieCargos.reduce((sum, c) => sum + ((c as any).authority_topup_quantity || 0), 0)
+                          const totalTopup = combieCargos.reduce((sum, c) => sum + (getCargoTopup(c) || 0), 0)
                           return (
                             <>
                               <Typography variant="body2" fontWeight={600}>
@@ -3453,9 +3460,9 @@ export default function HomePage() {
                     ) : (
                       <>
                         {cargo.cargo_quantity}
-                        {((cargo as any).authority_topup_quantity || 0) > 0 && (
+                        {(getCargoTopup(cargo) || 0) > 0 && (
                           <Typography variant="caption" sx={{ display: 'block', color: '#10B981' }}>
-                            (incl. {(cargo as any).authority_topup_quantity} top-up)
+                            (incl. {getCargoTopup(cargo)} top-up)
                           </Typography>
                         )}
                       </>
@@ -4316,7 +4323,7 @@ export default function HomePage() {
                     {cargo ? (
                       <Box>
                         {(() => {
-                          const topupQty = (cargo as any).authority_topup_quantity || 0
+                          const topupQty = getCargoTopup(cargo) || 0
                           return (
                             <>
                               <Typography variant="body2" fontWeight={isCombi ? 600 : 400}>
@@ -4895,7 +4902,7 @@ export default function HomePage() {
                                           .filter(c => c.combi_group_id === cargo.combi_group_id)
                                           .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
                                         const totalQty = combiCargos.reduce((sum, c) => sum + c.cargo_quantity, 0)
-                                        const totalTopup = combiCargos.reduce((sum, c) => sum + ((c as any).authority_topup_quantity || 0), 0)
+                                        const totalTopup = combiCargos.reduce((sum, c) => sum + (getCargoTopup(c) || 0), 0)
                                         return (
                                           <>
                                             <Typography variant="body2" fontWeight={600}>
@@ -4911,9 +4918,9 @@ export default function HomePage() {
                                   ) : (
                                     <>
                                       {cargo.cargo_quantity?.toLocaleString?.() ?? cargo.cargo_quantity}
-                                      {((cargo as any).authority_topup_quantity || 0) > 0 && (
+                                      {(getCargoTopup(cargo) || 0) > 0 && (
                                         <Typography variant="caption" sx={{ display: 'block', color: '#10B981' }}>
-                                          (incl. {(cargo as any).authority_topup_quantity} top-up)
+                                          (incl. {getCargoTopup(cargo)} top-up)
                                         </Typography>
                                       )}
                                     </>
@@ -5375,11 +5382,11 @@ export default function HomePage() {
                           .filter(c => c.combi_group_id === editingCargo.combi_group_id)
                           .filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i)
                         const totalQty = combiCargos.reduce((sum, c) => sum + c.cargo_quantity, 0)
-                        const totalTopup = combiCargos.reduce((sum, c) => sum + ((c as any).authority_topup_quantity || 0), 0)
+                        const totalTopup = combiCargos.reduce((sum, c) => sum + (getCargoTopup(c) || 0), 0)
                         return (
                           <>
                             {combiCargos.map(c => {
-                              const topupQty = (c as any).authority_topup_quantity || 0
+                              const topupQty = getCargoTopup(c) || 0
                               const originalQty = c.cargo_quantity - topupQty
                               return (
                                 <Typography key={c.id} variant="body2" sx={{ color: '#78350F' }}>
@@ -5411,7 +5418,7 @@ export default function HomePage() {
                         Product:
                       </Typography>
                       {(() => {
-                        const topupQty = (editingCargo as any).authority_topup_quantity || 0
+                        const topupQty = getCargoTopup(editingCargo)
                         const originalQty = editingCargo.cargo_quantity - topupQty
                         return (
                           <>

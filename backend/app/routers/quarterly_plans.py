@@ -115,10 +115,16 @@ def create_quarterly_plan(plan: schemas.QuarterlyPlanCreate, db: Session = Depen
         # Multi-product contract with specified product
         product_id_to_store = get_product_id_by_name(db, plan.product_name)
         product_name_for_display = plan.product_name
-    elif len(contract_products) == 1:
+    elif len(contract_products) == 1 and contract_products[0]:
         # Single-product contract - use the contract's product
         product_id_to_store = contract_products[0].get('product_id')
         product_name_for_display = contract_products[0].get('name')
+    elif len(contract_products) == 0:
+        # No products in contract - cannot create quarterly plan
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot create quarterly plan: contract has no products"
+        )
     elif plan.product_name:
         # Multi-product but product specified
         product_id_to_store = get_product_id_by_name(db, plan.product_name)
