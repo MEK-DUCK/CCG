@@ -150,7 +150,9 @@ export default function LiftingPlanPage() {
   }, [])
 
   useEffect(() => {
-    if (customers.length > 0 && contracts.length > 0 && quarterlyPlans.length > 0 && monthlyPlans.length > 0) {
+    // Calculate data when we have customers, contracts, and monthly plans
+    // Note: quarterlyPlans may be empty for range contracts (they don't have quarterly plans)
+    if (customers.length > 0 && contracts.length > 0 && monthlyPlans.length > 0) {
       calculateQuarterlyData()
     }
   }, [selectedQuarter, selectedYear, selectedProduct, customers, contracts, quarterlyPlans, monthlyPlans, cargos, notes])
@@ -213,16 +215,20 @@ export default function LiftingPlanPage() {
     }
     const months = quarterMonths[selectedQuarter]
 
-    // Process each contract's quarterly plans
+    // Process each contract
     contracts.forEach(contract => {
-      // Find quarterly plans for this contract
-      const contractQuarterlyPlans = quarterlyPlans.filter(qp => qp.contract_id === contract.id)
-      
       // Collect all monthly plans for this contract
+      // This includes both:
+      // 1. Monthly plans linked via quarterly plans (fixed quantity contracts)
+      // 2. Monthly plans linked directly to contract (range contracts without quarterly plans)
       const allContractMonthlyPlans: (MonthlyPlan & { productName?: string })[] = []
-      
+
+      // Find quarterly plans for this contract (if any)
+      const contractQuarterlyPlans = quarterlyPlans.filter(qp => qp.contract_id === contract.id)
+
+      // Get monthly plans via quarterly plans
       contractQuarterlyPlans.forEach(qp => {
-        const qpMonthlyPlans = monthlyPlans.filter(mp => 
+        const qpMonthlyPlans = monthlyPlans.filter(mp =>
           mp.quarterly_plan_id === qp.id && mp.year === selectedYear
         )
         qpMonthlyPlans.forEach(mp => {
@@ -230,6 +236,20 @@ export default function LiftingPlanPage() {
             ...mp,
             productName: mp.product_name || undefined
           })
+        })
+      })
+
+      // Also get monthly plans directly linked to this contract (for range contracts)
+      // These may not have a quarterly_plan_id
+      const directMonthlyPlans = monthlyPlans.filter(mp =>
+        mp.contract_id === contract.id &&
+        mp.year === selectedYear &&
+        !mp.quarterly_plan_id // Not already included via quarterly plans
+      )
+      directMonthlyPlans.forEach(mp => {
+        allContractMonthlyPlans.push({
+          ...mp,
+          productName: mp.product_name || undefined
         })
       })
       
