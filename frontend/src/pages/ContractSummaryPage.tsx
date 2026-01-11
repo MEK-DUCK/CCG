@@ -581,37 +581,6 @@ export default function ContractSummaryPage() {
             </IconButton>
           </Box>
 
-          {/* Year Pills */}
-          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', flex: 1, justifyContent: 'center' }}>
-            {availableYears.slice(0, 6).map((year) => {
-              const isSelected = selectedYear === year
-              return (
-                <Box
-                  key={year}
-                  onClick={() => setSelectedYear(year)}
-                  sx={{
-                    px: 1.5,
-                    py: 0.5,
-                    borderRadius: 2,
-                    cursor: 'pointer',
-                    fontSize: '0.8125rem',
-                    fontWeight: 600,
-                    transition: 'all 0.15s ease',
-                    border: isSelected ? '1.5px solid #10B981' : '1px solid #E2E8F0',
-                    bgcolor: isSelected ? '#10B981' : 'white',
-                    color: isSelected ? 'white' : '#64748B',
-                    '&:hover': {
-                      transform: 'scale(1.05)',
-                      boxShadow: isSelected ? '0 2px 8px rgba(16, 185, 129, 0.35)' : '0 2px 8px rgba(0,0,0,0.08)',
-                    },
-                  }}
-                >
-                  {year}
-                </Box>
-              )
-            })}
-          </Box>
-
           {/* Contract Count */}
           <Box
             sx={{
