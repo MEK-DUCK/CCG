@@ -132,8 +132,16 @@ export default function ContractSummaryPage() {
     for (const c of contracts) {
       const sy = Number(String(c.start_period).slice(0, 4))
       const ey = Number(String(c.end_period).slice(0, 4))
-      if (!Number.isNaN(sy)) years.add(sy)
-      if (!Number.isNaN(ey)) years.add(ey)
+      // Add all years in the contract range, not just start and end
+      if (!Number.isNaN(sy) && !Number.isNaN(ey)) {
+        for (let year = sy; year <= ey; year++) {
+          years.add(year)
+        }
+      } else if (!Number.isNaN(sy)) {
+        years.add(sy)
+      } else if (!Number.isNaN(ey)) {
+        years.add(ey)
+      }
     }
     const arr = Array.from(years).sort((a, b) => b - a)
     return arr.length ? arr : [new Date().getFullYear()]
