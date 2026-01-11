@@ -160,12 +160,20 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   // Filter quarterly plans for selected year
   const yearQuarterlyPlans = quarterlyPlans.filter(qp => (qp.contract_year || 1) === selectedYear)
   
-  // Get year label for tabs
+  // Get year label for tabs - shows the 12-month period for each contract year
   const getYearLabel = (contractYear: number): string => {
     if (!contract?.start_period) return `Year ${contractYear}`
+    const startMonth = contract.fiscal_start_month || new Date(contract.start_period).getMonth() + 1
     const startYear = new Date(contract.start_period).getFullYear()
-    const calendarYear = startYear + (contractYear - 1)
-    return `Year ${contractYear} (${calendarYear})`
+    const yearMonths = getContractYearMonths(startMonth, startYear, contractYear)
+    const firstMonth = yearMonths[0]
+    const lastMonth = yearMonths[yearMonths.length - 1]
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    // For Jan-Dec contracts, show just the year; for others show full range
+    if (startMonth === 1) {
+      return `Year ${contractYear} (${firstMonth.year})`
+    }
+    return `Year ${contractYear} (${monthNames[firstMonth.month - 1]} ${firstMonth.year} - ${monthNames[lastMonth.month - 1]} ${lastMonth.year})`
   }
   
   // Filter contract months for the selected contract year
@@ -174,14 +182,18 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const getYearContractMonths = (): Array<{ month: number, year: number }> => {
     if (!contract?.start_period || contractMonths.length === 0) return contractMonths
 
-    // For SPOT/RANGE contracts with multiple years, filter by calendar year
+    // For SPOT/RANGE contracts with multiple years, filter by contract year (based on start month)
     // For single-year contracts, return all months
     if (isSpotContract || isRangeContract) {
       if (numContractYears > 1) {
-        // Multi-year SPOT/RANGE: filter by calendar year based on selectedYear
+        // Multi-year SPOT/RANGE: use fiscal year logic to get correct 12-month period
+        // e.g., contract starting July 2025: Year 1 = Jul 2025 - Jun 2026
+        const fiscalStartMonth = contract.fiscal_start_month || new Date(contract.start_period).getMonth() + 1
         const contractStartYear = new Date(contract.start_period).getFullYear()
-        const calendarYear = contractStartYear + (selectedYear - 1)
-        return contractMonths.filter(cm => cm.year === calendarYear)
+        const yearMonths = getContractYearMonths(fiscalStartMonth, contractStartYear, selectedYear)
+        return contractMonths.filter(cm => {
+          return yearMonths.some(ym => ym.month === cm.month && ym.year === cm.year)
+        })
       }
       return contractMonths
     }
@@ -191,9 +203,10 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     
     // Use centralized utility to get the 12 months for this contract year
     const yearMonths = getContractYearMonths(fiscalStartMonth, contractStartYear, selectedYear)
-    
-    // For CIF contracts in Year 1, also include the pre-month (for loadings that deliver in first month)
-    if (contractType === 'CIF' && selectedYear === 1) {
+
+    // For CIF contracts, include the pre-month (month before first month of this contract year)
+    // This is for loadings that happen in the pre-month but deliver in the first month of the contract year
+    if (contractType === 'CIF') {
       const baseYear = contractStartYear + (selectedYear - 1)
       let preMonth = fiscalStartMonth - 1
       let preYear = baseYear
@@ -368,18 +381,22 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           const allPlans = monthlyRes.data || []
           
           // For multi-year RANGE/SPOT contracts, filter by selectedYear to show only that year's plans
-          // Calculate the calendar year for the selected contract year
+          // Use fiscal year logic to get correct 12-month period
           let filteredPlans = allPlans
           if (contract?.start_period) {
             const contractStartYear = new Date(contract.start_period).getFullYear()
-            const calendarYear = contractStartYear + (selectedYear - 1)
-            
+            const fiscalStartMonth = contract.fiscal_start_month || new Date(contract.start_period).getMonth() + 1
+
             // Always filter by selectedYear if we have year tabs (numContractYears > 1)
             // OR if the contract spans multiple calendar years (check if plans have different years)
             const uniqueYears = new Set(allPlans.map((p: any) => p.year))
             if (numContractYears > 1 || uniqueYears.size > 1) {
-              filteredPlans = allPlans.filter((p: any) => p.year === calendarYear)
-              console.log(`Filtered RANGE/SPOT plans for Year ${selectedYear} (${calendarYear}):`, filteredPlans.map((p: any) => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
+              // Get the 12 months for this contract year (handles mid-year starts correctly)
+              const yearMonths = getContractYearMonths(fiscalStartMonth, contractStartYear, selectedYear)
+              filteredPlans = allPlans.filter((p: any) =>
+                yearMonths.some(ym => ym.month === p.month && ym.year === p.year)
+              )
+              console.log(`Filtered RANGE/SPOT plans for Year ${selectedYear}:`, filteredPlans.map((p: any) => ({ id: p.id, month: p.month, year: p.year, product: p.product_name })))
             }
           }
           
@@ -1729,17 +1746,19 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             const totalQuantity = maxQuantity  // Total possible = firm + optional
             
             // Calculate total allocated across months for THIS YEAR ONLY
-            // Filter monthEntries to only include entries for the selected year
+            // Filter monthEntries to only include entries for the selected contract year
             const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
-            const calendarYear = contractStartYear + (selectedYear - 1)
-            
+            const fiscalStartMonth = contract?.fiscal_start_month || (contract?.start_period ? new Date(contract.start_period).getMonth() + 1 : 1)
+            const contractYearMonths = getContractYearMonths(fiscalStartMonth, contractStartYear, selectedYear)
+
             const allocated = Object.entries(monthEntries)
               .filter(([key]) => {
-                // Key format is "month-year", extract year
+                // Key format is "month-year", check if it falls within contract year
                 const parts = key.split('-')
                 if (parts.length === 2) {
+                  const entryMonth = parseInt(parts[0])
                   const entryYear = parseInt(parts[1])
-                  return entryYear === calendarYear
+                  return contractYearMonths.some(ym => ym.month === entryMonth && ym.year === entryYear)
                 }
                 return false
               })
@@ -2177,22 +2196,22 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               const loadingMonthsSet = new Set<string>()
               const deliveryMonthsSet = new Set<string>()
               const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
-              const calendarYear = contractStartYear + (selectedYear - 1)
+              const fiscalStartMonth = contract?.fiscal_start_month || (contract?.start_period ? new Date(contract.start_period).getMonth() + 1 : 1)
+              const contractYearMonths = numContractYears > 1
+                ? getContractYearMonths(fiscalStartMonth, contractStartYear, selectedYear)
+                : null
 
               // Check monthEntries - only filter by year for multi-year contracts
               Object.entries(monthEntries).forEach(([key, entries]) => {
+                const [month, year] = key.split('-').map(Number)
+
                 // Only apply year filtering for multi-year contracts
-                if (numContractYears > 1) {
-                  const parts = key.split('-')
-                  if (parts.length === 2) {
-                    const entryYear = parseInt(parts[1])
-                    if (entryYear !== calendarYear) {
-                      return // Skip entries not from selected year
-                    }
+                if (contractYearMonths) {
+                  if (!contractYearMonths.some(ym => ym.month === month && ym.year === year)) {
+                    return // Skip entries not from selected contract year
                   }
                 }
 
-                const [month, year] = key.split('-').map(Number)
                 entries.forEach(entry => {
                   // For CIF contracts, use loading_month if available, otherwise use fallback (plan's month-year)
                   if (contractType === 'CIF') {
@@ -2211,8 +2230,8 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               // Also check existingMonthlyPlans - only filter by year for multi-year contracts
               existingMonthlyPlans.forEach((plan: any) => {
                 // Only apply year filtering for multi-year contracts
-                if (numContractYears > 1 && plan.year !== calendarYear) {
-                  return // Skip plans not from selected year
+                if (contractYearMonths && !contractYearMonths.some(ym => ym.month === plan.month && ym.year === plan.year)) {
+                  return // Skip plans not from selected contract year
                 }
 
                 // For CIF contracts, use loading_month if available, otherwise use fallback (plan's month-year)
@@ -2313,16 +2332,18 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 )}
                 <Typography variant="caption" sx={{ fontWeight: 600, color: '#64748B' }}>Actions</Typography>
               </Box>
-              {/* Table rows - filter to only show selected year */}
+              {/* Table rows - filter to only show selected contract year */}
               {Object.entries(monthEntries)
                 .filter(([key]) => {
-                  // Filter to only show entries for the selected year
+                  // Filter to only show entries for the selected contract year
                   const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
-                  const calendarYear = contractStartYear + (selectedYear - 1)
+                  const fiscalStartMonth = contract?.fiscal_start_month || (contract?.start_period ? new Date(contract.start_period).getMonth() + 1 : 1)
+                  const contractYearMonths = getContractYearMonths(fiscalStartMonth, contractStartYear, selectedYear)
                   const parts = key.split('-')
                   if (parts.length === 2) {
+                    const entryMonth = parseInt(parts[0])
                     const entryYear = parseInt(parts[1])
-                    return entryYear === calendarYear
+                    return contractYearMonths.some(ym => ym.month === entryMonth && ym.year === entryYear)
                   }
                   return false
                 })
@@ -2969,22 +2990,22 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             const loadingMonthsSet = new Set<string>()
             const deliveryMonthsSet = new Set<string>()
             const contractStartYear = contract?.start_period ? new Date(contract.start_period).getFullYear() : new Date().getFullYear()
-            const calendarYear = contractStartYear + (selectedYear - 1)
+            const fiscalStartMonth = contract?.fiscal_start_month || (contract?.start_period ? new Date(contract.start_period).getMonth() + 1 : 1)
+            const contractYearMonths = numContractYears > 1
+              ? getContractYearMonths(fiscalStartMonth, contractStartYear, selectedYear)
+              : null
 
-            // Check monthEntries - filter by selected year for multi-year contracts
+            // Check monthEntries - filter by selected contract year for multi-year contracts
             Object.entries(monthEntries).forEach(([key, entries]) => {
-              // Only include entries from the selected year if multi-year contract
-              if (numContractYears > 1) {
-                const parts = key.split('-')
-                if (parts.length === 2) {
-                  const entryYear = parseInt(parts[1])
-                  if (entryYear !== calendarYear) {
-                    return // Skip entries not from selected year
-                  }
+              const [month, year] = key.split('-').map(Number)
+
+              // Only include entries from the selected contract year if multi-year contract
+              if (contractYearMonths) {
+                if (!contractYearMonths.some(ym => ym.month === month && ym.year === year)) {
+                  return // Skip entries not from selected contract year
                 }
               }
 
-              const [month, year] = key.split('-').map(Number)
               entries.forEach(entry => {
                 // For CIF contracts, use loading_month if available, otherwise use fallback (plan's month-year)
                 if (contractType === 'CIF') {
@@ -3000,11 +3021,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               })
             })
 
-            // Also check existingMonthlyPlans - filter by selected year for multi-year contracts
+            // Also check existingMonthlyPlans - filter by selected contract year for multi-year contracts
             existingMonthlyPlans.forEach((plan: any) => {
-              // Only include plans from the selected year if multi-year contract
-              if (numContractYears > 1 && plan.year !== calendarYear) {
-                return // Skip plans not from selected year
+              // Only include plans from the selected contract year if multi-year contract
+              if (contractYearMonths && !contractYearMonths.some(ym => ym.month === plan.month && ym.year === plan.year)) {
+                return // Skip plans not from selected contract year
               }
 
               // For CIF contracts, use loading_month if available, otherwise use fallback (plan's month-year)
