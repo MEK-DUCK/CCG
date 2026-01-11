@@ -9,7 +9,7 @@
 // CONTRACT TYPE
 // ============================================
 export const CONTRACT_TYPE_COLORS = {
-  FOB: { bgcolor: '#F1F5F9', color: '#475569' },  // Slate (neutral)
+  FOB: { bgcolor: '#DBEAFE', color: '#1E40AF' },  // Soft blue
   CIF: { bgcolor: '#FEF3C7', color: '#92400E' },  // Muted amber
 } as const
 
@@ -17,8 +17,17 @@ export const CONTRACT_TYPE_COLORS = {
 // PAYMENT METHOD
 // ============================================
 export const PAYMENT_COLORS = {
-  'T/T': { bgcolor: '#F1F5F9', color: '#475569' },  // Slate
-  'LC': { bgcolor: '#F5F3FF', color: '#6D28D9' },   // Soft violet
+  'T/T': { bgcolor: '#E0E7FF', color: '#3730A3' },  // Soft indigo
+  'LC': { bgcolor: '#FEE2E2', color: '#991B1B' },   // Soft red (attention)
+} as const
+
+// ============================================
+// CONTRACT CATEGORY
+// ============================================
+export const CONTRACT_CATEGORY_COLORS = {
+  TERM: { bgcolor: '#F0FDF4', color: '#166534', borderColor: '#86EFAC' },       // Soft green
+  SEMI_TERM: { bgcolor: '#FEF9C3', color: '#854D0E', borderColor: '#FDE047' },  // Soft yellow
+  SPOT: { bgcolor: '#FCE7F3', color: '#9D174D', borderColor: '#F9A8D4' },       // Soft pink
 } as const
 
 // ============================================
@@ -158,6 +167,13 @@ export const getContractTypeColor = (type: 'FOB' | 'CIF' | string): { bgcolor: s
  */
 export const getPaymentColor = (method: 'T/T' | 'LC' | string): { bgcolor: string; color: string } => {
   return PAYMENT_COLORS[method as keyof typeof PAYMENT_COLORS] || PAYMENT_COLORS['T/T']
+}
+
+/**
+ * Get contract category color
+ */
+export const getContractCategoryColor = (category: 'TERM' | 'SEMI_TERM' | 'SPOT' | string): { bgcolor: string; color: string; borderColor: string } => {
+  return CONTRACT_CATEGORY_COLORS[category as keyof typeof CONTRACT_CATEGORY_COLORS] || CONTRACT_CATEGORY_COLORS.TERM
 }
 
 /**

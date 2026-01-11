@@ -37,7 +37,7 @@ import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-ma
 import client, { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity, AuthorityAmendment } from '../types'
 import { setVoyageDurations, getCifDestinations, type DischargePort } from '../utils/voyageDuration'
-import { getContractTypeColor, getPaymentColor } from '../utils/chipColors'
+import { getContractTypeColor, getPaymentColor, getContractCategoryColor } from '../utils/chipColors'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
 import { useConflictHandler } from '../components/Presence'
@@ -970,21 +970,23 @@ export default function ContractManagement() {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        label={contract.contract_category === 'SEMI_TERM' ? 'Semi-Term' : 
-                               contract.contract_category === 'SPOT' ? 'Spot' : 'Term'}
-                        size="small"
-                        sx={{ 
-                          fontWeight: 600,
-                          bgcolor: contract.contract_category === 'TERM' ? '#E0E7FF' :
-                                   contract.contract_category === 'SEMI_TERM' ? '#FEF3C7' : '#FCE7F3',
-                          color: contract.contract_category === 'TERM' ? '#3730A3' :
-                                 contract.contract_category === 'SEMI_TERM' ? '#92400E' : '#9D174D',
-                          border: '1px solid',
-                          borderColor: contract.contract_category === 'TERM' ? '#A5B4FC' :
-                                       contract.contract_category === 'SEMI_TERM' ? '#FCD34D' : '#F9A8D4',
-                        }}
-                      />
+                      {(() => {
+                        const categoryColors = getContractCategoryColor(contract.contract_category || 'TERM')
+                        return (
+                          <Chip
+                            label={contract.contract_category === 'SEMI_TERM' ? 'Semi-Term' :
+                                   contract.contract_category === 'SPOT' ? 'Spot' : 'Term'}
+                            size="small"
+                            sx={{
+                              fontWeight: 600,
+                              bgcolor: categoryColors.bgcolor,
+                              color: categoryColors.color,
+                              border: '1px solid',
+                              borderColor: categoryColors.borderColor,
+                            }}
+                          />
+                        )
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Chip
