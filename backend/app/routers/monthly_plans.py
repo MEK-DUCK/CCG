@@ -802,12 +802,14 @@ async def move_monthly_plan(
     
     if is_cif:
         # For CIF, target_month/target_year in the request IS the delivery month
-        # Source is the current delivery_month
+        # Source is the current delivery_month - MUST be set for CIF moves
         source_month, source_year = _parse_delivery_month(db_plan.delivery_month)
         if source_month is None:
-            # Fallback to loading month if delivery_month not set
-            source_month = db_plan.month
-            source_year = db_plan.year
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot move CIF monthly plan: delivery_month is not set or invalid ('{db_plan.delivery_month}'). "
+                       f"Please set the delivery month before moving this plan."
+            )
         target_month = move_request.target_month
         target_year = move_request.target_year
     else:
