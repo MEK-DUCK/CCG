@@ -92,6 +92,14 @@ Combi cargos allow multiple products to be loaded on a single vessel, sharing th
 - **Modern UI Design**: Gradient stat cards, collapsible sections, animated elements on Dashboard and Calendar pages
 - **Shared Row Highlights**: Team leaders can highlight rows in Port Movement for team visibility (persists across sessions and devices)
 - **Month Dividers**: When viewing multiple months in Port Movement, rows are grouped by month with visual dividers
+- **Multi-Select Filters**: Port Movement filters support multiple selections with checkboxes
+- **Product Chips**: Color-coded product chips throughout the application for easy identification
+
+### Export Features
+- **Professional Excel Exports**: Styled Excel exports with formatted headers, alternating row colors, borders, and summary totals
+- **PDF Exports**: Export Port Movement and Lifting Plan to PDF format
+- **Lifting Plan Full Year View**: View all 12 months (Jan-Dec) at once with the "ALL" option
+- **Port Movement Excel**: Two sheets - Port Movement schedule and Active Loadings by port
 
 ## Technology Stack
 

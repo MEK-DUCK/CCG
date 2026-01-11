@@ -27,18 +27,44 @@ import type { Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo } from '../t
 import { getContractTypeColor, getProductColor, BADGE_COLORS } from '../utils/chipColors'
 import { useToast } from '../contexts/ToastContext'
 
-// Column configuration for resizable columns
-const COLUMN_CONFIG = [
+// Column configuration for resizable columns (base columns + dynamic month columns)
+const BASE_COLUMN_CONFIG = [
   { id: 'customer', label: 'Customer', defaultWidth: 200, minWidth: 100 },
   { id: 'contract', label: 'Contract Number', defaultWidth: 200, minWidth: 100 },
   { id: 'products', label: 'Product(s)', defaultWidth: 220, minWidth: 100 },
   { id: 'type', label: 'Type', defaultWidth: 120, minWidth: 80 },
+]
+
+// Month columns (for 3 months in quarterly view)
+const MONTH_COLUMN_CONFIG_3 = [
   { id: 'month1', label: 'Month 1', defaultWidth: 150, minWidth: 100 },
   { id: 'month2', label: 'Month 2', defaultWidth: 150, minWidth: 100 },
   { id: 'month3', label: 'Month 3', defaultWidth: 150, minWidth: 100 },
+]
+
+// Month columns (for 12 months in ALL view - narrower to fit)
+const MONTH_COLUMN_CONFIG_12 = [
+  { id: 'month1', label: 'Jan', defaultWidth: 100, minWidth: 80 },
+  { id: 'month2', label: 'Feb', defaultWidth: 100, minWidth: 80 },
+  { id: 'month3', label: 'Mar', defaultWidth: 100, minWidth: 80 },
+  { id: 'month4', label: 'Apr', defaultWidth: 100, minWidth: 80 },
+  { id: 'month5', label: 'May', defaultWidth: 100, minWidth: 80 },
+  { id: 'month6', label: 'Jun', defaultWidth: 100, minWidth: 80 },
+  { id: 'month7', label: 'Jul', defaultWidth: 100, minWidth: 80 },
+  { id: 'month8', label: 'Aug', defaultWidth: 100, minWidth: 80 },
+  { id: 'month9', label: 'Sep', defaultWidth: 100, minWidth: 80 },
+  { id: 'month10', label: 'Oct', defaultWidth: 100, minWidth: 80 },
+  { id: 'month11', label: 'Nov', defaultWidth: 100, minWidth: 80 },
+  { id: 'month12', label: 'Dec', defaultWidth: 100, minWidth: 80 },
+]
+
+const END_COLUMN_CONFIG = [
   { id: 'total', label: 'Total', defaultWidth: 150, minWidth: 100 },
   { id: 'remark', label: 'Remark', defaultWidth: 250, minWidth: 150 },
 ]
+
+// For backwards compatibility, keep COLUMN_CONFIG as the 3-month version
+const COLUMN_CONFIG = [...BASE_COLUMN_CONFIG, ...MONTH_COLUMN_CONFIG_3, ...END_COLUMN_CONFIG]
 
 interface MonthlyPlanEntry {
   monthlyPlanId: number
@@ -68,6 +94,16 @@ interface ContractQuarterlyData {
   month1Entries: MonthlyPlanEntry[]  // All entries for month 1
   month2Entries: MonthlyPlanEntry[]  // All entries for month 2
   month3Entries: MonthlyPlanEntry[]  // All entries for month 3
+  // Additional months for ALL (full year) view
+  month4Entries?: MonthlyPlanEntry[]
+  month5Entries?: MonthlyPlanEntry[]
+  month6Entries?: MonthlyPlanEntry[]
+  month7Entries?: MonthlyPlanEntry[]
+  month8Entries?: MonthlyPlanEntry[]
+  month9Entries?: MonthlyPlanEntry[]
+  month10Entries?: MonthlyPlanEntry[]
+  month11Entries?: MonthlyPlanEntry[]
+  month12Entries?: MonthlyPlanEntry[]
   total: number
   notes: string
 }
@@ -288,7 +324,7 @@ export default function LiftingPlanPage() {
 
       // Initialize contract entry if not exists
       if (!dataMap.has(contract.id)) {
-        dataMap.set(contract.id, {
+        const baseEntry: ContractQuarterlyData = {
           customerId: contract.customer_id,
           customerName: customer.name,
           contractId: contract.id,
@@ -302,7 +338,20 @@ export default function LiftingPlanPage() {
           month3Entries: [],
           total: 0,
           notes: notes.get(contract.id) || '',
-        })
+        }
+        // Add month 4-12 entries for ALL (full year) view
+        if (selectedQuarter === 'ALL') {
+          baseEntry.month4Entries = []
+          baseEntry.month5Entries = []
+          baseEntry.month6Entries = []
+          baseEntry.month7Entries = []
+          baseEntry.month8Entries = []
+          baseEntry.month9Entries = []
+          baseEntry.month10Entries = []
+          baseEntry.month11Entries = []
+          baseEntry.month12Entries = []
+        }
+        dataMap.set(contract.id, baseEntry)
       }
       
       const contractData = dataMap.get(contract.id)!
@@ -367,13 +416,23 @@ export default function LiftingPlanPage() {
             topupQuantity: matchingProduct.topupQuantity,  // Only the filtered product's top-up
           }
 
-          if (monthIndex === 0) {
-            contractData.month1Entries.push(entry)
-          } else if (monthIndex === 1) {
-            contractData.month2Entries.push(entry)
-          } else if (monthIndex === 2) {
-            contractData.month3Entries.push(entry)
+          // Helper to add entry to correct month array
+          const addToMonth = (idx: number, e: MonthlyPlanEntry) => {
+            if (idx === 0) contractData.month1Entries.push(e)
+            else if (idx === 1) contractData.month2Entries.push(e)
+            else if (idx === 2) contractData.month3Entries.push(e)
+            else if (idx === 3 && contractData.month4Entries) contractData.month4Entries.push(e)
+            else if (idx === 4 && contractData.month5Entries) contractData.month5Entries.push(e)
+            else if (idx === 5 && contractData.month6Entries) contractData.month6Entries.push(e)
+            else if (idx === 6 && contractData.month7Entries) contractData.month7Entries.push(e)
+            else if (idx === 7 && contractData.month8Entries) contractData.month8Entries.push(e)
+            else if (idx === 8 && contractData.month9Entries) contractData.month9Entries.push(e)
+            else if (idx === 9 && contractData.month10Entries) contractData.month10Entries.push(e)
+            else if (idx === 10 && contractData.month11Entries) contractData.month11Entries.push(e)
+            else if (idx === 11 && contractData.month12Entries) contractData.month12Entries.push(e)
           }
+
+          addToMonth(monthIndex, entry)
         } else {
           // No filter - show all products in the combi
           const totalQuantity = combiPlans.reduce((sum, mp) => sum + mp.month_quantity, 0)
@@ -394,13 +453,23 @@ export default function LiftingPlanPage() {
             topupQuantity: totalTopup,
           }
 
-          if (monthIndex === 0) {
-            contractData.month1Entries.push(entry)
-          } else if (monthIndex === 1) {
-            contractData.month2Entries.push(entry)
-          } else if (monthIndex === 2) {
-            contractData.month3Entries.push(entry)
+          // Helper to add entry to correct month array
+          const addToMonth = (idx: number, e: MonthlyPlanEntry) => {
+            if (idx === 0) contractData.month1Entries.push(e)
+            else if (idx === 1) contractData.month2Entries.push(e)
+            else if (idx === 2) contractData.month3Entries.push(e)
+            else if (idx === 3 && contractData.month4Entries) contractData.month4Entries.push(e)
+            else if (idx === 4 && contractData.month5Entries) contractData.month5Entries.push(e)
+            else if (idx === 5 && contractData.month6Entries) contractData.month6Entries.push(e)
+            else if (idx === 6 && contractData.month7Entries) contractData.month7Entries.push(e)
+            else if (idx === 7 && contractData.month8Entries) contractData.month8Entries.push(e)
+            else if (idx === 8 && contractData.month9Entries) contractData.month9Entries.push(e)
+            else if (idx === 9 && contractData.month10Entries) contractData.month10Entries.push(e)
+            else if (idx === 10 && contractData.month11Entries) contractData.month11Entries.push(e)
+            else if (idx === 11 && contractData.month12Entries) contractData.month12Entries.push(e)
           }
+
+          addToMonth(monthIndex, entry)
         }
       })
 
@@ -408,10 +477,10 @@ export default function LiftingPlanPage() {
         nonCombiPlans.forEach(mp => {
         // If a product filter is selected, skip plans that don't match the category
         if (selectedProduct && !productMatchesCategory(mp.productName, selectedProduct)) return
-        
+
         const monthIndex = months.indexOf(mp.month)
         if (monthIndex === -1) return
-              
+
               const entry: MonthlyPlanEntry = {
                 monthlyPlanId: mp.id,
                 month: mp.month,
@@ -426,20 +495,39 @@ export default function LiftingPlanPage() {
           topupQuantity: (mp as any).authority_topup_quantity || 0,
               }
 
-              if (monthIndex === 0) {
-                contractData.month1Entries.push(entry)
-              } else if (monthIndex === 1) {
-                contractData.month2Entries.push(entry)
-              } else if (monthIndex === 2) {
-                contractData.month3Entries.push(entry)
-              }
+          // Helper to add entry to correct month array
+          const addToMonth = (idx: number, e: MonthlyPlanEntry) => {
+            if (idx === 0) contractData.month1Entries.push(e)
+            else if (idx === 1) contractData.month2Entries.push(e)
+            else if (idx === 2) contractData.month3Entries.push(e)
+            else if (idx === 3 && contractData.month4Entries) contractData.month4Entries.push(e)
+            else if (idx === 4 && contractData.month5Entries) contractData.month5Entries.push(e)
+            else if (idx === 5 && contractData.month6Entries) contractData.month6Entries.push(e)
+            else if (idx === 6 && contractData.month7Entries) contractData.month7Entries.push(e)
+            else if (idx === 7 && contractData.month8Entries) contractData.month8Entries.push(e)
+            else if (idx === 8 && contractData.month9Entries) contractData.month9Entries.push(e)
+            else if (idx === 9 && contractData.month10Entries) contractData.month10Entries.push(e)
+            else if (idx === 10 && contractData.month11Entries) contractData.month11Entries.push(e)
+            else if (idx === 11 && contractData.month12Entries) contractData.month12Entries.push(e)
+          }
+
+          addToMonth(monthIndex, entry)
         })
               
-        // Calculate total
-        contractData.total = 
+        // Calculate total (include months 4-12 for ALL view)
+        contractData.total =
           contractData.month1Entries.reduce((sum, e) => sum + e.quantity, 0) +
           contractData.month2Entries.reduce((sum, e) => sum + e.quantity, 0) +
-          contractData.month3Entries.reduce((sum, e) => sum + e.quantity, 0)
+          contractData.month3Entries.reduce((sum, e) => sum + e.quantity, 0) +
+          (contractData.month4Entries?.reduce((sum, e) => sum + e.quantity, 0) || 0) +
+          (contractData.month5Entries?.reduce((sum, e) => sum + e.quantity, 0) || 0) +
+          (contractData.month6Entries?.reduce((sum, e) => sum + e.quantity, 0) || 0) +
+          (contractData.month7Entries?.reduce((sum, e) => sum + e.quantity, 0) || 0) +
+          (contractData.month8Entries?.reduce((sum, e) => sum + e.quantity, 0) || 0) +
+          (contractData.month9Entries?.reduce((sum, e) => sum + e.quantity, 0) || 0) +
+          (contractData.month10Entries?.reduce((sum, e) => sum + e.quantity, 0) || 0) +
+          (contractData.month11Entries?.reduce((sum, e) => sum + e.quantity, 0) || 0) +
+          (contractData.month12Entries?.reduce((sum, e) => sum + e.quantity, 0) || 0)
     })
 
     setContractData(dataMap)
@@ -464,7 +552,7 @@ export default function LiftingPlanPage() {
 
   const getMonthName = (quarter: 'ALL' | 'Q1' | 'Q2' | 'Q3' | 'Q4', index: number): string => {
     const monthNames: Record<'ALL' | 'Q1' | 'Q2' | 'Q3' | 'Q4', string[]> = {
-      ALL: ['Q1 (Jan-Mar)', 'Q2 (Apr-Jun)', 'Q3 (Jul-Sep)'],  // When ALL, show quarterly totals
+      ALL: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
       Q1: ['January', 'February', 'March'],
       Q2: ['April', 'May', 'June'],
       Q3: ['July', 'August', 'September'],
@@ -477,8 +565,14 @@ export default function LiftingPlanPage() {
     let result = Array.from(contractData.values())
       // Only show contracts that have entries for the selected product and selected quarter
       .filter((d) => {
-        // Show all years that have data for the selected quarter months
-        return d.month1Entries.length > 0 || d.month2Entries.length > 0 || d.month3Entries.length > 0 || d.total > 0
+        // Show contracts that have data for any month or have a total
+        const hasMonth1to3 = d.month1Entries.length > 0 || d.month2Entries.length > 0 || d.month3Entries.length > 0
+        const hasMonth4to12 = (d.month4Entries?.length || 0) > 0 || (d.month5Entries?.length || 0) > 0 ||
+          (d.month6Entries?.length || 0) > 0 || (d.month7Entries?.length || 0) > 0 ||
+          (d.month8Entries?.length || 0) > 0 || (d.month9Entries?.length || 0) > 0 ||
+          (d.month10Entries?.length || 0) > 0 || (d.month11Entries?.length || 0) > 0 ||
+          (d.month12Entries?.length || 0) > 0
+        return hasMonth1to3 || hasMonth4to12 || d.total > 0
       })
       .sort((a, b) => {
         const customerCompare = a.customerName.localeCompare(b.customerName)
@@ -490,93 +584,225 @@ export default function LiftingPlanPage() {
   }
 
   const handleExportToExcel = () => {
-    // Dynamic import of xlsx to avoid issues if not installed
-    import('xlsx').then((XLSX) => {
+    // Dynamic import of xlsx-js-style for styled Excel export
+    import('xlsx-js-style').then((XLSX) => {
       const dataArray = getFilteredDataArray()
+      const isFullYear = selectedQuarter === 'ALL'
+      const monthCount = isFullYear ? 12 : 3
 
-      const exportData: any[] = dataArray.map((data) => {
-        // Helper to format entry with combi info
-        const formatEntry = (entry: MonthlyPlanEntry) => {
-          let result = `${entry.quantity.toLocaleString()} KT`
-          
-          if (entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0) {
-            result += ' [Combie]'
-            const productDetails = entry.combiProducts.map(cp => `${cp.productName}: ${cp.quantity.toLocaleString()} KT`).join(', ')
-            result += `\n(${productDetails})`
-          }
-          
-          if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
-            const parts: string[] = []
-            if (entry.laycan5Days) parts.push(`5 Days: ${entry.laycan5Days}`)
-            if (entry.laycan2Days) parts.push(`2 Days: ${entry.laycan2Days}`)
-            if (parts.length > 0) result += `\n${parts.join(', ')}`
-          }
-          
-          if (data.contractType === 'CIF' && (entry.loadingWindow || entry.deliveryWindow)) {
-            const parts: string[] = []
-            if (entry.loadingWindow) parts.push(`Loading: ${entry.loadingWindow}`)
-            if (entry.deliveryWindow) parts.push(`Delivery: ${entry.deliveryWindow}`)
-            if (parts.length > 0) result += `\n${parts.join(', ')}`
-          }
-          
-          return result
+      // Helper to get month entries array
+      const getMonthEntriesArray = (data: ContractQuarterlyData): MonthlyPlanEntry[][] => [
+        data.month1Entries,
+        data.month2Entries,
+        data.month3Entries,
+        data.month4Entries || [],
+        data.month5Entries || [],
+        data.month6Entries || [],
+        data.month7Entries || [],
+        data.month8Entries || [],
+        data.month9Entries || [],
+        data.month10Entries || [],
+        data.month11Entries || [],
+        data.month12Entries || [],
+      ]
+
+      // Helper to format entry with combi info
+      const formatEntry = (entry: MonthlyPlanEntry, contractType: string) => {
+        let result = `${entry.quantity.toLocaleString()} KT`
+
+        if (entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0) {
+          result += ' [Combi]'
+          const productDetails = entry.combiProducts.map(cp => `${cp.productName}: ${cp.quantity.toLocaleString()} KT`).join(', ')
+          result += `\n(${productDetails})`
         }
 
-        // Format month 1 entries
-        const month1Parts = data.month1Entries.map(formatEntry)
-        const month1Text = month1Parts.length > 0 ? month1Parts.join('\n\n') : '-'
-        
-        // Format month 2 entries
-        const month2Parts = data.month2Entries.map(formatEntry)
-        const month2Text = month2Parts.length > 0 ? month2Parts.join('\n\n') : '-'
-        
-        // Format month 3 entries
-        const month3Parts = data.month3Entries.map(formatEntry)
-        const month3Text = month3Parts.length > 0 ? month3Parts.join('\n\n') : '-'
-
-        return {
-          'Customer': data.customerName,
-          'Contract Number': data.contractNumber,
-          'Product(s)': data.productsText || '-',
-          'Type': data.contractType,
-          [getMonthName(selectedQuarter, 0)]: month1Text,
-          [getMonthName(selectedQuarter, 1)]: month2Text,
-          [getMonthName(selectedQuarter, 2)]: month3Text,
-          [`Total (${selectedQuarter})`]: `${data.total.toLocaleString()} KT`,
-          'Remark': data.notes || '',
+        if (contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
+          if (entry.laycan5Days) result += `\n5 Days: ${entry.laycan5Days}`
+          if (entry.laycan2Days) result += `\n2 Days: ${entry.laycan2Days}`
         }
+
+        if (contractType === 'CIF' && (entry.loadingMonth || entry.loadingWindow || entry.deliveryMonth || entry.deliveryWindow)) {
+          const parts: string[] = []
+          if (entry.loadingMonth || entry.loadingWindow) {
+            parts.push(`Loading: ${[entry.loadingMonth, entry.loadingWindow].filter(Boolean).join(' - ')}`)
+          }
+          if (entry.deliveryMonth || entry.deliveryWindow) {
+            parts.push(`Delivery: ${[entry.deliveryMonth, entry.deliveryWindow].filter(Boolean).join(' - ')}`)
+          }
+          if (parts.length > 0) result += `\n${parts.join('\n')}`
+        }
+
+        return result
+      }
+
+      // Build headers
+      const headers = ['Customer', 'Contract Number', 'Product(s)', 'Type']
+      for (let i = 0; i < monthCount; i++) {
+        headers.push(getMonthName(selectedQuarter, i))
+      }
+      headers.push(`Total (${selectedQuarter === 'ALL' ? 'Year' : selectedQuarter})`)
+      headers.push('Remark')
+
+      // Styles
+      const titleStyle = {
+        font: { bold: true, sz: 16, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '1E40AF' } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+      }
+      const headerStyle = {
+        font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '3B82F6' } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } },
+        },
+      }
+      const cellStyle = {
+        font: { sz: 10 },
+        alignment: { vertical: 'top', wrapText: true },
+        border: {
+          top: { style: 'thin', color: { rgb: 'D1D5DB' } },
+          bottom: { style: 'thin', color: { rgb: 'D1D5DB' } },
+          left: { style: 'thin', color: { rgb: 'D1D5DB' } },
+          right: { style: 'thin', color: { rgb: 'D1D5DB' } },
+        },
+      }
+      const altRowStyle = {
+        ...cellStyle,
+        fill: { fgColor: { rgb: 'F8FAFC' } },
+      }
+      const totalCellStyle = {
+        ...cellStyle,
+        font: { bold: true, sz: 10 },
+        fill: { fgColor: { rgb: 'EFF6FF' } },
+      }
+      const summaryStyle = {
+        font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '1E40AF' } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'medium', color: { rgb: '000000' } },
+          bottom: { style: 'medium', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } },
+        },
+      }
+
+      // Build worksheet data
+      const wsData: any[][] = []
+
+      // Title row
+      const titleText = `Lifting Plan - ${selectedQuarter === 'ALL' ? 'Full Year' : selectedQuarter} ${selectedYear} - ${selectedProduct}`
+      wsData.push([{ v: titleText, s: titleStyle }])
+
+      // Subtitle row
+      const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      wsData.push([{ v: `Generated: ${dateStr}`, s: { font: { italic: true, sz: 9, color: { rgb: '6B7280' } } } }])
+
+      // Empty row
+      wsData.push([])
+
+      // Header row
+      wsData.push(headers.map(h => ({ v: h, s: headerStyle })))
+
+      // Data rows
+      let grandTotal = 0
+      dataArray.forEach((data, rowIndex) => {
+        const monthEntries = getMonthEntriesArray(data)
+        const rowStyle = rowIndex % 2 === 0 ? cellStyle : altRowStyle
+
+        const row: any[] = [
+          { v: data.customerName, s: rowStyle },
+          { v: data.contractNumber, s: rowStyle },
+          { v: data.productsText || '-', s: rowStyle },
+          { v: data.contractType, s: { ...rowStyle, alignment: { horizontal: 'center', vertical: 'top' } } },
+        ]
+
+        // Month columns
+        for (let i = 0; i < monthCount; i++) {
+          const entries = monthEntries[i]
+          const monthText = entries.length > 0 ? entries.map(e => formatEntry(e, data.contractType)).join('\n\n') : '-'
+          row.push({ v: monthText, s: rowStyle })
+        }
+
+        // Total column
+        row.push({ v: `${data.total.toLocaleString()} KT`, s: totalCellStyle })
+        grandTotal += data.total
+
+        // Remark column
+        row.push({ v: data.notes || '', s: rowStyle })
+
+        wsData.push(row)
       })
 
+      // Summary row
+      const summaryRow: any[] = [
+        { v: 'GRAND TOTAL', s: summaryStyle },
+        { v: '', s: summaryStyle },
+        { v: '', s: summaryStyle },
+        { v: '', s: summaryStyle },
+      ]
+      for (let i = 0; i < monthCount; i++) {
+        summaryRow.push({ v: '', s: summaryStyle })
+      }
+      summaryRow.push({ v: `${grandTotal.toLocaleString()} KT`, s: summaryStyle })
+      summaryRow.push({ v: '', s: summaryStyle })
+      wsData.push(summaryRow)
+
       // Create worksheet
-      const ws = XLSX.utils.json_to_sheet(exportData)
+      const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+      // Merge title cell
+      const totalCols = headers.length
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } }, // Title row
+        { s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } }, // Subtitle row
+        { s: { r: wsData.length - 1, c: 0 }, e: { r: wsData.length - 1, c: 3 } }, // Summary label
+      ]
 
       // Set column widths
-      const colWidths = [
-        { wch: 20 }, // Customer
+      const baseColWidths = [
+        { wch: 22 }, // Customer
         { wch: 18 }, // Contract Number
-        { wch: 20 }, // Products
-        { wch: 10 }, // Type
-        { wch: 18 }, // Month 1
-        { wch: 18 }, // Month 2
-        { wch: 18 }, // Month 3
-        { wch: 15 }, // Total
-        { wch: 30 }, // Remark
+        { wch: 18 }, // Products
+        { wch: 8 },  // Type
       ]
-      ws['!cols'] = colWidths
+      const monthColWidths = Array(monthCount).fill({ wch: isFullYear ? 20 : 28 })
+      const endColWidths = [
+        { wch: 16 }, // Total
+        { wch: 25 }, // Remark
+      ]
+      ws['!cols'] = [...baseColWidths, ...monthColWidths, ...endColWidths]
+
+      // Set row heights
+      ws['!rows'] = [
+        { hpt: 30 }, // Title
+        { hpt: 18 }, // Subtitle
+        { hpt: 10 }, // Empty
+        { hpt: 35 }, // Headers
+      ]
+      // Data rows - taller for wrapped text
+      for (let i = 0; i < dataArray.length; i++) {
+        ws['!rows'].push({ hpt: 60 })
+      }
+      ws['!rows'].push({ hpt: 25 }) // Summary row
 
       // Create workbook
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Lifting Plan')
 
-      // Generate filename with current date
-      const dateStr = new Date().toISOString().split('T')[0]
-      const filename = `Lifting_Plan_${selectedQuarter}_${selectedYear}_${dateStr}.xlsx`
+      // Generate filename
+      const fileDateStr = new Date().toISOString().split('T')[0]
+      const filename = `Lifting_Plan_${selectedQuarter}_${selectedYear}_${fileDateStr}.xlsx`
 
       // Save file
       XLSX.writeFile(wb, filename)
     }).catch((error) => {
       console.error('Error exporting to Excel:', error)
-      showError('Error exporting to Excel. Please make sure the xlsx package is installed.')
+      showError('Error exporting to Excel. Please make sure the xlsx-js-style package is installed.')
     })
   }
 
@@ -585,87 +811,121 @@ export default function LiftingPlanPage() {
       // Dynamic import of jsPDF and jspdf-autotable
       const { jsPDF } = await import('jspdf')
       const autoTable = (await import('jspdf-autotable')).default
-      
-      const dataArray = getFilteredDataArray()
 
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-      
+      const dataArray = getFilteredDataArray()
+      const isFullYear = selectedQuarter === 'ALL'
+      const monthCount = isFullYear ? 12 : 3
+
+      // Helper to get month entries array
+      const getMonthEntriesArray = (data: ContractQuarterlyData): MonthlyPlanEntry[][] => [
+        data.month1Entries,
+        data.month2Entries,
+        data.month3Entries,
+        data.month4Entries || [],
+        data.month5Entries || [],
+        data.month6Entries || [],
+        data.month7Entries || [],
+        data.month8Entries || [],
+        data.month9Entries || [],
+        data.month10Entries || [],
+        data.month11Entries || [],
+        data.month12Entries || [],
+      ]
+
+      // Use larger page for full year view
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: isFullYear ? 'a3' : 'a4'
+      })
+
       // Add title
       doc.setFontSize(16)
-      doc.text(`Lifting Plan - ${selectedQuarter} ${selectedYear}`, 14, 15)
+      doc.text(`Lifting Plan - ${selectedQuarter === 'ALL' ? 'Full Year' : selectedQuarter} ${selectedYear}`, 14, 15)
 
       // Prepare table data
       const tableData = dataArray.map((data) => {
-        // Helper to format entry with combi info
+        // Helper to format entry (compact for full year)
         const formatEntry = (entry: MonthlyPlanEntry) => {
+          if (isFullYear) {
+            return `${entry.quantity.toLocaleString()}${entry.isCombi ? ' C' : ''}`
+          }
+
           let result = `${entry.quantity.toLocaleString()} KT`
-          
+
           if (entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0) {
             result += ' [Combie]'
             const productDetails = entry.combiProducts.map(cp => `${cp.productName}: ${cp.quantity.toLocaleString()} KT`).join('\n')
             result += `\n(${productDetails})`
           }
-          
+
           if (data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days)) {
             const parts: string[] = []
             if (entry.laycan5Days) parts.push(`5 Days: ${entry.laycan5Days}`)
             if (entry.laycan2Days) parts.push(`2 Days: ${entry.laycan2Days}`)
             if (parts.length > 0) result += `\n${parts.join('\n')}`
           }
-          
+
           if (data.contractType === 'CIF' && (entry.loadingWindow || entry.deliveryWindow)) {
             const parts: string[] = []
             if (entry.loadingWindow) parts.push(`Loading: ${entry.loadingWindow}`)
             if (entry.deliveryWindow) parts.push(`Delivery: ${entry.deliveryWindow}`)
             if (parts.length > 0) result += `\n${parts.join('\n')}`
           }
-          
+
           return result
         }
 
-        // Format month 1 entries
-        const month1Parts = data.month1Entries.map(formatEntry)
-        const month1Text = month1Parts.length > 0 ? month1Parts.join('\n\n') : '-'
-        
-        // Format month 2 entries
-        const month2Parts = data.month2Entries.map(formatEntry)
-        const month2Text = month2Parts.length > 0 ? month2Parts.join('\n\n') : '-'
-        
-        // Format month 3 entries
-        const month3Parts = data.month3Entries.map(formatEntry)
-        const month3Text = month3Parts.length > 0 ? month3Parts.join('\n\n') : '-'
-
-        return [
+        const monthEntries = getMonthEntriesArray(data)
+        const row: string[] = [
           data.customerName,
           data.contractNumber,
           data.productsText || '-',
           data.contractType,
-          month1Text,
-          month2Text,
-          month3Text,
-          `${data.total.toLocaleString()} KT`,
-          data.notes || '',
         ]
+
+        // Add month data dynamically
+        for (let i = 0; i < monthCount; i++) {
+          const entries = monthEntries[i]
+          const monthText = entries.length > 0 ? entries.map(formatEntry).join('\n') : '-'
+          row.push(monthText)
+        }
+
+        row.push(`${data.total.toLocaleString()} KT`)
+        row.push(data.notes || '')
+
+        return row
       })
+
+      // Build headers dynamically
+      const headers = ['Customer', 'Contract Number', 'Product(s)', 'Type']
+      for (let i = 0; i < monthCount; i++) {
+        headers.push(getMonthName(selectedQuarter, i))
+      }
+      headers.push(`Total (${selectedQuarter === 'ALL' ? 'Year' : selectedQuarter})`)
+      headers.push('Remark')
+
+      // Build column styles dynamically
+      const columnStyles: Record<number, { cellWidth: number }> = {
+        0: { cellWidth: isFullYear ? 30 : 35 },
+        1: { cellWidth: isFullYear ? 25 : 30 },
+        2: { cellWidth: isFullYear ? 25 : 35 },
+        3: { cellWidth: isFullYear ? 12 : 20 },
+      }
+      for (let i = 0; i < monthCount; i++) {
+        columnStyles[4 + i] = { cellWidth: isFullYear ? 18 : 30 }
+      }
+      columnStyles[4 + monthCount] = { cellWidth: isFullYear ? 20 : 25 }
+      columnStyles[5 + monthCount] = { cellWidth: isFullYear ? 30 : 40 }
 
       // Add table using autoTable
       autoTable(doc, {
-        head: [['Customer', 'Contract Number', 'Product(s)', 'Type', getMonthName(selectedQuarter, 0), getMonthName(selectedQuarter, 1), getMonthName(selectedQuarter, 2), `Total (${selectedQuarter})`, 'Remark']],
+        head: [headers],
         body: tableData,
         startY: 25,
-        styles: { fontSize: 8 },
+        styles: { fontSize: isFullYear ? 6 : 8 },
         headStyles: { fillColor: [25, 118, 210], textColor: 255, fontStyle: 'bold' },
-        columnStyles: {
-          0: { cellWidth: 35 },
-          1: { cellWidth: 30 },
-          2: { cellWidth: 35 },
-          3: { cellWidth: 20 },
-          4: { cellWidth: 30 },
-          5: { cellWidth: 30 },
-          6: { cellWidth: 30 },
-          7: { cellWidth: 25 },
-          8: { cellWidth: 40 },
-        },
+        columnStyles,
       })
 
       // Generate filename with current date
@@ -699,63 +959,189 @@ export default function LiftingPlanPage() {
       )
     }
 
+    // Determine column config based on view mode
+    const isFullYear = selectedQuarter === 'ALL'
+    const monthColumns = isFullYear ? MONTH_COLUMN_CONFIG_12 : MONTH_COLUMN_CONFIG_3
+    const allColumns = [...BASE_COLUMN_CONFIG, ...monthColumns, ...END_COLUMN_CONFIG]
+
+    // Helper to get month entries for a given month index (0-11)
+    const getMonthEntries = (data: ContractQuarterlyData, monthIndex: number): MonthlyPlanEntry[] => {
+      const monthArrays = [
+        data.month1Entries,
+        data.month2Entries,
+        data.month3Entries,
+        data.month4Entries || [],
+        data.month5Entries || [],
+        data.month6Entries || [],
+        data.month7Entries || [],
+        data.month8Entries || [],
+        data.month9Entries || [],
+        data.month10Entries || [],
+        data.month11Entries || [],
+        data.month12Entries || [],
+      ]
+      return monthArrays[monthIndex]
+    }
+
     // Helper to render resizable header cell
-    const renderResizableHeader = (columnId: string, label: string) => (
-      <TableCell 
-        sx={{ 
-          width: columnWidths[columnId], 
-          minWidth: COLUMN_CONFIG.find(c => c.id === columnId)?.minWidth || 80,
-          fontWeight: 'bold',
-          position: 'relative',
-          userSelect: 'none',
-          '&:hover .resize-handle': {
-            opacity: 1,
-          },
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>{label}</span>
-          <Box
-            className="resize-handle"
-            onMouseDown={(e) => handleResizeStart(e, columnId)}
-            sx={{
-              position: 'absolute',
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: 6,
-              cursor: 'col-resize',
-              opacity: 0,
-              transition: 'opacity 0.2s',
-              '&:hover': {
-                opacity: 1,
-                bgcolor: 'primary.main',
-              },
-              '&::after': {
-                content: '""',
+    const renderResizableHeader = (columnId: string, label: string) => {
+      const colConfig = allColumns.find(c => c.id === columnId)
+      return (
+        <TableCell
+          key={columnId}
+          sx={{
+            width: columnWidths[columnId] || colConfig?.defaultWidth || 100,
+            minWidth: colConfig?.minWidth || 80,
+            fontWeight: 'bold',
+            position: 'relative',
+            userSelect: 'none',
+            fontSize: isFullYear ? '0.75rem' : undefined,
+            px: isFullYear ? 1 : undefined,
+            '&:hover .resize-handle': {
+              opacity: 1,
+            },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>{label}</span>
+            <Box
+              className="resize-handle"
+              onMouseDown={(e) => handleResizeStart(e, columnId)}
+              sx={{
                 position: 'absolute',
-                right: 2,
-                top: '25%',
-                bottom: '25%',
-                width: 2,
-                bgcolor: 'divider',
-                borderRadius: 1,
-              },
-            }}
-          />
-        </Box>
-      </TableCell>
-    )
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 6,
+                cursor: 'col-resize',
+                opacity: 0,
+                transition: 'opacity 0.2s',
+                '&:hover': {
+                  opacity: 1,
+                  bgcolor: 'primary.main',
+                },
+                '&::after': {
+                  content: '""',
+                  position: 'absolute',
+                  right: 2,
+                  top: '25%',
+                  bottom: '25%',
+                  width: 2,
+                  bgcolor: 'divider',
+                  borderRadius: 1,
+                },
+              }}
+            />
+          </Box>
+        </TableCell>
+      )
+    }
+
+    // Helper to render month entries (full details for all views)
+    const renderMonthCell = (data: ContractQuarterlyData, monthIndex: number, columnId: string) => {
+      const entries = getMonthEntries(data, monthIndex)
+      const colConfig = allColumns.find(c => c.id === columnId)
+
+      // Full detailed rendering for all views
+      return (
+        <TableCell key={columnId} sx={{ width: columnWidths[columnId] || colConfig?.defaultWidth || 150, fontSize: isFullYear ? '0.75rem' : undefined }}>
+          <Box>
+            {entries.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">-</Typography>
+            ) : (
+              entries.map((entry, idx) => (
+                <Box key={entry.isCombi ? entry.combiGroupId : entry.monthlyPlanId} sx={{ mb: idx < entries.length - 1 ? 1.5 : 0 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                    <Typography variant="body2" fontWeight={entry.isCombi ? 600 : 400}>
+                      {entry.quantity.toLocaleString()} KT
+                    </Typography>
+                    {entry.isCombi && (
+                      <Chip
+                        label="Combie"
+                        size="small"
+                        sx={{
+                          height: 18,
+                          fontSize: '0.65rem',
+                          bgcolor: BADGE_COLORS.COMBI.bgcolor,
+                          color: BADGE_COLORS.COMBI.color,
+                          fontWeight: 600,
+                        }}
+                      />
+                    )}
+                  </Box>
+                  {!entry.isCombi && (entry.topupQuantity || 0) > 0 && (
+                    <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
+                      ({(entry.quantity - (entry.topupQuantity || 0)).toLocaleString()} + {entry.topupQuantity?.toLocaleString()} top-up)
+                    </Typography>
+                  )}
+                  {entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0 && (
+                    <Box sx={{ mb: 0.5, pl: 0.5 }}>
+                      {entry.combiProducts.map((cp, cpIdx) => (
+                        <Box key={cpIdx}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'inline' }}>
+                            • {cp.productName}: {cp.quantity.toLocaleString()} KT
+                          </Typography>
+                          {(cp.topupQuantity || 0) > 0 && (
+                            <Typography variant="caption" sx={{ color: '#10B981', ml: 0.5 }}>
+                              (+{cp.topupQuantity?.toLocaleString()} top-up)
+                            </Typography>
+                          )}
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                  {entry.isCombi && (entry.topupQuantity || 0) > 0 && (
+                    <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
+                      Total incl. {entry.topupQuantity?.toLocaleString()} top-up
+                    </Typography>
+                  )}
+                  {data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days) && (
+                    <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                      {entry.laycan5Days && (
+                        <Typography variant="caption" color="text.secondary">
+                          5 Days: {entry.laycan5Days}
+                        </Typography>
+                      )}
+                      {entry.laycan2Days && (
+                        <Typography variant="caption" color="text.secondary">
+                          2 Days: {entry.laycan2Days}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+                  {data.contractType === 'CIF' && (entry.loadingMonth || entry.loadingWindow || entry.deliveryMonth || entry.deliveryWindow) && (
+                    <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                      {(entry.loadingMonth || entry.loadingWindow) && (
+                        <Typography variant="caption" color="text.secondary">
+                          Loading: {[entry.loadingMonth, entry.loadingWindow].filter(Boolean).join(' - ')}
+                        </Typography>
+                      )}
+                      {(entry.deliveryMonth || entry.deliveryWindow) && (
+                        <Typography variant="caption" color="text.secondary">
+                          Delivery: {[entry.deliveryMonth, entry.deliveryWindow].filter(Boolean).join(' - ')}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+                </Box>
+              ))
+            )}
+          </Box>
+        </TableCell>
+      )
+    }
+
+    const monthCount = isFullYear ? 12 : 3
 
     return (
-      <TableContainer 
+      <TableContainer
         component={Paper}
         sx={{
           maxWidth: '100%',
           overflowX: 'auto',
           '& .MuiTable-root': {
-            minWidth: isMobile ? 1100 : 'auto',
-            tableLayout: 'fixed', // Fixed layout for consistent column widths
+            minWidth: isFullYear ? 1800 : (isMobile ? 1100 : 'auto'),
+            tableLayout: 'fixed',
           },
         }}
       >
@@ -766,28 +1152,28 @@ export default function LiftingPlanPage() {
               {renderResizableHeader('contract', 'Contract Number')}
               {renderResizableHeader('products', 'Product(s)')}
               {renderResizableHeader('type', 'Type')}
-              {renderResizableHeader('month1', getMonthName(selectedQuarter, 0))}
-              {renderResizableHeader('month2', getMonthName(selectedQuarter, 1))}
-              {renderResizableHeader('month3', getMonthName(selectedQuarter, 2))}
-              {renderResizableHeader('total', `Total (${selectedQuarter})`)}
+              {monthColumns.map((col, idx) =>
+                renderResizableHeader(col.id, getMonthName(selectedQuarter, idx))
+              )}
+              {renderResizableHeader('total', `Total (${selectedQuarter === 'ALL' ? 'Year' : selectedQuarter})`)}
               {renderResizableHeader('remark', 'Remark')}
             </TableRow>
           </TableHead>
           <TableBody>
             {dataArray.map((data) => (
-              <TableRow 
+              <TableRow
                 key={data.contractId}
-                sx={{ 
-                  '& td': { 
+                sx={{
+                  '& td': {
                     minHeight: isMobile ? 56 : 48,
-                    py: isMobile ? 1.5 : 1,
+                    py: isFullYear ? 0.5 : (isMobile ? 1.5 : 1),
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                   }
                 }}
               >
-                <TableCell sx={{ fontWeight: 'medium', width: columnWidths['customer'] }}>{data.customerName}</TableCell>
-                <TableCell sx={{ width: columnWidths['contract'] }}>{data.contractNumber}</TableCell>
+                <TableCell sx={{ fontWeight: 'medium', width: columnWidths['customer'], fontSize: isFullYear ? '0.8rem' : undefined }}>{data.customerName}</TableCell>
+                <TableCell sx={{ width: columnWidths['contract'], fontSize: isFullYear ? '0.75rem' : undefined }}>{data.contractNumber}</TableCell>
                 <TableCell sx={{ width: columnWidths['products'] }}>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {data.products.length > 0 ? data.products.map((product, idx) => (
@@ -795,7 +1181,7 @@ export default function LiftingPlanPage() {
                         key={idx}
                         label={product}
                         size="small"
-                        sx={{ height: 22, fontSize: '0.7rem', fontWeight: 500, ...getProductColor(product) }}
+                        sx={{ height: isFullYear ? 18 : 22, fontSize: isFullYear ? '0.6rem' : '0.7rem', fontWeight: 500, ...getProductColor(product) }}
                       />
                     )) : (
                       <Typography variant="body2" color="text.secondary">-</Typography>
@@ -803,271 +1189,16 @@ export default function LiftingPlanPage() {
                   </Box>
                 </TableCell>
                 <TableCell sx={{ width: columnWidths['type'] }}>
-                  <Chip 
-                    label={data.contractType} 
+                  <Chip
+                    label={data.contractType}
                     size="small"
-                    sx={getContractTypeColor(data.contractType)}
+                    sx={{ ...getContractTypeColor(data.contractType), height: isFullYear ? 18 : undefined, fontSize: isFullYear ? '0.65rem' : undefined }}
                   />
                 </TableCell>
-                <TableCell sx={{ width: columnWidths['month1'] }}>
-                  <Box>
-                    {data.month1Entries.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary">-</Typography>
-                    ) : (
-                      data.month1Entries.map((entry, idx) => (
-                        <Box key={entry.isCombi ? entry.combiGroupId : entry.monthlyPlanId} sx={{ mb: idx < data.month1Entries.length - 1 ? 1.5 : 0 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                            <Typography variant="body2" fontWeight={entry.isCombi ? 600 : 400}>
-                              {entry.quantity.toLocaleString()} KT
-                            </Typography>
-                            {entry.isCombi && (
-                              <Chip 
-                                label="Combie" 
-                                size="small" 
-                                sx={{ 
-                                  height: 18, 
-                                  fontSize: '0.65rem', 
-                                  bgcolor: BADGE_COLORS.COMBI.bgcolor, 
-                                  color: BADGE_COLORS.COMBI.color,
-                                  fontWeight: 600,
-                                }}
-                              />
-                            )}
-                          </Box>
-                          {/* Top-up indicator for non-combi */}
-                          {!entry.isCombi && (entry.topupQuantity || 0) > 0 && (
-                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
-                              ({(entry.quantity - (entry.topupQuantity || 0)).toLocaleString()} + {entry.topupQuantity?.toLocaleString()} top-up)
-                            </Typography>
-                          )}
-                          {entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0 && (
-                            <Box sx={{ mb: 0.5, pl: 0.5 }}>
-                              {entry.combiProducts.map((cp, cpIdx) => (
-                                <Box key={cpIdx}>
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'inline' }}>
-                                    • {cp.productName}: {cp.quantity.toLocaleString()} KT
-                                  </Typography>
-                                  {(cp.topupQuantity || 0) > 0 && (
-                                    <Typography variant="caption" sx={{ color: '#10B981', ml: 0.5 }}>
-                                      (+{cp.topupQuantity?.toLocaleString()} top-up)
-                                    </Typography>
-                                  )}
-                                </Box>
-                              ))}
-                            </Box>
-                          )}
-                          {/* Total top-up for combi */}
-                          {entry.isCombi && (entry.topupQuantity || 0) > 0 && (
-                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
-                              Total incl. {entry.topupQuantity?.toLocaleString()} top-up
-                            </Typography>
-                          )}
-                          {data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days) && (
-                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                              {entry.laycan5Days && (
-                                <Typography variant="caption" color="text.secondary">
-                                  5 Days: {entry.laycan5Days}
-                                </Typography>
-                              )}
-                              {entry.laycan2Days && (
-                                <Typography variant="caption" color="text.secondary">
-                                  2 Days: {entry.laycan2Days}
-                                </Typography>
-                              )}
-                            </Box>
-                          )}
-                          {data.contractType === 'CIF' && (entry.loadingMonth || entry.loadingWindow || entry.deliveryMonth || entry.deliveryWindow) && (
-                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                              {(entry.loadingMonth || entry.loadingWindow) && (
-                                <Typography variant="caption" color="text.secondary">
-                                  Loading: {[entry.loadingMonth, entry.loadingWindow].filter(Boolean).join(' - ')}
-                                </Typography>
-                              )}
-                              {(entry.deliveryMonth || entry.deliveryWindow) && (
-                                <Typography variant="caption" color="text.secondary">
-                                  Delivery: {[entry.deliveryMonth, entry.deliveryWindow].filter(Boolean).join(' - ')}
-                                </Typography>
-                              )}
-                            </Box>
-                          )}
-                        </Box>
-                      ))
-                    )}
-                  </Box>
-                </TableCell>
-                <TableCell sx={{ width: columnWidths['month2'] }}>
-                  <Box>
-                    {data.month2Entries.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary">-</Typography>
-                    ) : (
-                      data.month2Entries.map((entry, idx) => (
-                        <Box key={entry.isCombi ? entry.combiGroupId : entry.monthlyPlanId} sx={{ mb: idx < data.month2Entries.length - 1 ? 1.5 : 0 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                            <Typography variant="body2" fontWeight={entry.isCombi ? 600 : 400}>
-                              {entry.quantity.toLocaleString()} KT
-                            </Typography>
-                            {entry.isCombi && (
-                              <Chip 
-                                label="Combie" 
-                                size="small" 
-                                sx={{ 
-                                  height: 18, 
-                                  fontSize: '0.65rem', 
-                                  bgcolor: BADGE_COLORS.COMBI.bgcolor, 
-                                  color: BADGE_COLORS.COMBI.color,
-                                  fontWeight: 600,
-                                }}
-                              />
-                            )}
-                          </Box>
-                          {/* Top-up indicator for non-combi */}
-                          {!entry.isCombi && (entry.topupQuantity || 0) > 0 && (
-                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
-                              ({(entry.quantity - (entry.topupQuantity || 0)).toLocaleString()} + {entry.topupQuantity?.toLocaleString()} top-up)
-                            </Typography>
-                          )}
-                          {entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0 && (
-                            <Box sx={{ mb: 0.5, pl: 0.5 }}>
-                              {entry.combiProducts.map((cp, cpIdx) => (
-                                <Box key={cpIdx}>
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'inline' }}>
-                                    • {cp.productName}: {cp.quantity.toLocaleString()} KT
-                                  </Typography>
-                                  {(cp.topupQuantity || 0) > 0 && (
-                                    <Typography variant="caption" sx={{ color: '#10B981', ml: 0.5 }}>
-                                      (+{cp.topupQuantity?.toLocaleString()} top-up)
-                                    </Typography>
-                                  )}
-                                </Box>
-                              ))}
-                            </Box>
-                          )}
-                          {/* Total top-up for combi */}
-                          {entry.isCombi && (entry.topupQuantity || 0) > 0 && (
-                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
-                              Total incl. {entry.topupQuantity?.toLocaleString()} top-up
-                            </Typography>
-                          )}
-                          {data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days) && (
-                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                              {entry.laycan5Days && (
-                                <Typography variant="caption" color="text.secondary">
-                                  5 Days: {entry.laycan5Days}
-                                </Typography>
-                              )}
-                              {entry.laycan2Days && (
-                                <Typography variant="caption" color="text.secondary">
-                                  2 Days: {entry.laycan2Days}
-                                </Typography>
-                              )}
-                            </Box>
-                          )}
-                          {data.contractType === 'CIF' && (entry.loadingMonth || entry.loadingWindow || entry.deliveryMonth || entry.deliveryWindow) && (
-                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                              {(entry.loadingMonth || entry.loadingWindow) && (
-                                <Typography variant="caption" color="text.secondary">
-                                  Loading: {[entry.loadingMonth, entry.loadingWindow].filter(Boolean).join(' - ')}
-                                </Typography>
-                              )}
-                              {(entry.deliveryMonth || entry.deliveryWindow) && (
-                                <Typography variant="caption" color="text.secondary">
-                                  Delivery: {[entry.deliveryMonth, entry.deliveryWindow].filter(Boolean).join(' - ')}
-                                </Typography>
-                              )}
-                            </Box>
-                          )}
-                        </Box>
-                      ))
-                    )}
-                  </Box>
-                </TableCell>
-                <TableCell sx={{ width: columnWidths['month3'] }}>
-                  <Box>
-                    {data.month3Entries.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary">-</Typography>
-                    ) : (
-                      data.month3Entries.map((entry, idx) => (
-                        <Box key={entry.isCombi ? entry.combiGroupId : entry.monthlyPlanId} sx={{ mb: idx < data.month3Entries.length - 1 ? 1.5 : 0 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                            <Typography variant="body2" fontWeight={entry.isCombi ? 600 : 400}>
-                              {entry.quantity.toLocaleString()} KT
-                            </Typography>
-                            {entry.isCombi && (
-                              <Chip 
-                                label="Combie" 
-                                size="small" 
-                                sx={{ 
-                                  height: 18, 
-                                  fontSize: '0.65rem', 
-                                  bgcolor: BADGE_COLORS.COMBI.bgcolor, 
-                                  color: BADGE_COLORS.COMBI.color,
-                                  fontWeight: 600,
-                                }}
-                              />
-                            )}
-                          </Box>
-                          {/* Top-up indicator for non-combi */}
-                          {!entry.isCombi && (entry.topupQuantity || 0) > 0 && (
-                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
-                              ({(entry.quantity - (entry.topupQuantity || 0)).toLocaleString()} + {entry.topupQuantity?.toLocaleString()} top-up)
-                            </Typography>
-                          )}
-                          {entry.isCombi && entry.combiProducts && entry.combiProducts.length > 0 && (
-                            <Box sx={{ mb: 0.5, pl: 0.5 }}>
-                              {entry.combiProducts.map((cp, cpIdx) => (
-                                <Box key={cpIdx}>
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'inline' }}>
-                                    • {cp.productName}: {cp.quantity.toLocaleString()} KT
-                                  </Typography>
-                                  {(cp.topupQuantity || 0) > 0 && (
-                                    <Typography variant="caption" sx={{ color: '#10B981', ml: 0.5 }}>
-                                      (+{cp.topupQuantity?.toLocaleString()} top-up)
-                                    </Typography>
-                                  )}
-                                </Box>
-                              ))}
-                            </Box>
-                          )}
-                          {/* Total top-up for combi */}
-                          {entry.isCombi && (entry.topupQuantity || 0) > 0 && (
-                            <Typography variant="caption" sx={{ display: 'block', color: '#10B981', mb: 0.5 }}>
-                              Total incl. {entry.topupQuantity?.toLocaleString()} top-up
-                            </Typography>
-                          )}
-                          {data.contractType === 'FOB' && (entry.laycan5Days || entry.laycan2Days) && (
-                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                              {entry.laycan5Days && (
-                                <Typography variant="caption" color="text.secondary">
-                                  5 Days: {entry.laycan5Days}
-                                </Typography>
-                              )}
-                              {entry.laycan2Days && (
-                                <Typography variant="caption" color="text.secondary">
-                                  2 Days: {entry.laycan2Days}
-                                </Typography>
-                              )}
-                            </Box>
-                          )}
-                          {data.contractType === 'CIF' && (entry.loadingMonth || entry.loadingWindow || entry.deliveryMonth || entry.deliveryWindow) && (
-                            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                              {(entry.loadingMonth || entry.loadingWindow) && (
-                                <Typography variant="caption" color="text.secondary">
-                                  Loading: {[entry.loadingMonth, entry.loadingWindow].filter(Boolean).join(' - ')}
-                                </Typography>
-                              )}
-                              {(entry.deliveryMonth || entry.deliveryWindow) && (
-                                <Typography variant="caption" color="text.secondary">
-                                  Delivery: {[entry.deliveryMonth, entry.deliveryWindow].filter(Boolean).join(' - ')}
-                                </Typography>
-                              )}
-                            </Box>
-                          )}
-                        </Box>
-                      ))
-                    )}
-                  </Box>
-                </TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: columnWidths['total'] }}>{data.total.toLocaleString()} KT</TableCell>
+                {Array.from({ length: monthCount }, (_, idx) =>
+                  renderMonthCell(data, idx, `month${idx + 1}`)
+                )}
+                <TableCell sx={{ fontWeight: 'bold', width: columnWidths['total'], fontSize: isFullYear ? '0.8rem' : undefined }}>{data.total.toLocaleString()} KT</TableCell>
                 <TableCell sx={{ width: columnWidths['remark'] }}>
                   <TextField
                     value={data.notes}
@@ -1079,7 +1210,7 @@ export default function LiftingPlanPage() {
                     maxRows={2}
                     sx={{
                       '& .MuiInputBase-root': {
-                        fontSize: isMobile ? '0.875rem' : '0.9375rem',
+                        fontSize: isFullYear ? '0.75rem' : (isMobile ? '0.875rem' : '0.9375rem'),
                       },
                     }}
                   />
@@ -1144,7 +1275,7 @@ export default function LiftingPlanPage() {
               Lifting Plan
             </Typography>
             <Typography variant="body2" sx={{ color: '#64748B' }}>
-              Quarterly summary by product
+              {selectedQuarter === 'ALL' ? 'Annual summary by product' : 'Quarterly summary by product'}
             </Typography>
           </Box>
         </Box>
@@ -1262,9 +1393,9 @@ export default function LiftingPlanPage() {
                 color: '#475569',
                 bgcolor: 'white',
                 '&:hover': {
-                  borderColor: '#3B82F6',
-                  bgcolor: '#EFF6FF',
-                  color: '#2563EB',
+                  borderColor: '#10B981',
+                  bgcolor: '#ECFDF5',
+                  color: '#059669',
                 },
               }}
             >

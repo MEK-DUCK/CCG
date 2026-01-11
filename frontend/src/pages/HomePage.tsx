@@ -34,7 +34,7 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material'
-import { FileDownload, Search, Description, Clear, History, ChevronLeft, ChevronRight, Highlight } from '@mui/icons-material'
+import { FileDownload, Search, Description, Clear, History, ChevronLeft, ChevronRight, Highlight, PictureAsPdf } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
 import { format } from 'date-fns'
 import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, documentsAPI, highlightsAPI } from '../api/client'
@@ -221,143 +221,270 @@ export default function HomePage() {
 
   const handlePortMovementExportToExcel = () => {
     const rows = Array.isArray(portMovementExportRowsRef.current) ? portMovementExportRowsRef.current : []
-    // Dynamic import of xlsx to avoid issues if not installed
-    import('xlsx')
+    // Dynamic import of xlsx-js-style for styled Excel export
+    import('xlsx-js-style')
       .then((XLSX) => {
-        // ===== SHEET 1: Port Movement =====
-        const exportData: any[] = []
+        // ============ STYLES ============
+        const titleStyle = {
+          font: { bold: true, sz: 18, color: { rgb: 'FFFFFF' } },
+          fill: { fgColor: { rgb: '1E3A5F' } },
+          alignment: { horizontal: 'center', vertical: 'center' },
+        }
+        const subtitleStyle = {
+          font: { italic: true, sz: 10, color: { rgb: '6B7280' } },
+          alignment: { horizontal: 'left', vertical: 'center' },
+        }
+        const headerStyle = {
+          font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } },
+          fill: { fgColor: { rgb: '2563EB' } },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          border: {
+            top: { style: 'thin', color: { rgb: '1E40AF' } },
+            bottom: { style: 'thin', color: { rgb: '1E40AF' } },
+            left: { style: 'thin', color: { rgb: '1E40AF' } },
+            right: { style: 'thin', color: { rgb: '1E40AF' } },
+          },
+        }
+        const cellStyle = {
+          font: { sz: 9 },
+          alignment: { vertical: 'center', wrapText: true },
+          border: {
+            top: { style: 'thin', color: { rgb: 'E5E7EB' } },
+            bottom: { style: 'thin', color: { rgb: 'E5E7EB' } },
+            left: { style: 'thin', color: { rgb: 'E5E7EB' } },
+            right: { style: 'thin', color: { rgb: 'E5E7EB' } },
+          },
+        }
+        const altRowStyle = {
+          ...cellStyle,
+          fill: { fgColor: { rgb: 'F9FAFB' } },
+        }
+        const centeredCellStyle = {
+          ...cellStyle,
+          alignment: { horizontal: 'center', vertical: 'center' },
+        }
+        const altCenteredStyle = {
+          ...altRowStyle,
+          alignment: { horizontal: 'center', vertical: 'center' },
+        }
+        const quantityStyle = {
+          ...cellStyle,
+          alignment: { horizontal: 'right', vertical: 'center' },
+          font: { sz: 9, bold: true },
+        }
+        const altQuantityStyle = {
+          ...altRowStyle,
+          alignment: { horizontal: 'right', vertical: 'center' },
+          font: { sz: 9, bold: true },
+        }
+        const tbaStyle = {
+          ...cellStyle,
+          font: { sz: 9, italic: true, color: { rgb: '9CA3AF' } },
+        }
+        const altTbaStyle = {
+          ...altRowStyle,
+          font: { sz: 9, italic: true, color: { rgb: '9CA3AF' } },
+        }
+        // Status colors
+        const getStatusStyle = (status: string, isAlt: boolean) => {
+          const base = isAlt ? altRowStyle : cellStyle
+          const statusColors: Record<string, string> = {
+            'Completed Loading': '059669',
+            'Discharge Complete': '059669',
+            'Loading': '2563EB',
+            'Nomination Released': '0891B2',
+            'Pending Nomination': 'D97706',
+            'Pending TL Approval': 'DC2626',
+            'Planned': '6B7280',
+            'Not Created': '9CA3AF',
+          }
+          const color = statusColors[status] || '6B7280'
+          return {
+            ...base,
+            font: { sz: 9, bold: true, color: { rgb: color } },
+            alignment: { horizontal: 'center', vertical: 'center' },
+          }
+        }
+        const summaryStyle = {
+          font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } },
+          fill: { fgColor: { rgb: '1E3A5F' } },
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: {
+            top: { style: 'medium', color: { rgb: '000000' } },
+            bottom: { style: 'medium', color: { rgb: '000000' } },
+            left: { style: 'thin', color: { rgb: '000000' } },
+            right: { style: 'thin', color: { rgb: '000000' } },
+          },
+        }
 
-        rows.forEach(({ cargo, contract, customer, laycan, monthlyPlan }) => {
-          exportData.push({
-            Laycan: laycan,
-            'Vessel Name': cargo ? cargo.vessel_name : 'TBA',
-            'Customer Name': customer ? customer.name : '-',
-            'Contract Number': contract ? contract.contract_number : '-',
-            'FOB/CIF': contract ? contract.contract_type : '-',
-            'Payment Method': contract && contract.payment_method ? contract.payment_method : '-',
-            'LC Status':
-              contract && contract.payment_method === 'LC' && cargo && cargo.lc_status ? cargo.lc_status : '-',
-            Product:
-              cargo ? cargo.product_name : (
-                monthlyPlan ? getProductNameForMonthlyPlan(monthlyPlan) : '-'
-              ),
-            Quantity: cargo ? cargo.cargo_quantity : monthlyPlan ? monthlyPlan.month_quantity : '-',
-            'Load Port': cargo ? cargo.load_ports || '-' : contract ? contract.allowed_load_ports || '-' : '-',
-            Status: cargo ? cargo.status : 'Not Created',
-            Remark: cargo ? cargo.notes || '-' : '-',
-            'Inspector Name': cargo ? cargo.inspector_name || '-' : '-',
-            'Laycan Window': cargo ? cargo.laycan_window || '-' : '-',
-            ETA: cargo ? cargo.eta || '-' : '-',
-            Berthed: cargo ? cargo.berthed || '-' : '-',
-            Commenced: cargo ? cargo.commenced || '-' : '-',
-            ETC: cargo ? cargo.etc || '-' : '-',
-          })
+        // ============ SHEET 1: Port Movement ============
+        const headers1 = ['Laycan', 'Vessel', 'Customer', 'Contract', 'Type', 'Payment', 'LC Status', 'Product', 'Qty (KT)', 'Load Port', 'Status', 'Remark']
+        const wsData1: any[][] = []
+
+        // Title
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+        const currentMonth = monthNames[new Date().getMonth()]
+        wsData1.push([{ v: `Port Movement Schedule - ${currentMonth} ${new Date().getFullYear()}`, s: titleStyle }])
+
+        // Subtitle
+        const genDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        wsData1.push([{ v: `Generated: ${genDate}  |  Total Entries: ${rows.length}`, s: subtitleStyle }])
+
+        // Empty row
+        wsData1.push([])
+
+        // Headers
+        wsData1.push(headers1.map(h => ({ v: h, s: headerStyle })))
+
+        // Data rows
+        let totalQty = 0
+        rows.forEach(({ cargo, contract, customer, laycan, monthlyPlan }, idx) => {
+          const isAlt = idx % 2 === 1
+          const baseStyle = isAlt ? altRowStyle : cellStyle
+          const centerStyle = isAlt ? altCenteredStyle : centeredCellStyle
+          const qtyStyle = isAlt ? altQuantityStyle : quantityStyle
+          const vesselName = cargo ? cargo.vessel_name : 'TBA'
+          const vesselStyle = vesselName === 'TBA' ? (isAlt ? altTbaStyle : tbaStyle) : baseStyle
+          const status = cargo ? cargo.status : 'Not Created'
+          const qty = cargo ? cargo.cargo_quantity : (monthlyPlan ? monthlyPlan.month_quantity : 0)
+          if (qty) totalQty += Number(qty) || 0
+
+          wsData1.push([
+            { v: laycan || '-', s: centerStyle },
+            { v: vesselName, s: vesselStyle },
+            { v: customer ? customer.name : '-', s: baseStyle },
+            { v: contract ? contract.contract_number : '-', s: centerStyle },
+            { v: contract ? contract.contract_type : '-', s: centerStyle },
+            { v: contract?.payment_method || '-', s: centerStyle },
+            { v: (contract?.payment_method === 'LC' && cargo?.lc_status) ? cargo.lc_status : '-', s: centerStyle },
+            { v: cargo ? cargo.product_name : (monthlyPlan ? getProductNameForMonthlyPlan(monthlyPlan) : '-'), s: baseStyle },
+            { v: qty ? qty.toLocaleString() : '-', s: qtyStyle },
+            { v: cargo ? (cargo.load_ports || '-') : (contract ? (contract.allowed_load_ports || '-') : '-'), s: centerStyle },
+            { v: status, s: getStatusStyle(status, isAlt) },
+            { v: cargo?.notes || '-', s: baseStyle },
+          ])
         })
 
-        const ws = XLSX.utils.json_to_sheet(exportData)
+        // Summary row
+        const summaryRow1: any[] = [
+          { v: 'TOTAL', s: summaryStyle },
+          { v: `${rows.length} Entries`, s: summaryStyle },
+          { v: '', s: summaryStyle },
+          { v: '', s: summaryStyle },
+          { v: '', s: summaryStyle },
+          { v: '', s: summaryStyle },
+          { v: '', s: summaryStyle },
+          { v: '', s: summaryStyle },
+          { v: `${totalQty.toLocaleString()} KT`, s: summaryStyle },
+          { v: '', s: summaryStyle },
+          { v: '', s: summaryStyle },
+          { v: '', s: summaryStyle },
+        ]
+        wsData1.push(summaryRow1)
 
-        ws['!cols'] = [
-          { wch: 15 }, // Laycan
-          { wch: 20 }, // Vessel Name
-          { wch: 20 }, // Customer Name
-          { wch: 15 }, // Contract Number
-          { wch: 10 }, // FOB/CIF
-          { wch: 15 }, // Payment Method
-          { wch: 15 }, // LC Status
-          { wch: 20 }, // Product
-          { wch: 12 }, // Quantity
-          { wch: 15 }, // Load Port
-          { wch: 20 }, // Status
-          { wch: 30 }, // Remark
-          { wch: 20 }, // Inspector Name
-          { wch: 15 }, // Laycan Window
-          { wch: 15 }, // ETA
-          { wch: 15 }, // Berthed
-          { wch: 15 }, // Commenced
-          { wch: 15 }, // ETC
+        // Create worksheet
+        const ws1 = XLSX.utils.aoa_to_sheet(wsData1)
+
+        // Merges
+        ws1['!merges'] = [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: headers1.length - 1 } },
+          { s: { r: 1, c: 0 }, e: { r: 1, c: headers1.length - 1 } },
         ]
 
-        const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, 'Port Movement')
+        // Column widths
+        ws1['!cols'] = [
+          { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 14 }, { wch: 7 },
+          { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 },
+          { wch: 18 }, { wch: 28 },
+        ]
 
-        // ===== SHEET 2: Active Loadings (by Load Port) =====
-        const activeLoadingsData: any[] = []
-        
-        // Process each port section
+        // Row heights
+        ws1['!rows'] = [{ hpt: 32 }, { hpt: 18 }, { hpt: 8 }, { hpt: 28 }]
+        for (let i = 0; i < rows.length; i++) ws1['!rows'].push({ hpt: 22 })
+        ws1['!rows'].push({ hpt: 26 })
+
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws1, 'Port Movement')
+
+        // ============ SHEET 2: Active Loadings ============
+        const activeData: { port: string; cargo: Cargo; op: CargoPortOperation; contract?: Contract; customer?: Customer; products: string; quantities: string }[] = []
+
         PORT_SECTIONS.forEach((port) => {
-          // Get all active loading cargos for this port
           const allRows = activeLoadings
             .map((cargo) => ({ cargo, op: getPortOpForCargo(cargo, port) }))
             .filter((x) => x.op && (x.op.status === 'Loading' || x.op.status === 'Completed Loading'))
-          
-          // Group combie cargos - only show one row per combi_group_id
+
           const seenCombiGroups = new Set<string>()
           const portRows = allRows.filter(({ cargo }) => {
             if (cargo.combi_group_id) {
-              if (seenCombiGroups.has(cargo.combi_group_id)) {
-                return false
-              }
+              if (seenCombiGroups.has(cargo.combi_group_id)) return false
               seenCombiGroups.add(cargo.combi_group_id)
             }
             return true
           })
-          
-          // Add rows for this port
+
           portRows.forEach(({ cargo, op }) => {
-            // Get contract and customer info
             const contract = contracts.find(c => c.id === cargo.contract_id)
-            const customer = contract ? customers.find(cu => cu.id === contract.customer_id) : null
-            
-            // For combi cargos, get all products and quantities
+            const customer = contract ? customers.find(cu => cu.id === contract.customer_id) : undefined
             let products = cargo.product_name || '-'
             let quantities = cargo.cargo_quantity?.toString() || '-'
-            
             if (cargo.combi_group_id) {
               const combiCargos = activeLoadings.filter(c => c.combi_group_id === cargo.combi_group_id)
               products = combiCargos.map(c => c.product_name || '-').join(' / ')
               quantities = combiCargos.map(c => c.cargo_quantity || 0).join(' / ')
             }
-            
-            activeLoadingsData.push({
-              'Load Port': port,
-              'Vessel Name': cargo.vessel_name || 'TBA',
-              'Customer': customer?.name || '-',
-              'Contract Number': contract?.contract_number || '-',
-              'FOB/CIF': contract?.contract_type || '-',
-              'Product(s)': products,
-              'Quantity (KT)': quantities,
-              'Port Status': op?.status || '-',
-              'ETA': op?.eta || '-',
-              'Berthed': op?.berthed || '-',
-              'Commenced': op?.commenced || '-',
-              'ETC': op?.etc || '-',
-              'Inspector': cargo.inspector_name || '-',
-              'Laycan Window': cargo.laycan_window || '-',
-              'Notes': op?.notes || cargo.notes || '-',
-            })
+            activeData.push({ port, cargo, op: op!, contract, customer, products, quantities })
           })
         })
-        
-        if (activeLoadingsData.length > 0) {
-          const wsActive = XLSX.utils.json_to_sheet(activeLoadingsData)
-          wsActive['!cols'] = [
-            { wch: 12 }, // Load Port
-            { wch: 20 }, // Vessel Name
-            { wch: 20 }, // Customer
-            { wch: 15 }, // Contract Number
-            { wch: 10 }, // FOB/CIF
-            { wch: 25 }, // Product(s)
-            { wch: 15 }, // Quantity
-            { wch: 18 }, // Port Status
-            { wch: 12 }, // ETA
-            { wch: 12 }, // Berthed
-            { wch: 12 }, // Commenced
-            { wch: 12 }, // ETC
-            { wch: 15 }, // Inspector
-            { wch: 15 }, // Laycan Window
-            { wch: 30 }, // Notes
+
+        if (activeData.length > 0) {
+          const headers2 = ['Port', 'Vessel', 'Customer', 'Contract', 'Type', 'Product(s)', 'Qty (KT)', 'Status', 'ETA', 'Berthed', 'Commenced', 'ETC', 'Notes']
+          const wsData2: any[][] = []
+
+          // Title
+          wsData2.push([{ v: 'Active Loadings by Port', s: titleStyle }])
+          wsData2.push([{ v: `Generated: ${genDate}  |  Total Active: ${activeData.length}`, s: subtitleStyle }])
+          wsData2.push([])
+          wsData2.push(headers2.map(h => ({ v: h, s: headerStyle })))
+
+          // Data
+          activeData.forEach(({ port, cargo, op, contract, customer, products, quantities }, idx) => {
+            const isAlt = idx % 2 === 1
+            const baseStyle = isAlt ? altRowStyle : cellStyle
+            const centerStyle = isAlt ? altCenteredStyle : centeredCellStyle
+            const qtyStyle = isAlt ? altQuantityStyle : quantityStyle
+
+            wsData2.push([
+              { v: port, s: { ...centerStyle, font: { sz: 9, bold: true } } },
+              { v: cargo.vessel_name || 'TBA', s: baseStyle },
+              { v: customer?.name || '-', s: baseStyle },
+              { v: contract?.contract_number || '-', s: centerStyle },
+              { v: contract?.contract_type || '-', s: centerStyle },
+              { v: products, s: baseStyle },
+              { v: quantities, s: qtyStyle },
+              { v: op.status || '-', s: getStatusStyle(op.status || '', isAlt) },
+              { v: op.eta || '-', s: centerStyle },
+              { v: op.berthed || '-', s: centerStyle },
+              { v: op.commenced || '-', s: centerStyle },
+              { v: op.etc || '-', s: centerStyle },
+              { v: op.notes || cargo.notes || '-', s: baseStyle },
+            ])
+          })
+
+          const ws2 = XLSX.utils.aoa_to_sheet(wsData2)
+          ws2['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: headers2.length - 1 } },
+            { s: { r: 1, c: 0 }, e: { r: 1, c: headers2.length - 1 } },
           ]
-          XLSX.utils.book_append_sheet(wb, wsActive, 'Active Loadings')
+          ws2['!cols'] = [
+            { wch: 10 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 7 },
+            { wch: 22 }, { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 10 },
+            { wch: 10 }, { wch: 10 }, { wch: 25 },
+          ]
+          ws2['!rows'] = [{ hpt: 32 }, { hpt: 18 }, { hpt: 8 }, { hpt: 28 }]
+          for (let i = 0; i < activeData.length; i++) ws2['!rows'].push({ hpt: 22 })
+
+          XLSX.utils.book_append_sheet(wb, ws2, 'Active Loadings')
         }
 
         const dateStr = new Date().toISOString().split('T')[0]
@@ -366,8 +493,65 @@ export default function HomePage() {
       })
       .catch((error) => {
         console.error('Error exporting to Excel:', error)
-        showError('Error exporting to Excel. Please make sure the xlsx package is installed.')
+        showError('Error exporting to Excel. Please make sure the xlsx-js-style package is installed.')
       })
+  }
+
+  const handlePortMovementExportToPDF = async () => {
+    try {
+      const { jsPDF } = await import('jspdf')
+      const autoTable = (await import('jspdf-autotable')).default
+
+      const rows = Array.isArray(portMovementExportRowsRef.current) ? portMovementExportRowsRef.current : []
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+
+      // Add title
+      doc.setFontSize(16)
+      doc.text('Port Movement', 14, 15)
+
+      // Prepare table data
+      const tableData = rows.map(({ cargo, contract, customer, laycan, monthlyPlan }) => [
+        laycan || '-',
+        cargo ? cargo.vessel_name : 'TBA',
+        customer ? customer.name : '-',
+        contract ? contract.contract_number : '-',
+        contract ? contract.contract_type : '-',
+        cargo ? cargo.product_name : (monthlyPlan ? getProductNameForMonthlyPlan(monthlyPlan) : '-'),
+        cargo ? cargo.cargo_quantity?.toLocaleString() : (monthlyPlan ? monthlyPlan.month_quantity?.toLocaleString() : '-'),
+        cargo ? cargo.load_ports || '-' : (contract ? contract.allowed_load_ports || '-' : '-'),
+        cargo ? cargo.status : 'Not Created',
+        cargo ? cargo.notes || '-' : '-',
+      ])
+
+      // Add table using autoTable
+      autoTable(doc, {
+        head: [['Laycan', 'Vessel', 'Customer', 'Contract', 'Type', 'Product', 'Qty', 'Load Port', 'Status', 'Remark']],
+        body: tableData,
+        startY: 25,
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: [25, 118, 210], textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 25 },
+          4: { cellWidth: 12 },
+          5: { cellWidth: 25 },
+          6: { cellWidth: 18 },
+          7: { cellWidth: 25 },
+          8: { cellWidth: 30 },
+          9: { cellWidth: 45 },
+        },
+      })
+
+      const dateStr = new Date().toISOString().split('T')[0]
+      const filename = `Port_Movement_${dateStr}.pdf`
+      doc.save(filename)
+    } catch (error) {
+      console.error('Error exporting to PDF:', error)
+      showError(`Error exporting to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   const applyLocalPortOpPatch = (cargoId: number, portCode: string, patch: Partial<CargoPortOperation>) => {
@@ -1247,26 +1431,43 @@ export default function HomePage() {
     // For CIF contracts, auto-populate ETA Discharge Port and Discharge Port Location if empty
     let etaDischargePort = cargo.eta_discharge_port || ''
     let dischargePortLocation = cargo.discharge_port_location || ''
-    
+
     if (cargo.contract_type === 'CIF' && contract && monthlyPlan) {
       // Auto-populate Discharge Port Location from contract's cif_destination if empty
       if (!dischargePortLocation && contract.cif_destination) {
         dischargePortLocation = contract.cif_destination
       }
-      
-      // Auto-populate ETA Discharge Port from calculated ETA if empty
-      if (!etaDischargePort && monthlyPlan.loading_window && monthlyPlan.cif_route && contract.cif_destination) {
-        const etaDate = calculateETADate(
-          monthlyPlan.loading_window,
-          contract.cif_destination,
-          monthlyPlan.cif_route,
-          monthlyPlan.month,
-          monthlyPlan.year
-        )
-        if (etaDate) {
-          // Format as "Mar 24, 2026"
-          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-          etaDischargePort = `${monthNames[etaDate.getMonth()]} ${etaDate.getDate()}, ${etaDate.getFullYear()}`
+
+      // Auto-populate ETA Discharge Port from monthly plan's delivery info if empty
+      if (!etaDischargePort) {
+        const parts: string[] = []
+
+        // Add delivery_month if available (e.g., "March 2026")
+        if (monthlyPlan.delivery_month) {
+          parts.push(monthlyPlan.delivery_month)
+        }
+
+        // Add delivery_window if available (e.g., "(16-28/3)")
+        if (monthlyPlan.delivery_window) {
+          parts.push(monthlyPlan.delivery_window)
+        }
+
+        // Calculate and add ETA date if possible
+        if (monthlyPlan.loading_window && monthlyPlan.cif_route && contract.cif_destination) {
+          const etaDate = calculateETADate(
+            monthlyPlan.loading_window,
+            contract.cif_destination,
+            monthlyPlan.cif_route,
+            monthlyPlan.month,
+            monthlyPlan.year
+          )
+          if (etaDate) {
+            parts.push(`ETA: ${etaDate.getDate()}`)
+          }
+        }
+
+        if (parts.length > 0) {
+          etaDischargePort = parts.join(' - ')
         }
       }
     }
@@ -1438,14 +1639,27 @@ export default function HomePage() {
     // For CIF contracts, auto-populate ETA Discharge Port and Discharge Port Location
     let etaDischargePort = ''
     let dischargePortLocation = ''
-    
+
     if (contract.contract_type === 'CIF') {
       // Auto-populate Discharge Port Location from contract's cif_destination
       if (contract.cif_destination) {
         dischargePortLocation = contract.cif_destination
       }
-      
-      // Auto-populate ETA Discharge Port from calculated ETA
+
+      // Auto-populate ETA Discharge Port from monthly plan's delivery info
+      const parts: string[] = []
+
+      // Add delivery_month if available (e.g., "March 2026")
+      if (monthlyPlan.delivery_month) {
+        parts.push(monthlyPlan.delivery_month)
+      }
+
+      // Add delivery_window if available (e.g., "(16-28/3)")
+      if (monthlyPlan.delivery_window) {
+        parts.push(monthlyPlan.delivery_window)
+      }
+
+      // Calculate and add ETA date if possible
       if (monthlyPlan.loading_window && monthlyPlan.cif_route && contract.cif_destination) {
         const etaDate = calculateETADate(
           monthlyPlan.loading_window,
@@ -1455,10 +1669,12 @@ export default function HomePage() {
           monthlyPlan.year
         )
         if (etaDate) {
-          // Format as "Mar 24, 2026"
-          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-          etaDischargePort = `${monthNames[etaDate.getMonth()]} ${etaDate.getDate()}, ${etaDate.getFullYear()}`
+          parts.push(`ETA: ${etaDate.getDate()}`)
         }
+      }
+
+      if (parts.length > 0) {
+        etaDischargePort = parts.join(' - ')
       }
     }
     
@@ -5046,30 +5262,57 @@ export default function HomePage() {
                 })}
               </Box>
 
-              {/* Export Button */}
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<FileDownload sx={{ fontSize: 16 }} />}
-                onClick={handlePortMovementExportToExcel}
-                sx={{
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  fontSize: '0.8125rem',
-                  px: 2,
-                  py: 0.75,
-                  borderColor: '#E2E8F0',
-                  color: '#475569',
-                  bgcolor: 'white',
-                  '&:hover': {
-                    borderColor: '#CBD5E1',
-                    bgcolor: '#F8FAFC',
-                  },
-                }}
-              >
-                Export
-              </Button>
+              {/* Export Buttons */}
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<FileDownload sx={{ fontSize: 16 }} />}
+                  onClick={handlePortMovementExportToExcel}
+                  sx={{
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    fontSize: '0.8125rem',
+                    px: 2,
+                    py: 0.75,
+                    borderColor: '#E2E8F0',
+                    color: '#475569',
+                    bgcolor: 'white',
+                    '&:hover': {
+                      borderColor: '#10B981',
+                      bgcolor: '#ECFDF5',
+                      color: '#059669',
+                    },
+                  }}
+                >
+                  Excel
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<PictureAsPdf sx={{ fontSize: 16 }} />}
+                  onClick={handlePortMovementExportToPDF}
+                  sx={{
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    fontSize: '0.8125rem',
+                    px: 2,
+                    py: 0.75,
+                    borderColor: '#E2E8F0',
+                    color: '#475569',
+                    bgcolor: 'white',
+                    '&:hover': {
+                      borderColor: '#EF4444',
+                      bgcolor: '#FEF2F2',
+                      color: '#DC2626',
+                    },
+                  }}
+                >
+                  PDF
+                </Button>
+              </Box>
             </Box>
           </Paper>
           
