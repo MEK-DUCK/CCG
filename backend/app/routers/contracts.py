@@ -141,14 +141,11 @@ def _sync_contract_products(db: Session, contract: models.Contract, products_dat
         
         # Convert year_quantities to proper list format for JSONB
         year_quantities_data = None
-        if year_quantities:
-            if isinstance(year_quantities, list):
-                year_quantities_data = [
-                    yq if isinstance(yq, dict) else yq.dict()
-                    for yq in year_quantities
-                ]
-            else:
-                year_quantities_data = year_quantities
+        if year_quantities and isinstance(year_quantities, list):
+            year_quantities_data = [
+                yq if isinstance(yq, dict) else yq.dict()
+                for yq in year_quantities
+            ]
 
         # Determine original quantities
         # If preserving and product existed before, use the stored originals

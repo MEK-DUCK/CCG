@@ -262,7 +262,7 @@ class Contract(Base):
     
     def get_amendments_list(self):
         """Convert authority_amendments relationship to list of dicts for API compatibility."""
-        return [aa.to_dict() for aa in self.authority_amendments] if self.authority_amendments else None
+        return [aa.to_dict() for aa in self.authority_amendments] if self.authority_amendments else []
 
 
 class ContractProduct(Base):
@@ -329,7 +329,6 @@ class ContractProduct(Base):
         if self.max_quantity is not None:
             result["max_quantity"] = self.max_quantity
         if self.year_quantities:
-            # JSONB returns Python objects directly, no parsing needed
             result["year_quantities"] = self.year_quantities
 
         # Include original quantities for audit/display purposes
@@ -339,7 +338,6 @@ class ContractProduct(Base):
             if self.original_max_quantity is not None:
                 result["original_max_quantity"] = self.original_max_quantity
             if self.original_year_quantities:
-                # JSONB returns Python objects directly, no parsing needed
                 result["original_year_quantities"] = self.original_year_quantities
 
         return result
