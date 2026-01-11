@@ -90,6 +90,8 @@ Combi cargos allow multiple products to be loaded on a single vessel, sharing th
 - **Auto-Seeding**: Default products, load ports, and inspectors are automatically created on first startup
 - **Resizable Table Columns**: Excel-like column resizing on all tables with persistent width preferences
 - **Modern UI Design**: Gradient stat cards, collapsible sections, animated elements on Dashboard and Calendar pages
+- **Shared Row Highlights**: Team leaders can highlight rows in Port Movement for team visibility (persists across sessions and devices)
+- **Month Dividers**: When viewing multiple months in Port Movement, rows are grouped by month with visual dividers
 
 ## Technology Stack
 
