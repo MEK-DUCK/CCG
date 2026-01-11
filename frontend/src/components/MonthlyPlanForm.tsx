@@ -412,10 +412,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           setPlanStatuses(statusMap)
           
           // Group plans by combi_group_id first (same as term contracts)
+          // Use filteredPlans (not allPlans) to only show plans for the selected year
           const combiGroups = new Map<string, any[]>()
           const nonCombiPlans: any[] = []
-          
-          allPlans.forEach((plan: any) => {
+
+          filteredPlans.forEach((plan: any) => {
             if (plan.combi_group_id) {
               const existing = combiGroups.get(plan.combi_group_id) || []
               existing.push(plan)
