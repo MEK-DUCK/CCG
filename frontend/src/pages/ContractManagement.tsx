@@ -773,39 +773,154 @@ export default function ContractManagement() {
         </Alert>
       </Snackbar>
 
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4, flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#1E293B', mb: 0.5 }}>
-            Contract Management
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#64748B' }}>
-            Manage contracts, quarterly and monthly plans
-          </Typography>
+      {/* Modern Header */}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 2,
+                  background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
+                }}
+              >
+                <Description sx={{ color: 'white', fontSize: 22 }} />
+              </Box>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#1E293B' }}>
+                Contract Management
+              </Typography>
+            </Box>
+            <Typography variant="body2" sx={{ color: '#64748B', ml: 7 }}>
+              Manage contracts, quarterly and monthly plans
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={() => handleOpen()}
+            sx={{
+              px: 3,
+              fontWeight: 600,
+              background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #4F46E5 0%, #4338CA 100%)',
+                boxShadow: '0 6px 16px rgba(99, 102, 241, 0.4)',
+              },
+            }}
+          >
+            Add Contract
+          </Button>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={() => handleOpen()}
-          sx={{
-            px: 3,
-            py: 1,
-            fontWeight: 600,
-            bgcolor: '#475569',
-            '&:hover': {
-              bgcolor: '#334155',
-            },
-          }}
-        >
-          Add Contract
-        </Button>
+
+        {/* Compact Stats */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, gap: 2 }}>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              border: '1px solid #E2E8F0',
+              background: 'white',
+              transition: 'all 0.2s ease',
+              '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ width: 36, height: 36, borderRadius: 2, background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Description sx={{ color: 'white', fontSize: 18 }} />
+              </Box>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>{contracts.length}</Typography>
+                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>Total Contracts</Typography>
+              </Box>
+            </Box>
+          </Paper>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              border: '1px solid #E2E8F0',
+              background: 'white',
+              transition: 'all 0.2s ease',
+              '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ width: 36, height: 36, borderRadius: 2, background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Description sx={{ color: 'white', fontSize: 18 }} />
+              </Box>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>{contracts.filter(c => c.contract_category === 'TERM').length}</Typography>
+                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>Term</Typography>
+              </Box>
+            </Box>
+          </Paper>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              border: '1px solid #E2E8F0',
+              background: 'white',
+              transition: 'all 0.2s ease',
+              '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ width: 36, height: 36, borderRadius: 2, background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Description sx={{ color: 'white', fontSize: 18 }} />
+              </Box>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>{contracts.filter(c => c.contract_category === 'SEMI_TERM').length}</Typography>
+                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>Semi-Term</Typography>
+              </Box>
+            </Box>
+          </Paper>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              border: '1px solid #E2E8F0',
+              background: 'white',
+              transition: 'all 0.2s ease',
+              '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ width: 36, height: 36, borderRadius: 2, background: 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Description sx={{ color: 'white', fontSize: 18 }} />
+              </Box>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>{contracts.filter(c => c.contract_category === 'SPOT').length}</Typography>
+                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>Spot</Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Box>
       </Box>
       
       {/* Filters */}
-      <Paper sx={{ mb: 3, p: 2.5 }}>
-        <Box 
-          sx={{ 
-            display: 'flex', 
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: 2.5,
+          border: '1px solid #E2E8F0',
+          borderRadius: 3,
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
             alignItems: 'center',
             gap: 2,
             flexWrap: 'wrap',
@@ -823,7 +938,16 @@ export default function ContractManagement() {
                 </Box>
               ),
             }}
-            sx={{ minWidth: 280, flex: '1 1 auto', maxWidth: 400 }}
+            sx={{
+              minWidth: 280,
+              flex: '1 1 auto',
+              maxWidth: 400,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+                '&:hover fieldset': { borderColor: '#6366F1' },
+                '&.Mui-focused fieldset': { borderColor: '#6366F1' },
+              },
+            }}
           />
           <FormControl size="small" sx={{ minWidth: 180 }}>
             <InputLabel>Customer</InputLabel>
@@ -903,11 +1027,18 @@ export default function ContractManagement() {
       <Grid container spacing={3}>
         {!selectedContract?.id && (
           <Grid item xs={12}>
-          <Paper sx={{ overflow: 'hidden' }}>
+          <Paper
+            elevation={0}
+            sx={{
+              overflow: 'hidden',
+              border: '1px solid #E2E8F0',
+              borderRadius: 3,
+            }}
+          >
             <TableContainer sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <Table sx={{ minWidth: 900 }}>
               <TableHead>
-                <TableRow>
+                <TableRow sx={{ bgcolor: '#F8FAFC' }}>
                   <ResizableTableCell columnId="contractNumber" width={contractsCols.columnWidths['contractNumber']} minWidth={120} onResizeStart={contractsCols.handleResizeStart}>Contract Number</ResizableTableCell>
                   <ResizableTableCell columnId="customer" width={contractsCols.columnWidths['customer']} minWidth={100} onResizeStart={contractsCols.handleResizeStart}>Customer</ResizableTableCell>
                   <ResizableTableCell columnId="contractType" width={contractsCols.columnWidths['contractType']} minWidth={100} onResizeStart={contractsCols.handleResizeStart}>Contract Type</ResizableTableCell>
