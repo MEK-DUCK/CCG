@@ -536,8 +536,27 @@ export default function HomePage() {
   const [monthlyPlans, setMonthlyPlans] = useState<MonthlyPlan[]>([])
   const [quarterlyPlansMap, setQuarterlyPlansMap] = useState<Map<number, any>>(new Map())
   const [loading, setLoading] = useState(true)
-  const [selectedMonths, setSelectedMonths] = useState<number[]>([new Date().getMonth() + 1])
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  // Persist selected months/year in localStorage
+  const [selectedMonths, setSelectedMonths] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem('portMovement_selectedMonths')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch {}
+    return [new Date().getMonth() + 1]
+  })
+  const [selectedYear, setSelectedYear] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('portMovement_selectedYear')
+      if (saved) {
+        const parsed = parseInt(saved, 10)
+        if (!isNaN(parsed)) return parsed
+      }
+    } catch {}
+    return new Date().getFullYear()
+  })
   const [completedMonth, setCompletedMonth] = useState<number | null>(null)
   const [completedYear, setCompletedYear] = useState<number | null>(null)
   // Port Movement filters
@@ -903,6 +922,19 @@ export default function HomePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Persist selected months/year to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('portMovement_selectedMonths', JSON.stringify(selectedMonths))
+    } catch {}
+  }, [selectedMonths])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('portMovement_selectedYear', String(selectedYear))
+    } catch {}
+  }, [selectedYear])
 
   const loadActiveLoadings = async () => {
     try {
