@@ -114,6 +114,9 @@ export default function ContractManagement() {
   const [filterCustomer, setFilterCustomer] = useState<number[]>([])
   const [filterYear, setFilterYear] = useState<number[]>([])
 
+  // Amendment year filter (for filtering amendments in the edit form)
+  const [amendmentYearFilter, setAmendmentYearFilter] = useState<number | 'all'>('all')
+
   // Pagination
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
@@ -227,6 +230,7 @@ export default function ContractManagement() {
   const handleOpen = (contract?: Contract) => {
     if (contract) {
       setEditingContract(contract)
+      setAmendmentYearFilter('all') // Reset amendment filter when opening a contract
       // Clean up products - convert null values to undefined for proper mode detection
       const cleanedProducts = (contract.products || []).map(p => ({
         ...p,
@@ -1814,28 +1818,70 @@ export default function ContractManagement() {
               )}
 
               {/* Authority Amendments Section - Only show for existing contracts with min/max products */}
-              {editingContract && formData.products.some(p => isMinMaxMode(p)) && (
+              {editingContract && formData.products.some(p => isMinMaxMode(p)) && (() => {
+                // Calculate available years for filter
+                const numYears = calculateContractYears(formData.start_period, formData.end_period)
+                const availableYears = Array.from({ length: numYears }, (_, i) => i + 1)
+
+                // Filter amendments by selected year
+                const filteredAmendments = amendmentYearFilter === 'all'
+                  ? formData.authority_amendments
+                  : formData.authority_amendments.filter(a => a.year === amendmentYearFilter || (!a.year && amendmentYearFilter === 1))
+
+                // Get original indices for filtered amendments (needed for editing/deleting)
+                const filteredIndices = amendmentYearFilter === 'all'
+                  ? formData.authority_amendments.map((_, i) => i)
+                  : formData.authority_amendments.map((a, i) => ({ amendment: a, index: i }))
+                      .filter(({ amendment }) => amendment.year === amendmentYearFilter || (!amendment.year && amendmentYearFilter === 1))
+                      .map(({ index }) => index)
+
+                return (
                 <Box sx={{ mt: 3 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
                     <Typography variant="subtitle1" fontWeight="bold" sx={{ color: '#7C3AED' }}>
                       Authority Amendments
                     </Typography>
-                    <Button
-                      size="small"
-                      startIcon={<Add />}
-                      onClick={handleAddAmendment}
-                      sx={{ color: '#7C3AED' }}
-                    >
-                      Add Amendment
-                    </Button>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      {numYears > 1 && (
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                          <InputLabel>Filter Year</InputLabel>
+                          <Select
+                            value={amendmentYearFilter}
+                            onChange={(e) => setAmendmentYearFilter(e.target.value as number | 'all')}
+                            label="Filter Year"
+                          >
+                            <MenuItem value="all">All Years</MenuItem>
+                            {availableYears.map(year => (
+                              <MenuItem key={year} value={year}>
+                                Year {year} ({getCalendarYear(formData.start_period, year)})
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                      <Button
+                        size="small"
+                        startIcon={<Add />}
+                        onClick={handleAddAmendment}
+                        sx={{ color: '#7C3AED' }}
+                      >
+                        Add Amendment
+                      </Button>
+                    </Box>
                   </Box>
-                  
+
                   {formData.authority_amendments.length === 0 ? (
                     <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
                       No amendments recorded. Use amendments to adjust min/max quantities mid-contract.
                     </Typography>
+                  ) : filteredAmendments.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2, bgcolor: '#F8FAFC', borderRadius: 1 }}>
+                      No amendments for Year {amendmentYearFilter}. Select "All Years" to see all amendments.
+                    </Typography>
                   ) : (
-                    formData.authority_amendments.map((amendment, index) => (
+                    filteredAmendments.map((amendment, idx) => {
+                      const index = filteredIndices[idx] // Get original index for editing/deleting
+                      return (
                       <Box 
                         key={index} 
                         sx={{ 
@@ -2003,10 +2049,10 @@ export default function ContractManagement() {
                           </Grid>
                         </Grid>
                       </Box>
-                    ))
+                    )})
                   )}
                 </Box>
-              )}
+              )})()}
 
               {jetA1Selected && (
                 <Box sx={{ mt: 1 }}>
