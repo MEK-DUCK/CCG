@@ -566,36 +566,107 @@ export default function ContractSummaryPage() {
                     <TableCell>
                       <Typography variant="body2">{productsLabel}</Typography>
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      {isMinMaxMode(c) ? (
-                        <Chip 
-                            label={`${minTotalFor(c).toLocaleString()} - ${firmTotalFor(c).toLocaleString()}`} 
-                          size="small" 
-                          variant="outlined"
-                          sx={{ bgcolor: BADGE_COLORS.COMBI.bgcolor, borderColor: BADGE_COLORS.COMBI.color }}
-                        />
-                      ) : (
-                          <Chip label={`${firmTotalFor(c).toLocaleString()}`} size="small" variant="outlined" />
-                      )}
-                        {hasAmendments(c) && (
-                          <Tooltip 
-                            title={`Original: ${originalMinTotalFor(c).toLocaleString()} - ${originalMaxTotalFor(c).toLocaleString()} KT`}
-                            arrow
-                          >
-                            <Chip 
-                              label="Amended" 
-                              size="small" 
-                              sx={{ 
-                                height: 18,
-                                fontSize: '0.65rem',
-                                bgcolor: '#FEF3C7', 
-                                color: '#D97706',
-                                fontWeight: 600,
-                                '& .MuiChip-label': { px: 0.5 }
-                              }} 
-                            />
-                          </Tooltip>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        {c.products.map((p, idx) => {
+                          const { effectiveMin, effectiveMax, optional, originalMin, originalMax, hasMinMax } = getProductYearQuantities(c, p)
+                          const isAmended = effectiveMin !== originalMin || effectiveMax !== originalMax
+                          return (
+                            <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 500, minWidth: 60, color: '#475569' }}>
+                                {p.name}:
+                              </Typography>
+                              {hasMinMax ? (
+                                <Chip
+                                  label={`${effectiveMin.toLocaleString()} - ${effectiveMax.toLocaleString()} KT`}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{
+                                    height: 22,
+                                    fontSize: '0.75rem',
+                                    bgcolor: BADGE_COLORS.COMBI.bgcolor,
+                                    borderColor: BADGE_COLORS.COMBI.color
+                                  }}
+                                />
+                              ) : (
+                                <Chip
+                                  label={`${effectiveMax.toLocaleString()} KT`}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ height: 22, fontSize: '0.75rem' }}
+                                />
+                              )}
+                              {optional > 0 && (
+                                <Chip
+                                  label={`+${optional.toLocaleString()} opt`}
+                                  size="small"
+                                  sx={{
+                                    height: 18,
+                                    fontSize: '0.65rem',
+                                    bgcolor: '#F0FDF4',
+                                    color: '#16A34A',
+                                    '& .MuiChip-label': { px: 0.5 }
+                                  }}
+                                />
+                              )}
+                              {isAmended && (
+                                <Tooltip
+                                  title={`Original: ${originalMin.toLocaleString()} - ${originalMax.toLocaleString()} KT`}
+                                  arrow
+                                >
+                                  <Chip
+                                    label="Amended"
+                                    size="small"
+                                    sx={{
+                                      height: 18,
+                                      fontSize: '0.65rem',
+                                      bgcolor: '#FEF3C7',
+                                      color: '#D97706',
+                                      fontWeight: 600,
+                                      '& .MuiChip-label': { px: 0.5 }
+                                    }}
+                                  />
+                                </Tooltip>
+                              )}
+                            </Box>
+                          )
+                        })}
+                        {/* Show total if multiple products */}
+                        {c.products.length > 1 && (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, pt: 0.5, borderTop: '1px dashed #E2E8F0' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 60, color: '#1E293B' }}>
+                              Total:
+                            </Typography>
+                            {isMinMaxMode(c) ? (
+                              <Chip
+                                label={`${minTotalFor(c).toLocaleString()} - ${firmTotalFor(c).toLocaleString()} KT`}
+                                size="small"
+                                variant="outlined"
+                                sx={{ height: 22, fontSize: '0.75rem', fontWeight: 600 }}
+                              />
+                            ) : (
+                              <Chip
+                                label={`${firmTotalFor(c).toLocaleString()} KT`}
+                                size="small"
+                                variant="outlined"
+                                sx={{ height: 22, fontSize: '0.75rem', fontWeight: 600 }}
+                              />
+                            )}
+                            {optionalTotalFor(c) > 0 && (
+                              <Chip
+                                label={`+${optionalTotalFor(c).toLocaleString()} opt`}
+                                size="small"
+                                sx={{
+                                  height: 18,
+                                  fontSize: '0.65rem',
+                                  bgcolor: '#F0FDF4',
+                                  color: '#16A34A',
+                                  fontWeight: 600,
+                                  '& .MuiChip-label': { px: 0.5 }
+                                }}
+                              />
+                            )}
+                          </Box>
                         )}
                       </Box>
                     </TableCell>
