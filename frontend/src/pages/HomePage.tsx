@@ -59,6 +59,8 @@ import { EditingWarningBanner, ActiveUsersIndicator } from '../components/Presen
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { VersionHistoryDialog } from '../components/VersionHistory'
+import { useResizableColumns, ColumnConfig } from '../hooks/useResizableColumns'
+import ResizableTableCell from '../components/ResizableTableCell'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -91,6 +93,41 @@ interface InlineTextFieldProps {
   onSave: (value: string) => void
   fullWidth?: boolean
 }
+
+// Column configurations for resizable tables
+const PORT_MOVEMENT_COLUMNS: ColumnConfig[] = [
+  { id: 'vessel', label: 'Vessel Name', defaultWidth: 140, minWidth: 120 },
+  { id: 'customer', label: 'Customer Name', defaultWidth: 140, minWidth: 120 },
+  { id: 'contract', label: 'Contract Number', defaultWidth: 140, minWidth: 120 },
+  { id: 'type', label: 'FOB/CIF', defaultWidth: 90, minWidth: 80 },
+  { id: 'payment', label: 'Payment Method', defaultWidth: 120, minWidth: 100 },
+  { id: 'lcStatus', label: 'LC Status', defaultWidth: 110, minWidth: 90 },
+  { id: 'product', label: 'Product', defaultWidth: 110, minWidth: 100 },
+  { id: 'laycan', label: 'Laycan', defaultWidth: 120, minWidth: 100 },
+  { id: 'quantity', label: 'Quantity', defaultWidth: 100, minWidth: 80 },
+  { id: 'loadPort', label: 'Load Port', defaultWidth: 120, minWidth: 100 },
+  { id: 'inspector', label: 'Inspector', defaultWidth: 110, minWidth: 90 },
+  { id: 'status', label: 'Status', defaultWidth: 110, minWidth: 90 },
+  { id: 'deliveryWindow', label: 'Delivery Window', defaultWidth: 130, minWidth: 100 },
+  { id: 'tng', label: 'TNG', defaultWidth: 100, minWidth: 80 },
+  { id: 'remark', label: 'Remark', defaultWidth: 150, minWidth: 100 },
+  { id: 'actions', label: 'Actions', defaultWidth: 120, minWidth: 100 },
+]
+
+const CIF_TRACKING_COLUMNS: ColumnConfig[] = [
+  { id: 'vessel', label: 'Vessel Name', defaultWidth: 140, minWidth: 120 },
+  { id: 'customer', label: 'Customer', defaultWidth: 140, minWidth: 120 },
+  { id: 'contract', label: 'Contract', defaultWidth: 140, minWidth: 120 },
+  { id: 'product', label: 'Product', defaultWidth: 110, minWidth: 100 },
+  { id: 'quantity', label: 'Quantity', defaultWidth: 100, minWidth: 80 },
+  { id: 'ndDueDate', label: 'ND Due Date', defaultWidth: 110, minWidth: 90 },
+  { id: 'ndDelWindow', label: 'ND Del Window', defaultWidth: 120, minWidth: 100 },
+  { id: 'originalDw', label: 'Original DW', defaultWidth: 110, minWidth: 90 },
+  { id: 'etaDischarge', label: 'ETA Discharge', defaultWidth: 120, minWidth: 100 },
+  { id: 'dischargePort', label: 'Discharge Port', defaultWidth: 130, minWidth: 100 },
+  { id: 'paymentStatus', label: 'Payment Status', defaultWidth: 130, minWidth: 100 },
+  { id: 'remark', label: 'Remark', defaultWidth: 150, minWidth: 100 },
+]
 
 const InlineTextField = memo(function InlineTextField({ value, onSave, fullWidth }: InlineTextFieldProps) {
   const [localValue, setLocalValue] = useState(value)
@@ -127,6 +164,10 @@ export default function HomePage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const { user } = useAuth()
   const { showSuccess, showError, showWarning } = useToast()
+
+  // Resizable columns for tables
+  const portMovementCols = useResizableColumns('home-port-movement', PORT_MOVEMENT_COLUMNS)
+  const cifTrackingCols = useResizableColumns('home-cif-tracking', CIF_TRACKING_COLUMNS)
 
   const [dataChangedNotification, setDataChangedNotification] = useState<string | null>(null)
 
@@ -940,7 +981,7 @@ export default function HomePage() {
         cargoAPI.getCompletedInRoadCIF().catch(() => ({ data: [] })),
         client.get('/api/load-ports/codes').catch(() => ({ data: ['MAA', 'MAB', 'SHU'] })),
         client.get('/api/inspectors/names').catch(() => ({ data: ['SGS', 'Intertek', 'Saybolt'] })),
-        client.get<DischargePort[]>('/api/discharge-ports').catch(() => ({ data: [] })),
+        client.get<DischargePort[]>('/api/discharge-ports/').catch(() => ({ data: [] })),
       ])
       
       // Load discharge ports for voyage duration calculations
@@ -2139,7 +2180,7 @@ export default function HomePage() {
     }
 
     return (
-      <TableContainer 
+      <TableContainer
         component={Paper}
         sx={{
           maxWidth: '100%',
@@ -2153,18 +2194,18 @@ export default function HomePage() {
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Vessel Name</TableCell>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Customer</TableCell>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Contract</TableCell>
-              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Product</TableCell>
-              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Quantity</TableCell>
-              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>ND Due Date</TableCell>
-              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>ND Del Window</TableCell>
-              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Original DW</TableCell>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>ETA Discharge</TableCell>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Discharge Port</TableCell>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Payment Status</TableCell>
-              <TableCell sx={{ minWidth: 150, fontWeight: 'bold' }}>Remark</TableCell>
+              <ResizableTableCell columnId="vessel" width={cifTrackingCols.columnWidths['vessel']} minWidth={120} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Vessel Name</ResizableTableCell>
+              <ResizableTableCell columnId="customer" width={cifTrackingCols.columnWidths['customer']} minWidth={120} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Customer</ResizableTableCell>
+              <ResizableTableCell columnId="contract" width={cifTrackingCols.columnWidths['contract']} minWidth={120} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Contract</ResizableTableCell>
+              <ResizableTableCell columnId="product" width={cifTrackingCols.columnWidths['product']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Product</ResizableTableCell>
+              <ResizableTableCell columnId="quantity" width={cifTrackingCols.columnWidths['quantity']} minWidth={80} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Quantity</ResizableTableCell>
+              <ResizableTableCell columnId="ndDueDate" width={cifTrackingCols.columnWidths['ndDueDate']} minWidth={90} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>ND Due Date</ResizableTableCell>
+              <ResizableTableCell columnId="ndDelWindow" width={cifTrackingCols.columnWidths['ndDelWindow']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>ND Del Window</ResizableTableCell>
+              <ResizableTableCell columnId="originalDw" width={cifTrackingCols.columnWidths['originalDw']} minWidth={90} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Original DW</ResizableTableCell>
+              <ResizableTableCell columnId="etaDischarge" width={cifTrackingCols.columnWidths['etaDischarge']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>ETA Discharge</ResizableTableCell>
+              <ResizableTableCell columnId="dischargePort" width={cifTrackingCols.columnWidths['dischargePort']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Discharge Port</ResizableTableCell>
+              <ResizableTableCell columnId="paymentStatus" width={cifTrackingCols.columnWidths['paymentStatus']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Payment Status</ResizableTableCell>
+              <ResizableTableCell columnId="remark" width={cifTrackingCols.columnWidths['remark']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Remark</ResizableTableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -2944,7 +2985,7 @@ export default function HomePage() {
     }
 
     return (
-      <TableContainer 
+      <TableContainer
         component={Paper}
         sx={{
           maxWidth: '100%',
@@ -2958,18 +2999,18 @@ export default function HomePage() {
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Vessel Name</TableCell>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Customer</TableCell>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Contract</TableCell>
-              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Product</TableCell>
-              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Quantity</TableCell>
-              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>ND Due Date</TableCell>
-              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>ND Del Window</TableCell>
-              <TableCell sx={{ minWidth: 100, fontWeight: 'bold' }}>Original DW</TableCell>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>ETA Discharge</TableCell>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Discharge Port</TableCell>
-              <TableCell sx={{ minWidth: 120, fontWeight: 'bold' }}>Payment Status</TableCell>
-              <TableCell sx={{ minWidth: 150, fontWeight: 'bold' }}>Remark</TableCell>
+              <ResizableTableCell columnId="vessel" width={cifTrackingCols.columnWidths['vessel']} minWidth={120} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Vessel Name</ResizableTableCell>
+              <ResizableTableCell columnId="customer" width={cifTrackingCols.columnWidths['customer']} minWidth={120} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Customer</ResizableTableCell>
+              <ResizableTableCell columnId="contract" width={cifTrackingCols.columnWidths['contract']} minWidth={120} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Contract</ResizableTableCell>
+              <ResizableTableCell columnId="product" width={cifTrackingCols.columnWidths['product']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Product</ResizableTableCell>
+              <ResizableTableCell columnId="quantity" width={cifTrackingCols.columnWidths['quantity']} minWidth={80} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Quantity</ResizableTableCell>
+              <ResizableTableCell columnId="ndDueDate" width={cifTrackingCols.columnWidths['ndDueDate']} minWidth={90} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>ND Due Date</ResizableTableCell>
+              <ResizableTableCell columnId="ndDelWindow" width={cifTrackingCols.columnWidths['ndDelWindow']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>ND Del Window</ResizableTableCell>
+              <ResizableTableCell columnId="originalDw" width={cifTrackingCols.columnWidths['originalDw']} minWidth={90} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Original DW</ResizableTableCell>
+              <ResizableTableCell columnId="etaDischarge" width={cifTrackingCols.columnWidths['etaDischarge']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>ETA Discharge</ResizableTableCell>
+              <ResizableTableCell columnId="dischargePort" width={cifTrackingCols.columnWidths['dischargePort']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Discharge Port</ResizableTableCell>
+              <ResizableTableCell columnId="paymentStatus" width={cifTrackingCols.columnWidths['paymentStatus']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Payment Status</ResizableTableCell>
+              <ResizableTableCell columnId="remark" width={cifTrackingCols.columnWidths['remark']} minWidth={100} onResizeStart={cifTrackingCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Remark</ResizableTableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -4061,22 +4102,22 @@ export default function HomePage() {
           <Table stickyHeader sx={{ tableLayout: 'auto' }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Vessel Name</TableCell>
-                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Customer Name</TableCell>
-                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Contract Number</TableCell>
-                <TableCell sx={{ minWidth: 90, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>FOB/CIF</TableCell>
-                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Payment Method</TableCell>
-                <TableCell sx={{ minWidth: 110, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>LC Status</TableCell>
-                <TableCell sx={{ minWidth: 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Product</TableCell>
-                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Laycan</TableCell>
-                <TableCell sx={{ minWidth: 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Quantity</TableCell>
-                <TableCell sx={{ minWidth: 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Load Port</TableCell>
-                <TableCell sx={{ minWidth: 110, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Inspector</TableCell>
-                <TableCell sx={{ minWidth: 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Status</TableCell>
-                <TableCell sx={{ minWidth: 130, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Delivery Window</TableCell>
-                <TableCell sx={{ minWidth: 100, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>TNG</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 150, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Remark</TableCell>
-                <TableCell sx={{ minWidth: isMobile ? 100 : 120, fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'anywhere' }}>Actions</TableCell>
+                <ResizableTableCell columnId="vessel" width={portMovementCols.columnWidths['vessel']} minWidth={120} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Vessel Name</ResizableTableCell>
+                <ResizableTableCell columnId="customer" width={portMovementCols.columnWidths['customer']} minWidth={120} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Customer Name</ResizableTableCell>
+                <ResizableTableCell columnId="contract" width={portMovementCols.columnWidths['contract']} minWidth={120} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Contract Number</ResizableTableCell>
+                <ResizableTableCell columnId="type" width={portMovementCols.columnWidths['type']} minWidth={80} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>FOB/CIF</ResizableTableCell>
+                <ResizableTableCell columnId="payment" width={portMovementCols.columnWidths['payment']} minWidth={100} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Payment Method</ResizableTableCell>
+                <ResizableTableCell columnId="lcStatus" width={portMovementCols.columnWidths['lcStatus']} minWidth={90} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>LC Status</ResizableTableCell>
+                <ResizableTableCell columnId="product" width={portMovementCols.columnWidths['product']} minWidth={100} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Product</ResizableTableCell>
+                <ResizableTableCell columnId="laycan" width={portMovementCols.columnWidths['laycan']} minWidth={100} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Laycan</ResizableTableCell>
+                <ResizableTableCell columnId="quantity" width={portMovementCols.columnWidths['quantity']} minWidth={80} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Quantity</ResizableTableCell>
+                <ResizableTableCell columnId="loadPort" width={portMovementCols.columnWidths['loadPort']} minWidth={100} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Load Port</ResizableTableCell>
+                <ResizableTableCell columnId="inspector" width={portMovementCols.columnWidths['inspector']} minWidth={90} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Inspector</ResizableTableCell>
+                <ResizableTableCell columnId="status" width={portMovementCols.columnWidths['status']} minWidth={90} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Status</ResizableTableCell>
+                <ResizableTableCell columnId="deliveryWindow" width={portMovementCols.columnWidths['deliveryWindow']} minWidth={100} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Delivery Window</ResizableTableCell>
+                <ResizableTableCell columnId="tng" width={portMovementCols.columnWidths['tng']} minWidth={80} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>TNG</ResizableTableCell>
+                <ResizableTableCell columnId="remark" width={portMovementCols.columnWidths['remark']} minWidth={100} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }}>Remark</ResizableTableCell>
+                <ResizableTableCell columnId="actions" width={portMovementCols.columnWidths['actions']} minWidth={100} onResizeStart={portMovementCols.handleResizeStart} sx={{ fontWeight: 'bold' }} resizable={false}>Actions</ResizableTableCell>
               </TableRow>
             </TableHead>
             <TableBody>

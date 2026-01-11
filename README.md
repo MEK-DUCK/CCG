@@ -88,6 +88,8 @@ Combi cargos allow multiple products to be loaded on a single vessel, sharing th
 - **Keyboard Shortcuts**: Ctrl+S (Cmd+S on Mac) to save forms, Escape to close dialogs
 - **Standardized UI**: Consistent button styles and color coding across all pages
 - **Auto-Seeding**: Default products, load ports, and inspectors are automatically created on first startup
+- **Resizable Table Columns**: Excel-like column resizing on all tables with persistent width preferences
+- **Modern UI Design**: Gradient stat cards, collapsible sections, animated elements on Dashboard and Calendar pages
 
 ## Technology Stack
 
@@ -173,6 +175,7 @@ oil-lifting-program/
 │   │   │   ├── usePresence.ts   # WebSocket presence hook
 │   │   │   ├── useRealTimeSync.ts # Real-time data sync hook
 │   │   │   ├── useAutosave.ts   # Debounced autosave hook
+│   │   │   ├── useResizableColumns.ts # Excel-like column resizing
 │   │   │   └── useKeyboardShortcuts.ts # Keyboard shortcut hooks
 │   │   ├── pages/               # Page components
 │   │   ├── types/               # TypeScript types

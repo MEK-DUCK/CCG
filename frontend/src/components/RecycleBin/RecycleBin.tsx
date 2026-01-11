@@ -42,6 +42,19 @@ import {
 import { recycleBinAPI } from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
 import { formatDistanceToNow } from 'date-fns'
+import { useResizableColumns, ColumnConfig } from '../../hooks/useResizableColumns'
+import ResizableTableCell from '../ResizableTableCell'
+
+// Column configuration for recycle bin table
+const RECYCLE_BIN_COLUMNS: ColumnConfig[] = [
+  { id: 'type', label: 'Type', defaultWidth: 120, minWidth: 80 },
+  { id: 'name', label: 'Name', defaultWidth: 180, minWidth: 120 },
+  { id: 'deletedBy', label: 'Deleted By', defaultWidth: 100, minWidth: 80 },
+  { id: 'deleted', label: 'Deleted', defaultWidth: 120, minWidth: 90 },
+  { id: 'reason', label: 'Reason', defaultWidth: 200, minWidth: 120 },
+  { id: 'expires', label: 'Expires', defaultWidth: 120, minWidth: 90 },
+  { id: 'actions', label: 'Actions', defaultWidth: 120, minWidth: 100 },
+]
 
 interface DeletedEntity {
   id: number
@@ -80,6 +93,10 @@ const ENTITY_TYPE_COLORS: Record<string, 'primary' | 'secondary' | 'success' | '
 
 export function RecycleBin() {
   const { isAdmin } = useAuth()
+
+  // Resizable columns
+  const recycleBinCols = useResizableColumns('recycle-bin', RECYCLE_BIN_COLUMNS)
+
   const [deletedEntities, setDeletedEntities] = useState<DeletedEntity[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -255,13 +272,13 @@ export function RecycleBin() {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Deleted By</TableCell>
-                  <TableCell>Deleted</TableCell>
-                  <TableCell>Reason</TableCell>
-                  <TableCell>Expires</TableCell>
-                  <TableCell align="right">Actions</TableCell>
+                  <ResizableTableCell columnId="type" width={recycleBinCols.columnWidths['type']} minWidth={80} onResizeStart={recycleBinCols.handleResizeStart}>Type</ResizableTableCell>
+                  <ResizableTableCell columnId="name" width={recycleBinCols.columnWidths['name']} minWidth={120} onResizeStart={recycleBinCols.handleResizeStart}>Name</ResizableTableCell>
+                  <ResizableTableCell columnId="deletedBy" width={recycleBinCols.columnWidths['deletedBy']} minWidth={80} onResizeStart={recycleBinCols.handleResizeStart}>Deleted By</ResizableTableCell>
+                  <ResizableTableCell columnId="deleted" width={recycleBinCols.columnWidths['deleted']} minWidth={90} onResizeStart={recycleBinCols.handleResizeStart}>Deleted</ResizableTableCell>
+                  <ResizableTableCell columnId="reason" width={recycleBinCols.columnWidths['reason']} minWidth={120} onResizeStart={recycleBinCols.handleResizeStart}>Reason</ResizableTableCell>
+                  <ResizableTableCell columnId="expires" width={recycleBinCols.columnWidths['expires']} minWidth={90} onResizeStart={recycleBinCols.handleResizeStart}>Expires</ResizableTableCell>
+                  <ResizableTableCell columnId="actions" width={recycleBinCols.columnWidths['actions']} minWidth={100} onResizeStart={recycleBinCols.handleResizeStart} align="right" resizable={false}>Actions</ResizableTableCell>
                 </TableRow>
               </TableHead>
               <TableBody>

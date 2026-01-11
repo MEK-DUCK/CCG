@@ -8,30 +8,49 @@ import {
   Paper,
   Typography,
   Dialog,
-  DialogTitle,
   DialogContent,
-  DialogActions,
   Button,
   Chip,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Checkbox,
-  ListItemText,
-  OutlinedInput,
   CircularProgress,
   useMediaQuery,
   useTheme,
-  Divider,
   IconButton,
+  Tooltip,
+  Fade,
+  ToggleButtonGroup,
+  ToggleButton,
+  Popover,
+  Stack,
+  Switch,
+  FormControlLabel,
+  Badge,
 } from '@mui/material'
-import { Close, Edit, Visibility, Warning } from '@mui/icons-material'
+import {
+  Close,
+  Edit,
+  Visibility,
+  Warning,
+  FilterList,
+  CalendarMonth,
+  ViewWeek,
+  LocalShipping,
+  Anchor,
+  Schedule,
+  Description,
+  Person,
+  Inventory,
+  Place,
+  NavigateBefore,
+  NavigateNext,
+  Today,
+  WarningAmber,
+  CheckCircle,
+} from '@mui/icons-material'
 import { useNavigate } from 'react-router-dom'
 import { contractAPI, customerAPI, monthlyPlanAPI, cargoAPI } from '../api/client'
 import type { Contract, Customer, MonthlyPlan, Cargo } from '../types'
 import { parseLaycanDate } from '../utils/laycanParser'
-import { CALENDAR_COLORS, BADGE_COLORS, getContractTypeColor } from '../utils/chipColors'
+import { format } from 'date-fns'
 
 // Event types for the calendar
 type EventType = 'fob_laycan' | 'cif_loading' | 'tng_due' | 'nd_due'
@@ -64,17 +83,42 @@ interface CalendarEvent {
   classNames: string[]
 }
 
-// Color scheme - using centralized calendar colors
-const EVENT_COLORS = {
-  fob_laycan: CALENDAR_COLORS.FOB_LAYCAN,
-  cif_loading: CALENDAR_COLORS.CIF_LOADING,
-  tng_due: CALENDAR_COLORS.TNG_DUE,
-  nd_due: CALENDAR_COLORS.ND_DUE,
-}
-
-const TBA_COLORS = {
-  fob_laycan: CALENDAR_COLORS.TBA_FOB,
-  cif_loading: CALENDAR_COLORS.TBA_CIF,
+// Modern color palette
+const MODERN_COLORS = {
+  fob: {
+    primary: '#3B82F6',
+    bg: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
+    light: '#EFF6FF',
+    text: '#FFFFFF',
+  },
+  cif: {
+    primary: '#F59E0B',
+    bg: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+    light: '#FEF3C7',
+    text: '#FFFFFF',
+  },
+  tng: {
+    primary: '#8B5CF6',
+    bg: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
+    light: '#EDE9FE',
+    text: '#FFFFFF',
+  },
+  nd: {
+    primary: '#EC4899',
+    bg: 'linear-gradient(135deg, #EC4899 0%, #BE185D 100%)',
+    light: '#FCE7F3',
+    text: '#FFFFFF',
+  },
+  overdue: {
+    primary: '#EF4444',
+    bg: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+    light: '#FEE2E2',
+    text: '#FFFFFF',
+  },
+  tba: {
+    fob: { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
+    cif: { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E' },
+  },
 }
 
 export default function CalendarPage() {
@@ -89,12 +133,22 @@ export default function CalendarPage() {
   const [cargos, setCargos] = useState<Cargo[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Calendar state
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [view, setView] = useState<'month' | 'week'>(isMobile ? 'week' : 'month')
+  const [calendarApi, setCalendarApi] = useState<any>(null)
+
   // Filter state
-  const [selectedCustomers, setSelectedCustomers] = useState<number[]>([])
-  const [selectedContractTypes, setSelectedContractTypes] = useState<string[]>(['FOB', 'CIF'])
-  const [selectedEventTypes, setSelectedEventTypes] = useState<EventType[]>(['fob_laycan', 'cif_loading', 'tng_due', 'nd_due'])
+  const [selectedCustomers] = useState<number[]>([])
+  const [filterFOB, setFilterFOB] = useState(true)
+  const [filterCIF, setFilterCIF] = useState(true)
+  const [filterTNG, setFilterTNG] = useState(true)
+  const [filterND, setFilterND] = useState(true)
   const [showTBA, setShowTBA] = useState(true)
   const [showOverdueOnly, setShowOverdueOnly] = useState(false)
+
+  // Filter popover
+  const [filterAnchor, setFilterAnchor] = useState<HTMLButtonElement | null>(null)
 
   // Popup state
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
@@ -138,10 +192,26 @@ export default function CalendarPage() {
   }, [contracts])
 
   // Get product name for a monthly plan
-  // product_name is stored on ALL monthly plans (TERM, SPOT, SEMI_TERM)
   const getProductNameForMonthlyPlan = useCallback((monthlyPlan: MonthlyPlan): string => {
     return monthlyPlan.product_name || 'Unknown Product'
   }, [])
+
+  // Selected event types based on filters
+  const selectedEventTypes = useMemo(() => {
+    const types: EventType[] = []
+    if (filterFOB) types.push('fob_laycan')
+    if (filterCIF) types.push('cif_loading')
+    if (filterTNG) types.push('tng_due')
+    if (filterND) types.push('nd_due')
+    return types
+  }, [filterFOB, filterCIF, filterTNG, filterND])
+
+  const selectedContractTypes = useMemo(() => {
+    const types: string[] = []
+    if (filterFOB) types.push('FOB')
+    if (filterCIF) types.push('CIF')
+    return types
+  }, [filterFOB, filterCIF])
 
   // Transform data into calendar events
   const calendarEvents = useMemo((): CalendarEvent[] => {
@@ -180,18 +250,20 @@ export default function CalendarPage() {
       if (showOverdueOnly && !isOverdue) return
 
       const eventType: EventType = contract.contract_type === 'FOB' ? 'fob_laycan' : 'cif_loading'
-      
+
       // Filter by event type
       if (!selectedEventTypes.includes(eventType)) return
 
-      const colors = EVENT_COLORS[eventType]
+      const colors = isOverdue
+        ? MODERN_COLORS.overdue
+        : (contract.contract_type === 'FOB' ? MODERN_COLORS.fob : MODERN_COLORS.cif)
 
       // Use only the first day of the laycan/loading window
       const eventStart = parsed.startDate
 
       events.push({
         id: `cargo-${cargo.id}`,
-        title: `${customerName} - ${contract.contract_number} - ${cargo.product_name}`,
+        title: `${cargo.vessel_name || 'TBA'} - ${cargo.product_name}`,
         start: eventStart,
         allDay: true,
         extendedProps: {
@@ -211,23 +283,24 @@ export default function CalendarPage() {
           contractType: contract.contract_type as 'FOB' | 'CIF',
           rawLaycan: laycanStr,
         },
-        backgroundColor: isOverdue ? '#FEE2E2' : colors.bg,
-        borderColor: isOverdue ? '#EF4444' : colors.border,
-        textColor: isOverdue ? '#DC2626' : colors.text,
-        classNames: isOverdue ? ['overdue-event', `event-${eventType}`] : [`event-${eventType}`],
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
+        textColor: colors.text,
+        classNames: isOverdue ? ['modern-event', 'overdue-event'] : ['modern-event', `event-${eventType}`],
       })
 
       // Add TNG Due date for CIF contracts
       if (contract.contract_type === 'CIF' && contract.tng_lead_days && monthlyPlan) {
         const tngDueDate = new Date(parsed.startDate)
         tngDueDate.setDate(tngDueDate.getDate() - contract.tng_lead_days)
-        
+
         const tngOverdue = tngDueDate < today && !monthlyPlan.tng_issued
 
         if (selectedEventTypes.includes('tng_due') && (!showOverdueOnly || tngOverdue)) {
+          const tngColors = tngOverdue ? MODERN_COLORS.overdue : MODERN_COLORS.tng
           events.push({
             id: `tng-${cargo.id}`,
-            title: `TNG Due: ${contract.contract_number}`,
+            title: `TNG: ${contract.contract_number}`,
             start: tngDueDate,
             allDay: true,
             extendedProps: {
@@ -247,10 +320,10 @@ export default function CalendarPage() {
               contractType: 'CIF',
               rawLaycan: laycanStr,
             },
-            backgroundColor: tngOverdue ? '#FEE2E2' : EVENT_COLORS.tng_due.bg,
-            borderColor: tngOverdue ? '#EF4444' : EVENT_COLORS.tng_due.border,
-            textColor: tngOverdue ? '#DC2626' : EVENT_COLORS.tng_due.text,
-            classNames: tngOverdue ? ['overdue-event', 'event-tng_due'] : ['event-tng_due'],
+            backgroundColor: tngColors.primary,
+            borderColor: tngColors.primary,
+            textColor: tngColors.text,
+            classNames: tngOverdue ? ['modern-event', 'overdue-event'] : ['modern-event', 'event-tng_due'],
           })
         }
       }
@@ -261,9 +334,10 @@ export default function CalendarPage() {
         const ndOverdue = ndDueDate < today
 
         if (selectedEventTypes.includes('nd_due') && (!showOverdueOnly || ndOverdue)) {
+          const ndColors = ndOverdue ? MODERN_COLORS.overdue : MODERN_COLORS.nd
           events.push({
             id: `nd-${cargo.id}`,
-            title: `ND Due: ${contract.contract_number}`,
+            title: `ND: ${contract.contract_number}`,
             start: ndDueDate,
             allDay: true,
             extendedProps: {
@@ -283,10 +357,10 @@ export default function CalendarPage() {
               contractType: 'CIF',
               rawLaycan: laycanStr,
             },
-            backgroundColor: ndOverdue ? '#FEE2E2' : EVENT_COLORS.nd_due.bg,
-            borderColor: ndOverdue ? '#EF4444' : EVENT_COLORS.nd_due.border,
-            textColor: ndOverdue ? '#DC2626' : EVENT_COLORS.nd_due.text,
-            classNames: ndOverdue ? ['overdue-event', 'event-nd_due'] : ['event-nd_due'],
+            backgroundColor: ndColors.primary,
+            borderColor: ndColors.primary,
+            textColor: ndColors.text,
+            classNames: ndOverdue ? ['modern-event', 'overdue-event'] : ['modern-event', 'event-nd_due'],
           })
         }
       }
@@ -312,10 +386,10 @@ export default function CalendarPage() {
         if (selectedCustomers.length > 0 && !selectedCustomers.includes(contract.customer_id)) return
 
         const customerName = getCustomerName(contract.customer_id)
-        
-        // Get laycan from plan - only use laycan_2_days for FOB, loading_window for CIF
-        const laycanStr = contract.contract_type === 'CIF' 
-          ? plan.loading_window 
+
+        // Get laycan from plan
+        const laycanStr = contract.contract_type === 'CIF'
+          ? plan.loading_window
           : plan.laycan_2_days
 
         // Only show TBA if they have actual dates set
@@ -331,11 +405,11 @@ export default function CalendarPage() {
         if (showOverdueOnly && !isOverdue) return
 
         const eventType: EventType = contract.contract_type === 'FOB' ? 'fob_laycan' : 'cif_loading'
-        
+
         // Filter by event type
         if (!selectedEventTypes.includes(eventType)) return
 
-        const colors = TBA_COLORS[eventType] || EVENT_COLORS[eventType]
+        const tbaColors = contract.contract_type === 'FOB' ? MODERN_COLORS.tba.fob : MODERN_COLORS.tba.cif
         const productName = getProductNameForMonthlyPlan(plan)
 
         // Use only the first day of the laycan/loading window
@@ -343,7 +417,7 @@ export default function CalendarPage() {
 
         events.push({
           id: `plan-${plan.id}`,
-          title: `${customerName} - ${contract.contract_number} - ${productName}`,
+          title: `TBA - ${productName}`,
           start: eventStart,
           allDay: true,
           extendedProps: {
@@ -363,10 +437,10 @@ export default function CalendarPage() {
             contractType: contract.contract_type as 'FOB' | 'CIF',
             rawLaycan: laycanStr,
           },
-          backgroundColor: isOverdue ? '#FEE2E2' : colors.bg,
-          borderColor: isOverdue ? '#EF4444' : colors.border,
-          textColor: isOverdue ? '#DC2626' : colors.text,
-          classNames: isOverdue ? ['overdue-event', 'tba-event', `event-${eventType}`] : ['tba-event', `event-${eventType}`],
+          backgroundColor: tbaColors.bg,
+          borderColor: tbaColors.border,
+          textColor: tbaColors.text,
+          classNames: ['modern-event', 'tba-event', `event-${eventType}`],
         })
       })
     }
@@ -378,7 +452,7 @@ export default function CalendarPage() {
   const handleEventClick = (clickInfo: EventClickArg) => {
     const event = clickInfo.event
     const props = event.extendedProps as CalendarEvent['extendedProps']
-    
+
     setSelectedEvent({
       id: event.id,
       title: event.title,
@@ -396,36 +470,36 @@ export default function CalendarPage() {
   // Custom event content
   const renderEventContent = (eventContent: EventContentArg) => {
     const props = eventContent.event.extendedProps as CalendarEvent['extendedProps']
-    const isSmall = eventContent.view.type === 'dayGridMonth'
 
     return (
-      <Box sx={{ 
-        p: 0.5, 
+      <Box sx={{
+        px: 1,
+        py: 0.5,
         overflow: 'hidden',
         width: '100%',
-        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.5,
+        borderRadius: '6px',
       }}>
         {props.isOverdue && (
-          <Warning sx={{ 
-            position: 'absolute', 
-            top: 2, 
-            right: 2, 
-            fontSize: 12,
-            color: '#DC2626',
-          }} />
+          <WarningAmber sx={{ fontSize: 14, flexShrink: 0 }} />
         )}
-        <Typography 
-          variant="caption" 
-          sx={{ 
-            fontWeight: 600, 
-            display: 'block',
+        {props.type === 'tng_due' && <Description sx={{ fontSize: 14, flexShrink: 0 }} />}
+        {props.type === 'nd_due' && <Schedule sx={{ fontSize: 14, flexShrink: 0 }} />}
+        {!props.isOverdue && props.type === 'fob_laycan' && <Anchor sx={{ fontSize: 14, flexShrink: 0 }} />}
+        {!props.isOverdue && props.type === 'cif_loading' && <LocalShipping sx={{ fontSize: 14, flexShrink: 0 }} />}
+        <Typography
+          sx={{
+            fontWeight: 600,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            fontSize: isSmall ? '0.65rem' : '0.75rem',
+            fontSize: '0.7rem',
+            lineHeight: 1.4,
           }}
         >
-          {props.vesselName || 'TBA'} - {props.customerName} - {props.contractNumber}
+          {eventContent.event.title}
         </Typography>
       </Box>
     )
@@ -434,8 +508,6 @@ export default function CalendarPage() {
   // Handle edit cargo
   const handleEditCargo = () => {
     if (selectedEvent?.extendedProps.cargoId) {
-      // Navigate to home page and trigger edit
-      // For now, just close popup - in future could use context/state
       setPopupOpen(false)
       navigate('/')
     }
@@ -449,437 +521,658 @@ export default function CalendarPage() {
     }
   }
 
+  // Navigation handlers
+  const handlePrev = () => {
+    if (calendarApi) {
+      calendarApi.prev()
+      setCurrentDate(calendarApi.getDate())
+    }
+  }
+
+  const handleNext = () => {
+    if (calendarApi) {
+      calendarApi.next()
+      setCurrentDate(calendarApi.getDate())
+    }
+  }
+
+  const handleToday = () => {
+    if (calendarApi) {
+      calendarApi.today()
+      setCurrentDate(calendarApi.getDate())
+    }
+  }
+
+  const handleViewChange = (_: React.MouseEvent<HTMLElement>, newView: 'month' | 'week' | null) => {
+    if (newView && calendarApi) {
+      setView(newView)
+      calendarApi.changeView(newView === 'month' ? 'dayGridMonth' : 'dayGridWeek')
+    }
+  }
+
+  // Count active filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0
+    if (!filterFOB) count++
+    if (!filterCIF) count++
+    if (!filterTNG) count++
+    if (!filterND) count++
+    if (!showTBA) count++
+    if (showOverdueOnly) count++
+    if (selectedCustomers.length > 0) count++
+    return count
+  }, [filterFOB, filterCIF, filterTNG, filterND, showTBA, showOverdueOnly, selectedCustomers])
+
+  // Count overdue events
+  const overdueCount = useMemo(() => {
+    return calendarEvents.filter(e => e.extendedProps.isOverdue).length
+  }, [calendarEvents])
+
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-        <CircularProgress />
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '60vh',
+        flexDirection: 'column',
+        gap: 2,
+      }}>
+        <CircularProgress size={48} thickness={4} />
+        <Typography color="text.secondary">Loading calendar...</Typography>
       </Box>
     )
   }
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 } }}>
-      {/* Header */}
-      <Typography variant="h4" sx={{ fontWeight: 700, mb: 3 }}>
-        📅 Calendar
-      </Typography>
+    <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 1600, mx: 'auto' }}>
+      {/* Modern Header */}
+      <Box sx={{
+        display: 'flex',
+        flexDirection: { xs: 'column', md: 'row' },
+        justifyContent: 'space-between',
+        alignItems: { xs: 'stretch', md: 'center' },
+        mb: 3,
+        gap: 2,
+      }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: '#1E293B' }}>
+            Calendar
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748B', mt: 0.5 }}>
+            Track laycans, loading windows, and due dates
+          </Typography>
+        </Box>
 
-      {/* Filters */}
-      <Paper sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1, sm: 2 }, alignItems: 'center' }}>
-          {/* Customer Filter */}
-          <FormControl size="small" sx={{ minWidth: { xs: 140, sm: 200 }, flexGrow: { xs: 1, sm: 0 } }}>
-            <InputLabel>Customers</InputLabel>
-            <Select
-              multiple
-              value={selectedCustomers}
-              onChange={(e) => setSelectedCustomers(e.target.value as number[])}
-              input={<OutlinedInput label="Customers" />}
-              renderValue={(selected) => 
-                selected.length === 0 
-                  ? 'All' 
-                  : selected.map(id => getCustomerName(id)).join(', ')
-              }
-            >
-              {customers.map(customer => (
-                <MenuItem key={customer.id} value={customer.id}>
-                  <Checkbox checked={selectedCustomers.includes(customer.id)} />
-                  <ListItemText primary={customer.name} />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+        {/* Quick Stats */}
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Paper sx={{
+            px: 2,
+            py: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: '#E2E8F0',
+          }}>
+            <CalendarMonth sx={{ color: '#3B82F6' }} />
+            <Box>
+              <Typography variant="caption" sx={{ color: '#64748B' }}>Events</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                {calendarEvents.length}
+              </Typography>
+            </Box>
+          </Paper>
+          {overdueCount > 0 && (
+            <Paper sx={{
+              px: 2,
+              py: 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              borderRadius: 2,
+              bgcolor: '#FEF2F2',
+              border: '1px solid #FECACA',
+            }}>
+              <Warning sx={{ color: '#EF4444' }} />
+              <Box>
+                <Typography variant="caption" sx={{ color: '#DC2626' }}>Overdue</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1, color: '#DC2626' }}>
+                  {overdueCount}
+                </Typography>
+              </Box>
+            </Paper>
+          )}
+        </Box>
+      </Box>
 
-          {/* Contract Type Filter */}
-          <FormControl size="small" sx={{ minWidth: { xs: 100, sm: 150 }, flexGrow: { xs: 1, sm: 0 } }}>
-            <InputLabel>Type</InputLabel>
-            <Select
-              multiple
-              value={selectedContractTypes}
-              onChange={(e) => setSelectedContractTypes(e.target.value as string[])}
-              input={<OutlinedInput label="Type" />}
-              renderValue={(selected) => selected.join(', ')}
-            >
-              <MenuItem value="FOB">
-                <Checkbox checked={selectedContractTypes.includes('FOB')} />
-                <ListItemText primary="FOB" />
-              </MenuItem>
-              <MenuItem value="CIF">
-                <Checkbox checked={selectedContractTypes.includes('CIF')} />
-                <ListItemText primary="CIF" />
-              </MenuItem>
-            </Select>
-          </FormControl>
+      {/* Control Bar */}
+      <Paper sx={{
+        mb: 2,
+        p: 1.5,
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: 1.5,
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: '#E2E8F0',
+      }}>
+        {/* Navigation */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <IconButton onClick={handlePrev} size="small" sx={{ bgcolor: '#F1F5F9', '&:hover': { bgcolor: '#E2E8F0' } }}>
+            <NavigateBefore />
+          </IconButton>
+          <Button
+            onClick={handleToday}
+            size="small"
+            variant="outlined"
+            startIcon={<Today />}
+            sx={{ borderColor: '#E2E8F0', color: '#475569', '&:hover': { borderColor: '#CBD5E1', bgcolor: '#F8FAFC' } }}
+          >
+            Today
+          </Button>
+          <IconButton onClick={handleNext} size="small" sx={{ bgcolor: '#F1F5F9', '&:hover': { bgcolor: '#E2E8F0' } }}>
+            <NavigateNext />
+          </IconButton>
+          <Typography variant="h6" sx={{ fontWeight: 600, ml: 1, color: '#1E293B', minWidth: 180 }}>
+            {format(currentDate, 'MMMM yyyy')}
+          </Typography>
+        </Box>
 
-          {/* Event Type Filter */}
-          <FormControl size="small" sx={{ minWidth: { xs: 140, sm: 200 }, flexGrow: { xs: 1, sm: 0 } }}>
-            <InputLabel>Events</InputLabel>
-            <Select
-              multiple
-              value={selectedEventTypes}
-              onChange={(e) => setSelectedEventTypes(e.target.value as EventType[])}
-              input={<OutlinedInput label="Events" />}
-              renderValue={(selected) => {
-                const labels: Record<EventType, string> = {
-                  fob_laycan: 'Laycans',
-                  cif_loading: 'Loading',
-                  tng_due: 'TNG',
-                  nd_due: 'ND',
-                }
-                return selected.map(s => labels[s]).join(', ')
+        {/* View Toggle + Filters */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <ToggleButtonGroup
+            value={view}
+            exclusive
+            onChange={handleViewChange}
+            size="small"
+            sx={{
+              '& .MuiToggleButton-root': {
+                border: '1px solid #E2E8F0',
+                '&.Mui-selected': {
+                  bgcolor: '#3B82F6',
+                  color: '#fff',
+                  '&:hover': { bgcolor: '#2563EB' },
+                },
+              },
+            }}
+          >
+            <ToggleButton value="month">
+              <Tooltip title="Month View">
+                <CalendarMonth fontSize="small" />
+              </Tooltip>
+            </ToggleButton>
+            <ToggleButton value="week">
+              <Tooltip title="Week View">
+                <ViewWeek fontSize="small" />
+              </Tooltip>
+            </ToggleButton>
+          </ToggleButtonGroup>
+
+          <Badge badgeContent={activeFilterCount} color="primary" invisible={activeFilterCount === 0}>
+            <Button
+              variant="outlined"
+              startIcon={<FilterList />}
+              onClick={(e) => setFilterAnchor(e.currentTarget)}
+              sx={{
+                borderColor: '#E2E8F0',
+                color: '#475569',
+                '&:hover': { borderColor: '#CBD5E1', bgcolor: '#F8FAFC' },
               }}
             >
-              <MenuItem value="fob_laycan">
-                <Checkbox checked={selectedEventTypes.includes('fob_laycan')} />
-                <ListItemText primary="FOB Laycans" />
-              </MenuItem>
-              <MenuItem value="cif_loading">
-                <Checkbox checked={selectedEventTypes.includes('cif_loading')} />
-                <ListItemText primary="CIF Loading Windows" />
-              </MenuItem>
-              <MenuItem value="tng_due">
-                <Checkbox checked={selectedEventTypes.includes('tng_due')} />
-                <ListItemText primary="TNG Due Dates" />
-              </MenuItem>
-              <MenuItem value="nd_due">
-                <Checkbox checked={selectedEventTypes.includes('nd_due')} />
-                <ListItemText primary="ND Due Dates" />
-              </MenuItem>
-            </Select>
-          </FormControl>
-
-          {/* TBA Toggle */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Checkbox 
-              checked={showTBA} 
-              onChange={(e) => setShowTBA(e.target.checked)}
-              size="small"
-            />
-            <Typography variant="body2">Show TBA</Typography>
-          </Box>
-
-          {/* Overdue Toggle */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Checkbox 
-              checked={showOverdueOnly} 
-              onChange={(e) => setShowOverdueOnly(e.target.checked)}
-              size="small"
-            />
-            <Typography variant="body2">Overdue Only</Typography>
-          </Box>
-
-          {/* Legend */}
-          <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 1, ml: 'auto', flexWrap: 'wrap' }}>
-            <span style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              padding: '4px 12px', 
-              borderRadius: '4px', 
-              backgroundColor: CALENDAR_COLORS.FOB_LAYCAN.bg, 
-              color: CALENDAR_COLORS.FOB_LAYCAN.text,
-              fontSize: '0.75rem',
-              fontWeight: 500,
-            }}>
-              FOB Laycan
-            </span>
-            <span style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              padding: '4px 12px', 
-              borderRadius: '4px', 
-              backgroundColor: CALENDAR_COLORS.CIF_LOADING.bg, 
-              color: CALENDAR_COLORS.CIF_LOADING.text,
-              fontSize: '0.75rem',
-              fontWeight: 500,
-            }}>
-              CIF Loading
-            </span>
-            <span style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              padding: '4px 12px', 
-              borderRadius: '4px', 
-              backgroundColor: CALENDAR_COLORS.TNG_DUE.bg, 
-              color: CALENDAR_COLORS.TNG_DUE.text,
-              fontSize: '0.75rem',
-              fontWeight: 500,
-            }}>
-              TNG Due
-            </span>
-            <span style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              padding: '4px 12px', 
-              borderRadius: '4px', 
-              backgroundColor: CALENDAR_COLORS.ND_DUE.bg, 
-              color: CALENDAR_COLORS.ND_DUE.text,
-              fontSize: '0.75rem',
-              fontWeight: 500,
-            }}>
-              ND Due
-            </span>
-          </Box>
+              Filters
+            </Button>
+          </Badge>
         </Box>
       </Paper>
 
+      {/* Legend */}
+      <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+        {filterFOB && (
+          <Chip
+            icon={<Anchor sx={{ fontSize: 16 }} />}
+            label="FOB Laycan"
+            size="small"
+            sx={{ bgcolor: MODERN_COLORS.fob.light, color: MODERN_COLORS.fob.primary, fontWeight: 500 }}
+          />
+        )}
+        {filterCIF && (
+          <Chip
+            icon={<LocalShipping sx={{ fontSize: 16 }} />}
+            label="CIF Loading"
+            size="small"
+            sx={{ bgcolor: MODERN_COLORS.cif.light, color: MODERN_COLORS.cif.primary, fontWeight: 500 }}
+          />
+        )}
+        {filterTNG && (
+          <Chip
+            icon={<Description sx={{ fontSize: 16 }} />}
+            label="TNG Due"
+            size="small"
+            sx={{ bgcolor: MODERN_COLORS.tng.light, color: MODERN_COLORS.tng.primary, fontWeight: 500 }}
+          />
+        )}
+        {filterND && (
+          <Chip
+            icon={<Schedule sx={{ fontSize: 16 }} />}
+            label="ND Due"
+            size="small"
+            sx={{ bgcolor: MODERN_COLORS.nd.light, color: MODERN_COLORS.nd.primary, fontWeight: 500 }}
+          />
+        )}
+        {showTBA && (
+          <Chip
+            label="TBA"
+            size="small"
+            variant="outlined"
+            sx={{ borderStyle: 'dashed', fontWeight: 500 }}
+          />
+        )}
+      </Box>
+
+      {/* Filter Popover */}
+      <Popover
+        open={Boolean(filterAnchor)}
+        anchorEl={filterAnchor}
+        onClose={() => setFilterAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        PaperProps={{
+          sx: { p: 2, borderRadius: 2, minWidth: 280 }
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: '#1E293B' }}>
+          Filter Events
+        </Typography>
+
+        <Stack spacing={1.5}>
+          <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, textTransform: 'uppercase' }}>
+            Event Types
+          </Typography>
+
+          <FormControlLabel
+            control={<Switch checked={filterFOB} onChange={(e) => setFilterFOB(e.target.checked)} size="small" />}
+            label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Anchor fontSize="small" sx={{ color: MODERN_COLORS.fob.primary }} /> FOB Laycans</Box>}
+          />
+          <FormControlLabel
+            control={<Switch checked={filterCIF} onChange={(e) => setFilterCIF(e.target.checked)} size="small" />}
+            label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><LocalShipping fontSize="small" sx={{ color: MODERN_COLORS.cif.primary }} /> CIF Loading</Box>}
+          />
+          <FormControlLabel
+            control={<Switch checked={filterTNG} onChange={(e) => setFilterTNG(e.target.checked)} size="small" />}
+            label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Description fontSize="small" sx={{ color: MODERN_COLORS.tng.primary }} /> TNG Due</Box>}
+          />
+          <FormControlLabel
+            control={<Switch checked={filterND} onChange={(e) => setFilterND(e.target.checked)} size="small" />}
+            label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Schedule fontSize="small" sx={{ color: MODERN_COLORS.nd.primary }} /> ND Due</Box>}
+          />
+
+          <Box sx={{ borderTop: '1px solid #E2E8F0', pt: 1.5, mt: 1 }}>
+            <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, textTransform: 'uppercase' }}>
+              Other Filters
+            </Typography>
+          </Box>
+
+          <FormControlLabel
+            control={<Switch checked={showTBA} onChange={(e) => setShowTBA(e.target.checked)} size="small" />}
+            label="Show TBA (No Vessel)"
+          />
+          <FormControlLabel
+            control={<Switch checked={showOverdueOnly} onChange={(e) => setShowOverdueOnly(e.target.checked)} size="small" color="error" />}
+            label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Warning fontSize="small" sx={{ color: '#EF4444' }} /> Overdue Only</Box>}
+          />
+        </Stack>
+      </Popover>
+
       {/* Calendar */}
-      <Paper sx={{ p: { xs: 1, sm: 2 }, overflow: 'hidden' }}>
+      <Paper sx={{
+        p: { xs: 1, sm: 2 },
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: '#E2E8F0',
+        overflow: 'hidden',
+      }}>
         <style>
           {`
             .fc {
               font-family: inherit;
             }
-            .fc-event {
+            .fc-theme-standard .fc-scrollgrid {
+              border: none;
+            }
+            .fc-theme-standard td, .fc-theme-standard th {
+              border-color: #E2E8F0;
+            }
+            .fc .fc-col-header-cell-cushion {
+              padding: 12px 8px;
+              font-weight: 600;
+              color: #475569;
+              text-transform: uppercase;
+              font-size: 0.75rem;
+              letter-spacing: 0.5px;
+            }
+            .fc .fc-daygrid-day-number {
+              padding: 8px;
+              font-weight: 500;
+              color: #64748B;
+            }
+            .fc .fc-daygrid-day.fc-day-today {
+              background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+            }
+            .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+              color: #2563EB;
+              font-weight: 700;
+            }
+            .fc-event.modern-event {
+              border: none;
+              border-radius: 6px;
+              font-size: 0.75rem;
+              padding: 2px 0;
+              margin: 1px 2px;
               cursor: pointer;
-              border-radius: 4px;
+              transition: all 0.2s ease;
+              box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            }
+            .fc-event.modern-event:hover {
+              transform: translateY(-1px);
+              box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            }
+            .fc-event.tba-event {
+              background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 5px,
+                rgba(0,0,0,0.03) 5px,
+                rgba(0,0,0,0.03) 10px
+              );
+              border: 2px dashed;
+            }
+            .fc-event.overdue-event {
+              animation: pulse-glow 2s infinite;
+            }
+            @keyframes pulse-glow {
+              0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+              50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+            }
+            .fc-toolbar {
+              display: none !important;
+            }
+            .fc-more-link {
+              color: #3B82F6;
+              font-weight: 600;
               font-size: 0.75rem;
             }
-            .fc-event,
-            .fc-event *,
-            .fc-event-title,
-            .fc-event-main,
-            .fc-daygrid-event-dot,
-            .fc-event .fc-event-title,
-            .fc-event .fc-event-main {
-              color: #000000 !important;
+            .fc-daygrid-more-link {
+              background: #EFF6FF;
+              border-radius: 4px;
+              padding: 2px 6px;
             }
-            .fc-event:hover {
-              opacity: 0.9;
+            .fc-popover {
+              border-radius: 8px;
+              box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+              border: 1px solid #E2E8F0;
             }
-            /* FOB Laycan - Sky Blue (light) */
-            .event-fob_laycan {
-              background-color: ${CALENDAR_COLORS.FOB_LAYCAN.bg} !important;
-              border-color: ${CALENDAR_COLORS.FOB_LAYCAN.border} !important;
+            .fc-popover-header {
+              background: #F8FAFC;
+              padding: 8px 12px;
+              font-weight: 600;
             }
-            .tba-event.event-fob_laycan {
-              background-color: ${CALENDAR_COLORS.TBA_FOB.bg} !important;
-              border-color: ${CALENDAR_COLORS.TBA_FOB.border} !important;
-            }
-            /* CIF Loading - Orange (light) */
-            .event-cif_loading {
-              background-color: ${CALENDAR_COLORS.CIF_LOADING.bg} !important;
-              border-color: ${CALENDAR_COLORS.CIF_LOADING.border} !important;
-            }
-            .tba-event.event-cif_loading {
-              background-color: ${CALENDAR_COLORS.TBA_CIF.bg} !important;
-              border-color: ${CALENDAR_COLORS.TBA_CIF.border} !important;
-            }
-            /* TNG Due - Yellow (light) */
-            .event-tng_due {
-              background-color: ${CALENDAR_COLORS.TNG_DUE.bg} !important;
-              border-color: ${CALENDAR_COLORS.TNG_DUE.border} !important;
-            }
-            /* ND Due - Rose (light) */
-            .event-nd_due {
-              background-color: ${CALENDAR_COLORS.ND_DUE.bg} !important;
-              border-color: ${CALENDAR_COLORS.ND_DUE.border} !important;
-            }
-            /* Overdue - Light red background */
-            .overdue-event {
-              background-color: ${BADGE_COLORS.OVERDUE.bgcolor} !important;
-              border-color: ${BADGE_COLORS.OVERDUE.color} !important;
-              animation: pulse 2s infinite;
-            }
-            .tba-event {
-              border-style: dashed !important;
-              border-width: 2px !important;
-            }
-            @keyframes pulse {
-              0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-              50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
-            }
-            .fc-toolbar-title {
-              font-size: 1.25rem !important;
-              font-weight: 600 !important;
-            }
-            .fc-button {
-              text-transform: capitalize !important;
-            }
-            .fc-day-today {
-              background-color: rgba(59, 130, 246, 0.1) !important;
-            }
-            /* Mobile responsive styles */
+            /* Mobile styles */
             @media (max-width: 600px) {
-              .fc-toolbar {
-                flex-direction: column;
-                gap: 8px;
-              }
-              .fc-toolbar-title {
-                font-size: 1rem !important;
-              }
-              .fc-button {
-                padding: 4px 8px !important;
-                font-size: 0.75rem !important;
-              }
-              .fc-event {
+              .fc .fc-col-header-cell-cushion {
+                padding: 6px 2px;
                 font-size: 0.65rem;
-                padding: 1px 2px;
               }
-              .fc-daygrid-day-number {
+              .fc .fc-daygrid-day-number {
+                padding: 4px;
                 font-size: 0.75rem;
               }
-              .fc-col-header-cell-cushion {
-                font-size: 0.7rem;
-              }
-            }
-            @media (max-width: 900px) {
-              .fc-toolbar-chunk {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 4px;
+              .fc-event.modern-event {
+                font-size: 0.65rem;
+                padding: 1px 0;
               }
             }
           `}
         </style>
         <FullCalendar
+          ref={(el) => {
+            if (el) setCalendarApi(el.getApi())
+          }}
           plugins={[dayGridPlugin, interactionPlugin]}
           initialView={isMobile ? 'dayGridWeek' : 'dayGridMonth'}
-          headerToolbar={{
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,dayGridWeek',
-          }}
+          headerToolbar={false}
           events={calendarEvents}
           eventClick={handleEventClick}
           eventContent={renderEventContent}
           height="auto"
-          dayMaxEvents={isMobile ? 3 : 5}
-          moreLinkText={(num) => `+${num} more`}
+          dayMaxEvents={isMobile ? 3 : 4}
+          moreLinkText={(num) => `+${num}`}
           weekends={true}
           fixedWeekCount={false}
+          datesSet={(info) => setCurrentDate(info.view.currentStart)}
         />
       </Paper>
 
-      {/* Event Detail Popup */}
-      <Dialog 
-        open={popupOpen} 
+      {/* Modern Event Detail Modal */}
+      <Dialog
+        open={popupOpen}
         onClose={() => setPopupOpen(false)}
         maxWidth="sm"
         fullWidth
+        TransitionComponent={Fade}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: 'hidden',
+          }
+        }}
       >
         {selectedEvent && (
           <>
-            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {selectedEvent.extendedProps.vesselName || 'TBA'}
+            {/* Header with gradient */}
+            <Box sx={{
+              background: selectedEvent.extendedProps.isOverdue
+                ? MODERN_COLORS.overdue.bg
+                : selectedEvent.extendedProps.type === 'fob_laycan'
+                  ? MODERN_COLORS.fob.bg
+                  : selectedEvent.extendedProps.type === 'cif_loading'
+                    ? MODERN_COLORS.cif.bg
+                    : selectedEvent.extendedProps.type === 'tng_due'
+                      ? MODERN_COLORS.tng.bg
+                      : MODERN_COLORS.nd.bg,
+              color: '#fff',
+              p: 3,
+              position: 'relative',
+            }}>
+              <IconButton
+                onClick={() => setPopupOpen(false)}
+                size="small"
+                sx={{
+                  position: 'absolute',
+                  top: 12,
+                  right: 12,
+                  color: '#fff',
+                  bgcolor: 'rgba(255,255,255,0.2)',
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' },
+                }}
+              >
+                <Close fontSize="small" />
+              </IconButton>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                {selectedEvent.extendedProps.type === 'fob_laycan' && <Anchor sx={{ fontSize: 28 }} />}
+                {selectedEvent.extendedProps.type === 'cif_loading' && <LocalShipping sx={{ fontSize: 28 }} />}
+                {selectedEvent.extendedProps.type === 'tng_due' && <Description sx={{ fontSize: 28 }} />}
+                {selectedEvent.extendedProps.type === 'nd_due' && <Schedule sx={{ fontSize: 28 }} />}
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                  {selectedEvent.extendedProps.vesselName || 'TBA'}
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 {selectedEvent.extendedProps.isOverdue && (
-                  <Chip 
-                    label="OVERDUE" 
-                    size="small" 
-                    sx={{ bgcolor: '#FEE2E2', color: '#DC2626', fontWeight: 600 }}
+                  <Chip
+                    icon={<Warning sx={{ color: '#fff !important' }} />}
+                    label="OVERDUE"
+                    size="small"
+                    sx={{ bgcolor: 'rgba(255,255,255,0.25)', color: '#fff', fontWeight: 600 }}
                   />
                 )}
                 {selectedEvent.extendedProps.isTBA && (
-                  <Chip 
-                    label="TBA" 
-                    size="small" 
-                    variant="outlined"
-                    sx={{ borderStyle: 'dashed' }}
-                  />
-                )}
-              </Box>
-              <IconButton onClick={() => setPopupOpen(false)} size="small">
-                <Close />
-              </IconButton>
-            </DialogTitle>
-            <DialogContent>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Customer</Typography>
-                  <Typography variant="body1" fontWeight={500}>
-                    {selectedEvent.extendedProps.customerName}
-                  </Typography>
-                </Box>
-
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Contract</Typography>
-                  <Typography variant="body1" fontWeight={500}>
-                    {selectedEvent.extendedProps.contractNumber}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ display: 'flex', gap: 4 }}>
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">Product</Typography>
-                    <Typography variant="body1" fontWeight={500}>
-                      {selectedEvent.extendedProps.productName}
-                    </Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">Quantity</Typography>
-                    <Typography variant="body1" fontWeight={500}>
-                      {selectedEvent.extendedProps.quantity} KT
-                    </Typography>
-                  </Box>
-                </Box>
-
-                <Divider />
-
-                <Box sx={{ display: 'flex', gap: 4 }}>
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      {selectedEvent.extendedProps.contractType === 'CIF' ? 'Loading Window' : 'Laycan'}
-                    </Typography>
-                    <Typography variant="body1" fontWeight={500}>
-                      {selectedEvent.extendedProps.rawLaycan}
-                    </Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">Type</Typography>
-                    <Chip 
-                      label={selectedEvent.extendedProps.contractType}
-                      size="small"
-                      sx={getContractTypeColor(selectedEvent.extendedProps.contractType)}
-                    />
-                  </Box>
-                </Box>
-
-                {selectedEvent.extendedProps.loadPort && (
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">Load Port</Typography>
-                    <Typography variant="body1" fontWeight={500}>
-                      {selectedEvent.extendedProps.loadPort}
-                    </Typography>
-                  </Box>
-                )}
-
-                <Box>
-                  <Typography variant="body2" color="text.secondary">Status</Typography>
-                  <Chip 
-                    label={selectedEvent.extendedProps.status}
+                  <Chip
+                    label="TBA"
                     size="small"
-                    color={
-                      selectedEvent.extendedProps.status === 'Completed Loading' ? 'success' :
-                      selectedEvent.extendedProps.status === 'Loading' ? 'info' :
-                      selectedEvent.extendedProps.status === 'TBA' ? 'default' :
-                      'warning'
-                    }
+                    sx={{ bgcolor: 'rgba(255,255,255,0.25)', color: '#fff', fontWeight: 600 }}
                   />
+                )}
+                <Chip
+                  label={selectedEvent.extendedProps.contractType}
+                  size="small"
+                  sx={{ bgcolor: 'rgba(255,255,255,0.25)', color: '#fff', fontWeight: 600 }}
+                />
+              </Box>
+            </Box>
+
+            <DialogContent sx={{ p: 0 }}>
+              <Box sx={{ p: 3 }}>
+                {/* Info Grid */}
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2.5 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                    <Person sx={{ color: '#64748B', mt: 0.5 }} />
+                    <Box>
+                      <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>Customer</Typography>
+                      <Typography variant="body1" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                        {selectedEvent.extendedProps.customerName}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                    <Description sx={{ color: '#64748B', mt: 0.5 }} />
+                    <Box>
+                      <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>Contract</Typography>
+                      <Typography variant="body1" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                        {selectedEvent.extendedProps.contractNumber}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                    <Inventory sx={{ color: '#64748B', mt: 0.5 }} />
+                    <Box>
+                      <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>Product</Typography>
+                      <Typography variant="body1" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                        {selectedEvent.extendedProps.productName}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                    <LocalShipping sx={{ color: '#64748B', mt: 0.5 }} />
+                    <Box>
+                      <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>Quantity</Typography>
+                      <Typography variant="body1" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                        {selectedEvent.extendedProps.quantity.toLocaleString()} KT
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                    <CalendarMonth sx={{ color: '#64748B', mt: 0.5 }} />
+                    <Box>
+                      <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                        {selectedEvent.extendedProps.contractType === 'CIF' ? 'Loading Window' : 'Laycan'}
+                      </Typography>
+                      <Typography variant="body1" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                        {selectedEvent.extendedProps.rawLaycan}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {selectedEvent.extendedProps.loadPort && (
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                      <Place sx={{ color: '#64748B', mt: 0.5 }} />
+                      <Box>
+                        <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>Load Port</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 600, color: '#1E293B' }}>
+                          {selectedEvent.extendedProps.loadPort}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
+
+                {/* Status */}
+                <Box sx={{ mt: 3, pt: 2.5, borderTop: '1px solid #E2E8F0' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    {selectedEvent.extendedProps.status === 'Completed Loading' || selectedEvent.extendedProps.status === 'Issued' ? (
+                      <CheckCircle sx={{ color: '#10B981' }} />
+                    ) : (
+                      <Schedule sx={{ color: '#64748B' }} />
+                    )}
+                    <Box>
+                      <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>Status</Typography>
+                      <Chip
+                        label={selectedEvent.extendedProps.status}
+                        size="small"
+                        sx={{
+                          ml: 1,
+                          fontWeight: 600,
+                          bgcolor:
+                            selectedEvent.extendedProps.status === 'Completed Loading' || selectedEvent.extendedProps.status === 'Issued' ? '#D1FAE5' :
+                            selectedEvent.extendedProps.status === 'Loading' ? '#DBEAFE' :
+                            selectedEvent.extendedProps.status === 'TBA' ? '#F1F5F9' :
+                            '#FEF3C7',
+                          color:
+                            selectedEvent.extendedProps.status === 'Completed Loading' || selectedEvent.extendedProps.status === 'Issued' ? '#065F46' :
+                            selectedEvent.extendedProps.status === 'Loading' ? '#1E40AF' :
+                            selectedEvent.extendedProps.status === 'TBA' ? '#475569' :
+                            '#92400E',
+                        }}
+                      />
+                    </Box>
+                  </Box>
+                </Box>
+
+                {/* Actions */}
+                <Box sx={{ display: 'flex', gap: 1.5, mt: 3 }}>
+                  {selectedEvent.extendedProps.cargoId && (
+                    <Button
+                      variant="contained"
+                      startIcon={<Edit />}
+                      onClick={handleEditCargo}
+                      sx={{
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        px: 2.5,
+                      }}
+                    >
+                      Edit Cargo
+                    </Button>
+                  )}
+                  <Button
+                    variant="outlined"
+                    startIcon={<Visibility />}
+                    onClick={handleViewContract}
+                    sx={{
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontWeight: 600,
+                      px: 2.5,
+                    }}
+                  >
+                    View Contract
+                  </Button>
                 </Box>
               </Box>
             </DialogContent>
-            <DialogActions sx={{ px: 3, pb: 2 }}>
-              {selectedEvent.extendedProps.cargoId && (
-                <Button
-                  variant="contained"
-                  startIcon={<Edit />}
-                  onClick={handleEditCargo}
-                >
-                  Edit Cargo
-                </Button>
-              )}
-              <Button
-                variant="outlined"
-                startIcon={<Visibility />}
-                onClick={handleViewContract}
-              >
-                View Contract
-              </Button>
-            </DialogActions>
           </>
         )}
       </Dialog>
     </Box>
   )
 }
-

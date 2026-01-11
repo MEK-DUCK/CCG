@@ -33,11 +33,31 @@ import type {
   Contract,
 } from '../types'
 import { PLAN_TYPE_COLORS } from '../utils/chipColors'
+import { useResizableColumns, ColumnConfig } from '../hooks/useResizableColumns'
+import ResizableTableCell from '../components/ResizableTableCell'
 
 const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+// Column configuration for audit logs table
+const AUDIT_LOGS_COLUMNS: ColumnConfig[] = [
+  { id: 'dateTime', label: 'Date & Time', defaultWidth: 150, minWidth: 120 },
+  { id: 'user', label: 'User', defaultWidth: 80, minWidth: 60 },
+  { id: 'type', label: 'Type', defaultWidth: 100, minWidth: 80 },
+  { id: 'action', label: 'Action', defaultWidth: 100, minWidth: 80 },
+  { id: 'customer', label: 'Customer', defaultWidth: 140, minWidth: 100 },
+  { id: 'contract', label: 'Contract', defaultWidth: 140, minWidth: 100 },
+  { id: 'product', label: 'Product', defaultWidth: 120, minWidth: 90 },
+  { id: 'planPeriod', label: 'Plan Period', defaultWidth: 120, minWidth: 90 },
+  { id: 'description', label: 'Description', defaultWidth: 200, minWidth: 120 },
+  { id: 'fieldChange', label: 'Field Change', defaultWidth: 200, minWidth: 120 },
+]
+
 export default function ReconciliationPage() {
   const PRODUCT_FILTERS = ['GASOIL', 'JET A-1', 'FUEL OIL'] as const
+
+  // Resizable columns for audit logs table
+  const auditLogsCols = useResizableColumns('reconciliation-audit-logs', AUDIT_LOGS_COLUMNS)
+
   const [logs, setLogs] = useState<PlanAuditLog[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
@@ -506,16 +526,16 @@ export default function ReconciliationPage() {
               <Table sx={{ minWidth: 900 }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Date & Time</TableCell>
-                    <TableCell>User</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Action</TableCell>
-                    <TableCell>Customer</TableCell>
-                    <TableCell>Contract</TableCell>
-                    <TableCell>Product</TableCell>
-                    <TableCell>Plan Period</TableCell>
-                    <TableCell>Description</TableCell>
-                    <TableCell>Field Change</TableCell>
+                    <ResizableTableCell columnId="dateTime" width={auditLogsCols.columnWidths['dateTime']} minWidth={120} onResizeStart={auditLogsCols.handleResizeStart}>Date & Time</ResizableTableCell>
+                    <ResizableTableCell columnId="user" width={auditLogsCols.columnWidths['user']} minWidth={60} onResizeStart={auditLogsCols.handleResizeStart}>User</ResizableTableCell>
+                    <ResizableTableCell columnId="type" width={auditLogsCols.columnWidths['type']} minWidth={80} onResizeStart={auditLogsCols.handleResizeStart}>Type</ResizableTableCell>
+                    <ResizableTableCell columnId="action" width={auditLogsCols.columnWidths['action']} minWidth={80} onResizeStart={auditLogsCols.handleResizeStart}>Action</ResizableTableCell>
+                    <ResizableTableCell columnId="customer" width={auditLogsCols.columnWidths['customer']} minWidth={100} onResizeStart={auditLogsCols.handleResizeStart}>Customer</ResizableTableCell>
+                    <ResizableTableCell columnId="contract" width={auditLogsCols.columnWidths['contract']} minWidth={100} onResizeStart={auditLogsCols.handleResizeStart}>Contract</ResizableTableCell>
+                    <ResizableTableCell columnId="product" width={auditLogsCols.columnWidths['product']} minWidth={90} onResizeStart={auditLogsCols.handleResizeStart}>Product</ResizableTableCell>
+                    <ResizableTableCell columnId="planPeriod" width={auditLogsCols.columnWidths['planPeriod']} minWidth={90} onResizeStart={auditLogsCols.handleResizeStart}>Plan Period</ResizableTableCell>
+                    <ResizableTableCell columnId="description" width={auditLogsCols.columnWidths['description']} minWidth={120} onResizeStart={auditLogsCols.handleResizeStart}>Description</ResizableTableCell>
+                    <ResizableTableCell columnId="fieldChange" width={auditLogsCols.columnWidths['fieldChange']} minWidth={120} onResizeStart={auditLogsCols.handleResizeStart}>Field Change</ResizableTableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>

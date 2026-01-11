@@ -64,7 +64,8 @@ def create_discharge_port(port: schemas.DischargePortCreate, db: Session = Depen
 @router.get("/", response_model=List[schemas.DischargePort])
 def read_discharge_ports(
     include_inactive: bool = Query(False, description="Include inactive ports"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """Get all discharge ports, ordered by sort_order then name."""
     try:

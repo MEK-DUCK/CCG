@@ -26,6 +26,34 @@ import { contractAPI, cargoAPI, quarterlyPlanAPI, monthlyPlanAPI, customerAPI } 
 import type { Contract, Cargo, QuarterlyPlan, MonthlyPlan, Customer, CargoStatus } from '../types'
 import { getContractTypeColor } from '../utils/chipColors'
 import { useToast } from '../contexts/ToastContext'
+import { useResizableColumns, ColumnConfig } from '../hooks/useResizableColumns'
+import ResizableTableCell from '../components/ResizableTableCell'
+
+// Column configurations for tables
+const CARGOS_COLUMNS: ColumnConfig[] = [
+  { id: 'vessel', label: 'Vessel Name', defaultWidth: 150, minWidth: 120 },
+  { id: 'product', label: 'Product', defaultWidth: 120, minWidth: 100 },
+  { id: 'quantity', label: 'Quantity', defaultWidth: 100, minWidth: 80 },
+  { id: 'status', label: 'Status', defaultWidth: 140, minWidth: 100 },
+  { id: 'laycan', label: 'Laycan', defaultWidth: 140, minWidth: 100 },
+]
+
+const MONTHLY_PLANS_COLUMNS: ColumnConfig[] = [
+  { id: 'monthYear', label: 'Month/Year', defaultWidth: 140, minWidth: 100 },
+  { id: 'quantity', label: 'Planned Quantity', defaultWidth: 140, minWidth: 100 },
+  { id: 'cargos', label: 'Cargos', defaultWidth: 100, minWidth: 80 },
+  { id: 'laycan', label: 'Laycan', defaultWidth: 150, minWidth: 100 },
+]
+
+const QUARTERLY_PLANS_COLUMNS: ColumnConfig[] = [
+  { id: 'product', label: 'Product', defaultWidth: 140, minWidth: 100 },
+  { id: 'year', label: 'Year', defaultWidth: 80, minWidth: 60 },
+  { id: 'q1', label: 'Q1', defaultWidth: 100, minWidth: 70 },
+  { id: 'q2', label: 'Q2', defaultWidth: 100, minWidth: 70 },
+  { id: 'q3', label: 'Q3', defaultWidth: 100, minWidth: 70 },
+  { id: 'q4', label: 'Q4', defaultWidth: 100, minWidth: 70 },
+  { id: 'total', label: 'Total', defaultWidth: 120, minWidth: 80 },
+]
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -54,6 +82,11 @@ export default function ContractDashboard() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const { showError } = useToast()
+
+  // Resizable columns
+  const cargosCols = useResizableColumns('contract-dashboard-cargos', CARGOS_COLUMNS)
+  const monthlyPlansCols = useResizableColumns('contract-dashboard-monthly', MONTHLY_PLANS_COLUMNS)
+  const quarterlyPlansCols = useResizableColumns('contract-dashboard-quarterly', QUARTERLY_PLANS_COLUMNS)
 
   const [contract, setContract] = useState<Contract | null>(null)
   const [customer, setCustomer] = useState<Customer | null>(null)
@@ -447,11 +480,11 @@ export default function ContractDashboard() {
             <Table size={isMobile ? 'small' : 'medium'} sx={{ minWidth: 600 }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Vessel Name</TableCell>
-                  <TableCell>Product</TableCell>
-                  <TableCell>Quantity</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Laycan</TableCell>
+                  <ResizableTableCell columnId="vessel" width={cargosCols.columnWidths['vessel']} minWidth={120} onResizeStart={cargosCols.handleResizeStart}>Vessel Name</ResizableTableCell>
+                  <ResizableTableCell columnId="product" width={cargosCols.columnWidths['product']} minWidth={100} onResizeStart={cargosCols.handleResizeStart}>Product</ResizableTableCell>
+                  <ResizableTableCell columnId="quantity" width={cargosCols.columnWidths['quantity']} minWidth={80} onResizeStart={cargosCols.handleResizeStart}>Quantity</ResizableTableCell>
+                  <ResizableTableCell columnId="status" width={cargosCols.columnWidths['status']} minWidth={100} onResizeStart={cargosCols.handleResizeStart}>Status</ResizableTableCell>
+                  <ResizableTableCell columnId="laycan" width={cargosCols.columnWidths['laycan']} minWidth={100} onResizeStart={cargosCols.handleResizeStart}>Laycan</ResizableTableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -496,10 +529,10 @@ export default function ContractDashboard() {
             <Table size={isMobile ? 'small' : 'medium'} sx={{ minWidth: 600 }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Month/Year</TableCell>
-                  <TableCell>Planned Quantity</TableCell>
-                  <TableCell>Cargos</TableCell>
-                  <TableCell>Laycan</TableCell>
+                  <ResizableTableCell columnId="monthYear" width={monthlyPlansCols.columnWidths['monthYear']} minWidth={100} onResizeStart={monthlyPlansCols.handleResizeStart}>Month/Year</ResizableTableCell>
+                  <ResizableTableCell columnId="quantity" width={monthlyPlansCols.columnWidths['quantity']} minWidth={100} onResizeStart={monthlyPlansCols.handleResizeStart}>Planned Quantity</ResizableTableCell>
+                  <ResizableTableCell columnId="cargos" width={monthlyPlansCols.columnWidths['cargos']} minWidth={80} onResizeStart={monthlyPlansCols.handleResizeStart}>Cargos</ResizableTableCell>
+                  <ResizableTableCell columnId="laycan" width={monthlyPlansCols.columnWidths['laycan']} minWidth={100} onResizeStart={monthlyPlansCols.handleResizeStart}>Laycan</ResizableTableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -608,13 +641,13 @@ export default function ContractDashboard() {
             <Table size={isMobile ? 'small' : 'medium'} sx={{ minWidth: 700 }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Product</TableCell>
-                  <TableCell>Year</TableCell>
-                  <TableCell>Q1</TableCell>
-                  <TableCell>Q2</TableCell>
-                  <TableCell>Q3</TableCell>
-                  <TableCell>Q4</TableCell>
-                  <TableCell>Total</TableCell>
+                  <ResizableTableCell columnId="product" width={quarterlyPlansCols.columnWidths['product']} minWidth={100} onResizeStart={quarterlyPlansCols.handleResizeStart}>Product</ResizableTableCell>
+                  <ResizableTableCell columnId="year" width={quarterlyPlansCols.columnWidths['year']} minWidth={60} onResizeStart={quarterlyPlansCols.handleResizeStart}>Year</ResizableTableCell>
+                  <ResizableTableCell columnId="q1" width={quarterlyPlansCols.columnWidths['q1']} minWidth={70} onResizeStart={quarterlyPlansCols.handleResizeStart}>Q1</ResizableTableCell>
+                  <ResizableTableCell columnId="q2" width={quarterlyPlansCols.columnWidths['q2']} minWidth={70} onResizeStart={quarterlyPlansCols.handleResizeStart}>Q2</ResizableTableCell>
+                  <ResizableTableCell columnId="q3" width={quarterlyPlansCols.columnWidths['q3']} minWidth={70} onResizeStart={quarterlyPlansCols.handleResizeStart}>Q3</ResizableTableCell>
+                  <ResizableTableCell columnId="q4" width={quarterlyPlansCols.columnWidths['q4']} minWidth={70} onResizeStart={quarterlyPlansCols.handleResizeStart}>Q4</ResizableTableCell>
+                  <ResizableTableCell columnId="total" width={quarterlyPlansCols.columnWidths['total']} minWidth={80} onResizeStart={quarterlyPlansCols.handleResizeStart}>Total</ResizableTableCell>
                 </TableRow>
               </TableHead>
               <TableBody>

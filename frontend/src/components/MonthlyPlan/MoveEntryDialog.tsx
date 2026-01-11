@@ -150,18 +150,18 @@ export default function MoveEntryDialog({
           </Alert>
         ) : moveEntryData && (
           <Box sx={{ mt: 1 }}>
-            <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
+            <Typography variant="body2" component="div" sx={{ color: '#64748B', mb: 2 }}>
               Moving {moveEntryData.entry.is_combi ? 'combi cargo' : 'cargo'} from{' '}
               <strong>
-                {contractType === 'CIF' && moveEntryData.entry.delivery_month 
+                {contractType === 'CIF' && moveEntryData.entry.delivery_month
                   ? `${moveEntryData.entry.delivery_month} (delivery)`
                   : `${getMonthName(moveEntryData.month)} ${moveEntryData.year}`
                 }
               </strong>
               {' '}
-              <Chip 
-                label={`Q${sourceQuarter}`} 
-                size="small" 
+              <Chip
+                label={`Q${sourceQuarter}`}
+                size="small"
                 sx={{ ml: 1, bgcolor: '#E0E7FF', color: '#3730A3', fontWeight: 600 }}
               />
             </Typography>

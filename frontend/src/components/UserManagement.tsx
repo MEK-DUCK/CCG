@@ -41,6 +41,19 @@ import {
 import client from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { useResizableColumns, ColumnConfig } from '../hooks/useResizableColumns'
+import ResizableTableCell from './ResizableTableCell'
+
+// Column configuration for resizable columns
+const USER_COLUMNS: ColumnConfig[] = [
+  { id: 'user', label: 'User', defaultWidth: 180, minWidth: 120 },
+  { id: 'email', label: 'Email', defaultWidth: 220, minWidth: 150 },
+  { id: 'initials', label: 'Initials', defaultWidth: 80, minWidth: 60 },
+  { id: 'role', label: 'Role', defaultWidth: 100, minWidth: 80 },
+  { id: 'status', label: 'Status', defaultWidth: 100, minWidth: 80 },
+  { id: 'lastLogin', label: 'Last Login', defaultWidth: 150, minWidth: 100 },
+  { id: 'actions', label: 'Actions', defaultWidth: 150, minWidth: 120 },
+]
 
 interface User {
   id: number
@@ -68,6 +81,9 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  // Resizable columns
+  const { columnWidths, handleResizeStart } = useResizableColumns('users', USER_COLUMNS)
 
   // Dialog states
   const [createDialog, setCreateDialog] = useState(false)
@@ -300,15 +316,27 @@ export default function UserManagement() {
         <Table>
           <TableHead>
             <TableRow sx={{ bgcolor: '#f8fafc' }}>
-              <TableCell sx={{ fontWeight: 600 }}>User</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Initials</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Last Login</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">
+              <ResizableTableCell columnId="user" width={columnWidths['user']} minWidth={120} onResizeStart={handleResizeStart}>
+                User
+              </ResizableTableCell>
+              <ResizableTableCell columnId="email" width={columnWidths['email']} minWidth={150} onResizeStart={handleResizeStart}>
+                Email
+              </ResizableTableCell>
+              <ResizableTableCell columnId="initials" width={columnWidths['initials']} minWidth={60} onResizeStart={handleResizeStart}>
+                Initials
+              </ResizableTableCell>
+              <ResizableTableCell columnId="role" width={columnWidths['role']} minWidth={80} onResizeStart={handleResizeStart}>
+                Role
+              </ResizableTableCell>
+              <ResizableTableCell columnId="status" width={columnWidths['status']} minWidth={80} onResizeStart={handleResizeStart}>
+                Status
+              </ResizableTableCell>
+              <ResizableTableCell columnId="lastLogin" width={columnWidths['lastLogin']} minWidth={100} onResizeStart={handleResizeStart}>
+                Last Login
+              </ResizableTableCell>
+              <ResizableTableCell columnId="actions" width={columnWidths['actions']} minWidth={120} onResizeStart={handleResizeStart} align="right" resizable={false}>
                 Actions
-              </TableCell>
+              </ResizableTableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -334,7 +362,7 @@ export default function UserManagement() {
                     opacity: user.status === 'inactive' ? 0.7 : 1,
                   }}
                 >
-                  <TableCell>
+                  <TableCell sx={{ width: columnWidths['user'] }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Box
                         sx={{
@@ -359,8 +387,8 @@ export default function UserManagement() {
                       )}
                     </Box>
                   </TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>
+                  <TableCell sx={{ width: columnWidths['email'] }}>{user.email}</TableCell>
+                  <TableCell sx={{ width: columnWidths['initials'] }}>
                     <Chip
                       label={user.initials}
                       size="small"
@@ -372,7 +400,7 @@ export default function UserManagement() {
                       }}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ width: columnWidths['role'] }}>
                     <Chip
                       label={user.role.charAt(0).toUpperCase() + user.role.slice(1)}
                       size="small"
@@ -380,19 +408,19 @@ export default function UserManagement() {
                       variant="outlined"
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ width: columnWidths['status'] }}>
                     <Chip
                       label={user.status.charAt(0).toUpperCase() + user.status.slice(1)}
                       size="small"
                       color={getStatusColor(user.status) as any}
                     />
                   </TableCell>
-                  <TableCell sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
+                  <TableCell sx={{ width: columnWidths['lastLogin'], fontSize: '0.875rem', color: 'text.secondary' }}>
                     {user.last_login
                       ? new Date(user.last_login).toLocaleString()
                       : 'Never'}
                   </TableCell>
-                  <TableCell align="right">
+                  <TableCell sx={{ width: columnWidths['actions'] }} align="right">
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
                       {user.status === 'pending' && (
                         <Tooltip title="Resend Invite">

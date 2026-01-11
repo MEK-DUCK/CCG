@@ -304,7 +304,7 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     const loadDischargePorts = async () => {
       if (!isVoyageDurationsLoaded()) {
         try {
-          const response = await client.get<DischargePort[]>('/api/discharge-ports')
+          const response = await client.get<DischargePort[]>('/api/discharge-ports/')
           if (response.data && response.data.length > 0) {
             setVoyageDurations(response.data)
           }
@@ -1242,9 +1242,15 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
     }, 0)
   }
 
-  // Get original quarterly quantity (total - topup)
+  // Get original quarterly quantity (base quantity from quarterly plan, without top-ups)
+  // This IS the same as getQuarterlyQuantity since the quarterly plan stores the original allocation
   const getQuarterlyOriginal = (productName: string, quarterPosition: number): number => {
-    return getQuarterlyQuantity(productName, quarterPosition) - getQuarterlyTopup(productName, quarterPosition)
+    return getQuarterlyQuantity(productName, quarterPosition)
+  }
+
+  // Get total quarterly quantity including top-ups (original + top-up)
+  const getQuarterlyTotal = (productName: string, quarterPosition: number): number => {
+    return getQuarterlyQuantity(productName, quarterPosition) + getQuarterlyTopup(productName, quarterPosition)
   }
 
   // Get total entered for a quarter for a specific product
@@ -3307,29 +3313,29 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                 </Typography>
                 {/* Product-wise summary for this quarter */}
                 {products.map((product: any) => {
-                  const quarterlyQuantity = getQuarterlyQuantity(product.name, quarterIndex)
-                  const quarterlyTopup = getQuarterlyTopup(product.name, quarterIndex)
                   const quarterlyOriginal = getQuarterlyOriginal(product.name, quarterIndex)
+                  const quarterlyTopup = getQuarterlyTopup(product.name, quarterIndex)
+                  const quarterlyTotal = getQuarterlyTotal(product.name, quarterIndex)
                   const totalEntered = getTotalEntered(quarter, product.name)
-                  const remaining = quarterlyQuantity - totalEntered
+                  const remaining = quarterlyTotal - totalEntered
                   const isComplete = remaining === 0
-                  
+
                   return (
                     <Box key={product.name} sx={{ mb: 0.5 }}>
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
+                    <Typography
+                      variant="body2"
+                      sx={{
                         color: isComplete ? 'success.main' : 'text.secondary',
                       }}
                     >
                       {isMultiProduct && <strong>{product.name}: </strong>}
-                        Total: {quarterlyQuantity.toLocaleString()} KT
+                        Total: {quarterlyTotal.toLocaleString()} KT
                         {quarterlyTopup > 0 && (
                           <span style={{ color: '#10B981', fontWeight: 500 }}>
                             {' '}({quarterlyOriginal.toLocaleString()} + <span style={{ backgroundColor: '#D1FAE5', padding: '1px 4px', borderRadius: '4px' }}>{quarterlyTopup.toLocaleString()} top-up</span>)
                           </span>
                         )}
-                        {' | '}Entered: {totalEntered.toLocaleString()} KT | 
+                        {' | '}Entered: {totalEntered.toLocaleString()} KT |
                       Remaining: {remaining.toLocaleString()} KT
                       {isComplete && ' ✓'}
                     </Typography>

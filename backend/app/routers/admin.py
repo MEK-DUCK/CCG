@@ -909,8 +909,7 @@ def check_data_integrity(db: Session = Depends(get_db), current_user: models.Use
             qp = next((q for q in quarterly_plans if q.product_id == product_id), None)
             if qp:
                 qp_total = (qp.q1_quantity or 0) + (qp.q2_quantity or 0) + (qp.q3_quantity or 0) + (qp.q4_quantity or 0)
-                qp_topup = (qp.q1_topup or 0) + (qp.q2_topup or 0) + (qp.q3_topup or 0) + (qp.q4_topup or 0)
-                qp_total += qp_topup
+                # Note: topup quantities are tracked in contract year_quantities, not quarterly plans
                 
                 if abs(contract_total - qp_total) > 0.01:  # Allow small floating point differences
                     issues.append({

@@ -305,7 +305,15 @@ def create_monthly_plan(plan: schemas.MonthlyPlanCreate, db: Session = Depends(g
                 old_value=None,
                 new_value=val
     )
-    
+
+    # Save initial version for version history
+    from app.version_history import version_service
+    version_service.save_version(
+        db, "monthly_plan", db_plan.id, db_plan,
+        user_initials=current_user.initials if current_user else "SYS",
+        change_summary="Created"
+    )
+
     db.commit()
     db.refresh(db_plan)
     logger.info(f"Monthly plan created: id={db_plan.id}, month={plan.month}/{plan.year}, qty={plan.month_quantity}")

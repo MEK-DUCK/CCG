@@ -648,7 +648,16 @@ async def create_cargo(
             cargo=db_cargo,
             new_monthly_plan_id=db_cargo.monthly_plan_id
         )
-        
+
+        # Save initial version for version history
+        from app.version_history import version_service
+        user_initials = getattr(request.state, 'user_initials', None) or (current_user.initials if current_user else "SYS")
+        version_service.save_version(
+            db, "cargo", db_cargo.id, db_cargo,
+            user_initials=user_initials,
+            change_summary="Created"
+        )
+
         db.commit()
         db.refresh(db_cargo)
         logger.info(f"Cargo created: id={db_cargo.id}, cargo_id={db_cargo.cargo_id}")
@@ -1773,12 +1782,20 @@ async def create_cross_contract_combi(
             # Create port operations (normalized)
             port_codes = _parse_load_ports_input(combi_data.load_ports)
             _sync_port_operations_normalized(db, db_cargo, port_codes)
-            
+
             # Log the creation
             log_cargo_action(db=db, action='CREATE', cargo=db_cargo)
-            
+
+            # Save initial version for version history
+            from app.version_history import version_service
+            version_service.save_version(
+                db, "cargo", db_cargo.id, db_cargo,
+                user_initials=current_user.initials if current_user else "SYS",
+                change_summary="Created (cross-contract combi)"
+            )
+
             created_cargos.append(db_cargo)
-        
+
         db.commit()
         
         # Refresh all cargos to get port_operations

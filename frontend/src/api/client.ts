@@ -15,12 +15,24 @@ const client = axios.create({
   maxRedirects: 5,
 })
 
-// Add request interceptor for debugging
+// Add request interceptor for debugging and token management
 // Note: User initials for audit logging are extracted from JWT token on the backend,
 // NOT from a client header. This prevents spoofing.
 client.interceptors.request.use(
-  (config) => {
+  async (config) => {
     console.log('🚀 Axios Request:', config.method?.toUpperCase(), config.url, config.data)
+
+    // Skip token handling for auth endpoints
+    if (config.url?.includes('/auth/login') || config.url?.includes('/auth/refresh')) {
+      return config
+    }
+
+    // Get a valid token (will refresh if needed)
+    const token = await getValidToken()
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`
+    }
+
     return config
   },
   (error) => {
@@ -31,130 +43,130 @@ client.interceptors.request.use(
 
 // Track if we're currently refreshing the token to prevent multiple refresh attempts
 let isRefreshing = false
-let failedQueue: Array<{
-  resolve: (value?: unknown) => void
-  reject: (reason?: unknown) => void
-}> = []
+let refreshPromise: Promise<string | null> | null = null
 
-const processQueue = (error: unknown, token: string | null = null) => {
-  failedQueue.forEach(prom => {
-    if (error) {
-      prom.reject(error)
-    } else {
-      prom.resolve(token)
-    }
-  })
-  failedQueue = []
+// Check if token is expired or about to expire (within 30 seconds)
+const isTokenExpired = (): boolean => {
+  const expiryStr = localStorage.getItem('oil_lifting_token_expiry')
+  if (!expiryStr) return true
+  const expiry = parseInt(expiryStr, 10)
+  return Date.now() > expiry - 30000 // 30 second buffer
 }
 
-// Add response interceptor for debugging and auth error handling
+// Refresh the token
+const refreshToken = async (): Promise<string | null> => {
+  const storedRefreshToken = localStorage.getItem('oil_lifting_refresh_token')
+  if (!storedRefreshToken) return null
+
+  try {
+    console.log('🔄 Refreshing token...')
+    // Use axios directly to avoid interceptors
+    const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
+      refresh_token: storedRefreshToken
+    })
+
+    const { access_token, expires_in } = response.data
+
+    // Update stored tokens
+    localStorage.setItem('oil_lifting_token', access_token)
+    const expiryTime = Date.now() + (expires_in || 900) * 1000
+    localStorage.setItem('oil_lifting_token_expiry', expiryTime.toString())
+
+    // Update auth header on client
+    client.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
+
+    console.log('✅ Token refreshed successfully')
+    return access_token
+  } catch (error) {
+    console.error('❌ Token refresh failed:', error)
+    // Clear auth on refresh failure
+    localStorage.removeItem('oil_lifting_token')
+    localStorage.removeItem('oil_lifting_refresh_token')
+    localStorage.removeItem('oil_lifting_user')
+    localStorage.removeItem('oil_lifting_token_expiry')
+    delete client.defaults.headers.common['Authorization']
+    return null
+  }
+}
+
+// Get a valid token, refreshing if necessary
+const getValidToken = async (): Promise<string | null> => {
+  const token = localStorage.getItem('oil_lifting_token')
+
+  if (!token) return null
+
+  if (!isTokenExpired()) {
+    return token
+  }
+
+  // Token is expired or expiring, need to refresh
+  const refreshTokenStr = localStorage.getItem('oil_lifting_refresh_token')
+  if (!refreshTokenStr) {
+    // No refresh token available, use existing token and let server validate
+    console.log('⚠️ No refresh token, using existing access token')
+    return token
+  }
+
+  if (isRefreshing && refreshPromise) {
+    // Already refreshing, wait for it
+    const refreshedToken = await refreshPromise
+    return refreshedToken || token // Fall back to existing token if refresh fails
+  }
+
+  isRefreshing = true
+  refreshPromise = refreshToken().finally(() => {
+    isRefreshing = false
+    refreshPromise = null
+  })
+
+  const refreshedToken = await refreshPromise
+  return refreshedToken || token // Fall back to existing token if refresh fails
+}
+
+// Add response interceptor for debugging and fallback auth error handling
 client.interceptors.response.use(
   (response) => {
     console.log('✅ Axios Response:', response.status, response.config.url, 'Data length:', response.data?.length || 'N/A')
     return response
   },
   async (error) => {
-    const originalRequest = error.config
-    
     console.error('❌ Axios Error Response:', error.response?.status, error.config?.url)
     console.error('❌ Error message:', error.message)
     console.error('❌ Error code:', error.code)
-    
+
     if (error.code === 'ERR_NETWORK') {
       console.error('❌ Network Error - Request could not be made. Check:')
       console.error('   1. Is the backend running on port 8000?')
       console.error('   2. Is the Vite proxy configured correctly?')
       console.error('   3. Try restarting the frontend dev server')
     }
-    
+
     if (error.response) {
       console.error('❌ Error response data:', error.response.data)
-      
-      // Handle 401 Unauthorized - try to refresh token first
-      if (error.response.status === 401 && !originalRequest._retry) {
-        const refreshToken = localStorage.getItem('oil_lifting_refresh_token')
-        
-        // If we have a refresh token and this isn't the refresh endpoint itself
-        if (refreshToken && !originalRequest.url?.includes('/auth/refresh')) {
-          if (isRefreshing) {
-            // If already refreshing, queue this request
-            return new Promise((resolve, reject) => {
-              failedQueue.push({ resolve, reject })
-            }).then(token => {
-              originalRequest.headers['Authorization'] = `Bearer ${token}`
-              return client(originalRequest)
-            }).catch(err => {
-              return Promise.reject(err)
-            })
-          }
-          
-          originalRequest._retry = true
-          isRefreshing = true
-          
-          try {
-            console.log('🔄 Attempting token refresh...')
-            const response = await client.post('/api/auth/refresh', {
-              refresh_token: refreshToken
-            })
-            
-            const { access_token, expires_in } = response.data
-            
-            // Update stored tokens
-            localStorage.setItem('oil_lifting_token', access_token)
-            const expiryTime = Date.now() + (expires_in || 900) * 1000
-            localStorage.setItem('oil_lifting_token_expiry', expiryTime.toString())
-            
-            // Update auth header
-            client.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
-            originalRequest.headers['Authorization'] = `Bearer ${access_token}`
-            
-            console.log('✅ Token refreshed successfully')
-            processQueue(null, access_token)
-            
-            // Retry the original request
-            return client(originalRequest)
-          } catch (refreshError) {
-            console.error('❌ Token refresh failed:', refreshError)
-            processQueue(refreshError, null)
-            
-            // Refresh failed, clear auth and redirect to login
-            localStorage.removeItem('oil_lifting_token')
-            localStorage.removeItem('oil_lifting_refresh_token')
-            localStorage.removeItem('oil_lifting_user')
-            localStorage.removeItem('oil_lifting_token_expiry')
-            delete client.defaults.headers.common['Authorization']
-            
-            if (!window.location.pathname.includes('/login')) {
-              window.location.href = '/login?expired=true'
-            }
-            return Promise.reject(refreshError)
-          } finally {
-            isRefreshing = false
-          }
-        } else {
-          // No refresh token or refresh endpoint failed
-          console.warn('🔒 Authentication expired - clearing session')
-          localStorage.removeItem('oil_lifting_token')
-          localStorage.removeItem('oil_lifting_refresh_token')
-          localStorage.removeItem('oil_lifting_user')
-          localStorage.removeItem('oil_lifting_token_expiry')
-          delete client.defaults.headers.common['Authorization']
-          
-          if (!window.location.pathname.includes('/login')) {
-            window.location.href = '/login?expired=true'
-          }
+
+      // Handle 401 Unauthorized - token refresh already attempted in request interceptor
+      // This is a fallback for edge cases where refresh failed or wasn't possible
+      if (error.response.status === 401 && !error.config?.url?.includes('/auth/')) {
+        console.warn('🔒 Authentication failed - clearing session')
+        localStorage.removeItem('oil_lifting_token')
+        localStorage.removeItem('oil_lifting_refresh_token')
+        localStorage.removeItem('oil_lifting_user')
+        localStorage.removeItem('oil_lifting_token_expiry')
+        delete client.defaults.headers.common['Authorization']
+
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login?expired=true'
         }
       }
-      
+
       // Handle 429 Too Many Requests (rate limiting)
       if (error.response.status === 429) {
         const retryAfter = error.response.data?.retry_after || 60
         console.warn(`⏳ Rate limited. Retry after ${retryAfter} seconds.`)
-        // Could show a toast notification here
       }
     }
-    
-    if (error.request) {
+
+    if (error.request && !error.response) {
       console.error('❌ Request was made but no response received:', error.request)
     }
     return Promise.reject(error)

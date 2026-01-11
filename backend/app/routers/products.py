@@ -74,6 +74,7 @@ def create_product(
 def read_products(
     include_inactive: bool = Query(False, description="Include inactive products"),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_auth),
 ):
     """Get all products, ordered by sort_order then name."""
     try:

@@ -37,13 +37,27 @@ import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-ma
 import client, { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity, AuthorityAmendment } from '../types'
 import { setVoyageDurations, getCifDestinations, type DischargePort } from '../utils/voyageDuration'
-import { getContractTypeColor, getPaymentColor, CONTRACT_CATEGORY_COLORS } from '../utils/chipColors'
+import { getContractTypeColor, getPaymentColor, CONTRACT_CATEGORY_COLORS, getProductColor } from '../utils/chipColors'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
 import { useConflictHandler } from '../components/Presence'
 import { useToast } from '../contexts/ToastContext'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { applyAmendmentsToProduct } from '../utils/monthlyPlanUtils'
+import { useResizableColumns, ColumnConfig } from '../hooks/useResizableColumns'
+import ResizableTableCell from '../components/ResizableTableCell'
+
+// Column configuration for contracts table
+const CONTRACTS_COLUMNS: ColumnConfig[] = [
+  { id: 'contractNumber', label: 'Contract Number', defaultWidth: 150, minWidth: 120 },
+  { id: 'customer', label: 'Customer', defaultWidth: 140, minWidth: 100 },
+  { id: 'contractType', label: 'Contract Type', defaultWidth: 120, minWidth: 100 },
+  { id: 'fobCif', label: 'FOB/CIF', defaultWidth: 90, minWidth: 70 },
+  { id: 'payment', label: 'Payment', defaultWidth: 100, minWidth: 80 },
+  { id: 'products', label: 'Products', defaultWidth: 180, minWidth: 120 },
+  { id: 'period', label: 'Period', defaultWidth: 130, minWidth: 100 },
+  { id: 'actions', label: 'Actions', defaultWidth: 120, minWidth: 100 },
+]
 
 // Fallback product options if API fails
 const DEFAULT_PRODUCT_OPTIONS = ['JET A-1', 'GASOIL', 'GASOIL 10PPM', 'HFO', 'LSFO']
@@ -87,6 +101,10 @@ const getCalendarYear = (startPeriod: string, contractYear: number): number => {
 export default function ContractManagement() {
   const navigate = useNavigate()
   const { showSuccess, showError } = useToast()
+
+  // Resizable columns
+  const contractsCols = useResizableColumns('contract-management', CONTRACTS_COLUMNS)
+
   const [contracts, setContracts] = useState<Contract[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [productOptions, setProductOptions] = useState<string[]>(DEFAULT_PRODUCT_OPTIONS)
@@ -172,7 +190,7 @@ export default function ContractManagement() {
         contractAPI.getAll(),
         customerAPI.getAll(),
         client.get('/api/products/names').catch(() => ({ data: DEFAULT_PRODUCT_OPTIONS })),
-        client.get<DischargePort[]>('/api/discharge-ports').catch(() => ({ data: [] })),
+        client.get<DischargePort[]>('/api/discharge-ports/').catch(() => ({ data: [] })),
       ])
       const loadedContracts = contractsRes.data || []
       
@@ -890,14 +908,14 @@ export default function ContractManagement() {
               <Table sx={{ minWidth: 900 }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Contract Number</TableCell>
-                  <TableCell>Customer</TableCell>
-                  <TableCell>Contract Type</TableCell>
-                  <TableCell>FOB/CIF</TableCell>
-                  <TableCell>Payment</TableCell>
-                  <TableCell>Products</TableCell>
-                  <TableCell>Period</TableCell>
-                  <TableCell align="right">Actions</TableCell>
+                  <ResizableTableCell columnId="contractNumber" width={contractsCols.columnWidths['contractNumber']} minWidth={120} onResizeStart={contractsCols.handleResizeStart}>Contract Number</ResizableTableCell>
+                  <ResizableTableCell columnId="customer" width={contractsCols.columnWidths['customer']} minWidth={100} onResizeStart={contractsCols.handleResizeStart}>Customer</ResizableTableCell>
+                  <ResizableTableCell columnId="contractType" width={contractsCols.columnWidths['contractType']} minWidth={100} onResizeStart={contractsCols.handleResizeStart}>Contract Type</ResizableTableCell>
+                  <ResizableTableCell columnId="fobCif" width={contractsCols.columnWidths['fobCif']} minWidth={70} onResizeStart={contractsCols.handleResizeStart}>FOB/CIF</ResizableTableCell>
+                  <ResizableTableCell columnId="payment" width={contractsCols.columnWidths['payment']} minWidth={80} onResizeStart={contractsCols.handleResizeStart}>Payment</ResizableTableCell>
+                  <ResizableTableCell columnId="products" width={contractsCols.columnWidths['products']} minWidth={120} onResizeStart={contractsCols.handleResizeStart}>Products</ResizableTableCell>
+                  <ResizableTableCell columnId="period" width={contractsCols.columnWidths['period']} minWidth={100} onResizeStart={contractsCols.handleResizeStart}>Period</ResizableTableCell>
+                  <ResizableTableCell columnId="actions" width={contractsCols.columnWidths['actions']} minWidth={100} onResizeStart={contractsCols.handleResizeStart} align="right" resizable={false}>Actions</ResizableTableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1038,20 +1056,29 @@ export default function ContractManagement() {
                               
                               return (
                                 <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                                  <Chip
+                                    label={typeof p === 'object' ? p.name : p}
+                                    size="small"
+                                    sx={{
+                                      fontWeight: 500,
+                                      fontSize: '0.75rem',
+                                      ...getProductColor(typeof p === 'object' ? p.name : p)
+                                    }}
+                                  />
                                   <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8125rem' }}>
-                                    {typeof p === 'object' ? p.name : p}: {typeof p === 'object' ? qtyDisplay : ''}
+                                    {typeof p === 'object' ? qtyDisplay : ''}
                                   </Typography>
                                   {isMinMax && (
-                                    <Chip 
-                                      label="Range" 
-                                      size="small" 
-                                      sx={{ 
-                                        height: 16, 
+                                    <Chip
+                                      label="Range"
+                                      size="small"
+                                      sx={{
+                                        height: 16,
                                         fontSize: '0.625rem',
-                                        bgcolor: '#FAF5FF', 
+                                        bgcolor: '#FAF5FF',
                                         color: '#7C3AED',
                                         '& .MuiChip-label': { px: 0.5 }
-                                      }} 
+                                      }}
                                     />
                                   )}
                                   {isAmended && (

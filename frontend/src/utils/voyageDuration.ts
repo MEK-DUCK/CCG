@@ -46,7 +46,7 @@ export interface DischargePort {
  */
 export async function loadVoyageDurations(): Promise<void> {
   try {
-    const response = await fetch('/api/discharge-ports')
+    const response = await fetch('/api/discharge-ports/')
     if (response.ok) {
       const ports: DischargePort[] = await response.json()
       voyageDurationsCache = {}

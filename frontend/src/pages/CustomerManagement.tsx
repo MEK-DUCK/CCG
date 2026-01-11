@@ -24,11 +24,23 @@ import { Add, Edit, Delete, People } from '@mui/icons-material'
 import { customerAPI } from '../api/client'
 import { useToast } from '../contexts/ToastContext'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { useResizableColumns, ColumnConfig } from '../hooks/useResizableColumns'
+import ResizableTableCell from '../components/ResizableTableCell'
 import type { Customer } from '../types'
+
+// Column configuration for resizable columns
+const CUSTOMER_COLUMNS: ColumnConfig[] = [
+  { id: 'id', label: 'Customer ID', defaultWidth: 200, minWidth: 100 },
+  { id: 'name', label: 'Name', defaultWidth: 300, minWidth: 150 },
+  { id: 'actions', label: 'Actions', defaultWidth: 120, minWidth: 100 },
+]
 
 export default function CustomerManagement() {
   const { showError } = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
+
+  // Resizable columns
+  const { columnWidths, handleResizeStart } = useResizableColumns('customers', CUSTOMER_COLUMNS)
   const [open, setOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [formData, setFormData] = useState({
@@ -205,9 +217,32 @@ export default function CustomerManagement() {
           <Table sx={{ minWidth: 500 }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ width: 200 }}>Customer ID</TableCell>
-                <TableCell>Name</TableCell>
-                <TableCell sx={{ width: 120 }} align="right">Actions</TableCell>
+                <ResizableTableCell
+                  columnId="id"
+                  width={columnWidths['id']}
+                  minWidth={CUSTOMER_COLUMNS.find(c => c.id === 'id')?.minWidth}
+                  onResizeStart={handleResizeStart}
+                >
+                  Customer ID
+                </ResizableTableCell>
+                <ResizableTableCell
+                  columnId="name"
+                  width={columnWidths['name']}
+                  minWidth={CUSTOMER_COLUMNS.find(c => c.id === 'name')?.minWidth}
+                  onResizeStart={handleResizeStart}
+                >
+                  Name
+                </ResizableTableCell>
+                <ResizableTableCell
+                  columnId="actions"
+                  width={columnWidths['actions']}
+                  minWidth={CUSTOMER_COLUMNS.find(c => c.id === 'actions')?.minWidth}
+                  onResizeStart={handleResizeStart}
+                  align="right"
+                  resizable={false}
+                >
+                  Actions
+                </ResizableTableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -250,17 +285,17 @@ export default function CustomerManagement() {
                   : customers
                 ).map((customer) => (
                   <TableRow key={customer.id} sx={{ '&:hover': { bgcolor: 'rgba(71, 85, 105, 0.04)' } }}>
-                    <TableCell>
+                    <TableCell sx={{ width: columnWidths['id'] }}>
                       <Typography variant="body2" sx={{ fontFamily: 'monospace', color: '#64748B' }}>
                         {customer.customer_id}
                       </Typography>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ width: columnWidths['name'] }}>
                       <Typography variant="body2" sx={{ fontWeight: 500, color: '#1E293B' }}>
                         {customer.name}
                       </Typography>
                     </TableCell>
-                    <TableCell align="right">
+                    <TableCell sx={{ width: columnWidths['actions'] }} align="right">
                       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
                         <Tooltip title="Edit customer">
                           <IconButton

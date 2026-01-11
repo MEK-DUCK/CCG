@@ -58,6 +58,47 @@ import client from '../api/client'
 import UserManagement from '../components/UserManagement'
 import { RecycleBin } from '../components/RecycleBin'
 import { getContractTypeColor } from '../utils/chipColors'
+import { useResizableColumns, ColumnConfig } from '../hooks/useResizableColumns'
+import ResizableTableCell from '../components/ResizableTableCell'
+
+// Column configurations for admin tables
+const PRODUCTS_COLUMNS: ColumnConfig[] = [
+  { id: 'order', label: 'Order', defaultWidth: 70, minWidth: 50 },
+  { id: 'code', label: 'Code', defaultWidth: 100, minWidth: 70 },
+  { id: 'name', label: 'Name', defaultWidth: 150, minWidth: 100 },
+  { id: 'description', label: 'Description', defaultWidth: 200, minWidth: 120 },
+  { id: 'status', label: 'Status', defaultWidth: 100, minWidth: 80 },
+  { id: 'actions', label: 'Actions', defaultWidth: 120, minWidth: 100 },
+]
+
+const LOAD_PORTS_COLUMNS: ColumnConfig[] = [
+  { id: 'order', label: 'Order', defaultWidth: 70, minWidth: 50 },
+  { id: 'code', label: 'Code', defaultWidth: 80, minWidth: 60 },
+  { id: 'name', label: 'Name', defaultWidth: 150, minWidth: 100 },
+  { id: 'country', label: 'Country', defaultWidth: 100, minWidth: 80 },
+  { id: 'description', label: 'Description', defaultWidth: 180, minWidth: 120 },
+  { id: 'status', label: 'Status', defaultWidth: 100, minWidth: 80 },
+  { id: 'actions', label: 'Actions', defaultWidth: 120, minWidth: 100 },
+]
+
+const INSPECTORS_COLUMNS: ColumnConfig[] = [
+  { id: 'order', label: 'Order', defaultWidth: 70, minWidth: 50 },
+  { id: 'code', label: 'Code', defaultWidth: 100, minWidth: 70 },
+  { id: 'name', label: 'Name', defaultWidth: 150, minWidth: 100 },
+  { id: 'description', label: 'Description', defaultWidth: 200, minWidth: 120 },
+  { id: 'status', label: 'Status', defaultWidth: 100, minWidth: 80 },
+  { id: 'actions', label: 'Actions', defaultWidth: 120, minWidth: 100 },
+]
+
+const DISCHARGE_PORTS_COLUMNS: ColumnConfig[] = [
+  { id: 'order', label: 'Order', defaultWidth: 70, minWidth: 50 },
+  { id: 'name', label: 'Port Name', defaultWidth: 150, minWidth: 100 },
+  { id: 'suez', label: 'Suez (days)', defaultWidth: 100, minWidth: 80 },
+  { id: 'cape', label: 'Cape (days)', defaultWidth: 100, minWidth: 80 },
+  { id: 'restrictions', label: 'Restrictions', defaultWidth: 250, minWidth: 150 },
+  { id: 'status', label: 'Status', defaultWidth: 100, minWidth: 80 },
+  { id: 'actions', label: 'Actions', defaultWidth: 120, minWidth: 100 },
+]
 
 // Types
 interface DatabaseStats {
@@ -182,6 +223,12 @@ export default function AdminPage() {
   const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[]>([])
   const [integrityStats, setIntegrityStats] = useState<any>(null)
   
+  // Resizable columns for admin tables
+  const productsColumns = useResizableColumns('admin-products', PRODUCTS_COLUMNS)
+  const loadPortsColumns = useResizableColumns('admin-load-ports', LOAD_PORTS_COLUMNS)
+  const inspectorsColumns = useResizableColumns('admin-inspectors', INSPECTORS_COLUMNS)
+  const dischargePortsColumns = useResizableColumns('admin-discharge-ports', DISCHARGE_PORTS_COLUMNS)
+
   // UI states
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [editDialog, setEditDialog] = useState<EditDialogState>({
@@ -311,14 +358,14 @@ export default function AdminPage() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const response = await client.get('/api/products?include_inactive=true')
+      const response = await client.get('/api/products/?include_inactive=true')
       const data = response.data || []
       // Auto-seed if empty
       if (Array.isArray(data) && data.length === 0) {
         console.log('No products found, attempting to seed defaults...')
         try {
           await client.post('/api/products/seed-defaults')
-          const seededResponse = await client.get('/api/products?include_inactive=true')
+          const seededResponse = await client.get('/api/products/?include_inactive=true')
           setProducts(seededResponse.data || [])
           console.log('Products seeded successfully')
         } catch (seedErr: any) {
@@ -336,14 +383,14 @@ export default function AdminPage() {
 
   const fetchLoadPorts = useCallback(async () => {
     try {
-      const response = await client.get('/api/load-ports?include_inactive=true')
+      const response = await client.get('/api/load-ports/?include_inactive=true')
       const data = response.data || []
       // Auto-seed if empty
       if (Array.isArray(data) && data.length === 0) {
         console.log('No load ports found, attempting to seed defaults...')
         try {
           await client.post('/api/load-ports/seed-defaults')
-          const seededResponse = await client.get('/api/load-ports?include_inactive=true')
+          const seededResponse = await client.get('/api/load-ports/?include_inactive=true')
           setLoadPorts(seededResponse.data || [])
           console.log('Load ports seeded successfully')
         } catch (seedErr: any) {
@@ -361,14 +408,14 @@ export default function AdminPage() {
 
   const fetchInspectors = useCallback(async () => {
     try {
-      const response = await client.get('/api/inspectors?include_inactive=true')
+      const response = await client.get('/api/inspectors/?include_inactive=true')
       const data = response.data || []
       // Auto-seed if empty
       if (Array.isArray(data) && data.length === 0) {
         console.log('No inspectors found, attempting to seed defaults...')
         try {
           await client.post('/api/inspectors/seed-defaults')
-          const seededResponse = await client.get('/api/inspectors?include_inactive=true')
+          const seededResponse = await client.get('/api/inspectors/?include_inactive=true')
           setInspectors(seededResponse.data || [])
           console.log('Inspectors seeded successfully')
         } catch (seedErr: any) {
@@ -386,14 +433,14 @@ export default function AdminPage() {
 
   const fetchDischargePorts = useCallback(async () => {
     try {
-      const response = await client.get('/api/discharge-ports?include_inactive=true')
+      const response = await client.get('/api/discharge-ports/?include_inactive=true')
       const data = response.data || []
       // Auto-seed if empty
       if (Array.isArray(data) && data.length === 0) {
         console.log('No discharge ports found, attempting to seed defaults...')
         try {
           await client.post('/api/discharge-ports/seed-defaults')
-          const seededResponse = await client.get('/api/discharge-ports?include_inactive=true')
+          const seededResponse = await client.get('/api/discharge-ports/?include_inactive=true')
           setDischargePorts(seededResponse.data || [])
           console.log('Discharge ports seeded successfully')
         } catch (seedErr: any) {
@@ -1511,42 +1558,42 @@ export default function AdminPage() {
         <Table size="small" sx={{ minWidth: 700 }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-              <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Code</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+              <ResizableTableCell columnId="order" width={productsColumns.columnWidths['order']} minWidth={50} onResizeStart={productsColumns.handleResizeStart}>Order</ResizableTableCell>
+              <ResizableTableCell columnId="code" width={productsColumns.columnWidths['code']} minWidth={70} onResizeStart={productsColumns.handleResizeStart}>Code</ResizableTableCell>
+              <ResizableTableCell columnId="name" width={productsColumns.columnWidths['name']} minWidth={100} onResizeStart={productsColumns.handleResizeStart}>Name</ResizableTableCell>
+              <ResizableTableCell columnId="description" width={productsColumns.columnWidths['description']} minWidth={120} onResizeStart={productsColumns.handleResizeStart}>Description</ResizableTableCell>
+              <ResizableTableCell columnId="status" width={productsColumns.columnWidths['status']} minWidth={80} onResizeStart={productsColumns.handleResizeStart}>Status</ResizableTableCell>
+              <ResizableTableCell columnId="actions" width={productsColumns.columnWidths['actions']} minWidth={100} onResizeStart={productsColumns.handleResizeStart} align="right" resizable={false}>Actions</ResizableTableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {products.map((product) => (
-              <TableRow 
-                key={product.id} 
+              <TableRow
+                key={product.id}
                 hover
-                sx={{ 
+                sx={{
                   bgcolor: product.is_active ? 'white' : '#F8FAFC',
                   opacity: product.is_active ? 1 : 0.7
                 }}
               >
-                <TableCell>{product.sort_order}</TableCell>
-                <TableCell>
-                  <Chip 
-                    label={product.code} 
-                    size="small" 
-                    sx={{ 
-                      fontFamily: 'monospace', 
+                <TableCell sx={{ width: productsColumns.columnWidths['order'] }}>{product.sort_order}</TableCell>
+                <TableCell sx={{ width: productsColumns.columnWidths['code'] }}>
+                  <Chip
+                    label={product.code}
+                    size="small"
+                    sx={{
+                      fontFamily: 'monospace',
                       fontWeight: 600,
                       bgcolor: '#E0E7FF',
                       color: '#3730A3'
-                    }} 
+                    }}
                   />
                 </TableCell>
-                <TableCell sx={{ fontWeight: 500 }}>{product.name}</TableCell>
-                <TableCell sx={{ color: 'text.secondary', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <TableCell sx={{ width: productsColumns.columnWidths['name'], fontWeight: 500 }}>{product.name}</TableCell>
+                <TableCell sx={{ width: productsColumns.columnWidths['description'], color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {product.description || '-'}
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ width: productsColumns.columnWidths['status'] }}>
                   <Chip
                     label={product.is_active ? 'Active' : 'Inactive'}
                     size="small"
@@ -1555,7 +1602,7 @@ export default function AdminPage() {
                     sx={{ cursor: 'pointer' }}
                   />
                 </TableCell>
-                <TableCell align="right">
+                <TableCell sx={{ width: productsColumns.columnWidths['actions'] }} align="right">
                   <Tooltip title="Edit">
                     <IconButton size="small" onClick={() => handleOpenProductDialog(product)}>
                       <Edit fontSize="small" />
@@ -1694,44 +1741,44 @@ export default function AdminPage() {
         <Table size="small" sx={{ minWidth: 800 }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-              <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Code</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Country</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+              <ResizableTableCell columnId="order" width={loadPortsColumns.columnWidths['order']} minWidth={50} onResizeStart={loadPortsColumns.handleResizeStart}>Order</ResizableTableCell>
+              <ResizableTableCell columnId="code" width={loadPortsColumns.columnWidths['code']} minWidth={60} onResizeStart={loadPortsColumns.handleResizeStart}>Code</ResizableTableCell>
+              <ResizableTableCell columnId="name" width={loadPortsColumns.columnWidths['name']} minWidth={100} onResizeStart={loadPortsColumns.handleResizeStart}>Name</ResizableTableCell>
+              <ResizableTableCell columnId="country" width={loadPortsColumns.columnWidths['country']} minWidth={80} onResizeStart={loadPortsColumns.handleResizeStart}>Country</ResizableTableCell>
+              <ResizableTableCell columnId="description" width={loadPortsColumns.columnWidths['description']} minWidth={120} onResizeStart={loadPortsColumns.handleResizeStart}>Description</ResizableTableCell>
+              <ResizableTableCell columnId="status" width={loadPortsColumns.columnWidths['status']} minWidth={80} onResizeStart={loadPortsColumns.handleResizeStart}>Status</ResizableTableCell>
+              <ResizableTableCell columnId="actions" width={loadPortsColumns.columnWidths['actions']} minWidth={100} onResizeStart={loadPortsColumns.handleResizeStart} align="right" resizable={false}>Actions</ResizableTableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loadPorts.map((port) => (
-              <TableRow 
-                key={port.id} 
+              <TableRow
+                key={port.id}
                 hover
-                sx={{ 
+                sx={{
                   bgcolor: port.is_active ? 'white' : '#F8FAFC',
                   opacity: port.is_active ? 1 : 0.7
                 }}
               >
-                <TableCell>{port.sort_order}</TableCell>
-                <TableCell>
-                  <Chip 
-                    label={port.code} 
-                    size="small" 
-                    sx={{ 
-                      fontFamily: 'monospace', 
+                <TableCell sx={{ width: loadPortsColumns.columnWidths['order'] }}>{port.sort_order}</TableCell>
+                <TableCell sx={{ width: loadPortsColumns.columnWidths['code'] }}>
+                  <Chip
+                    label={port.code}
+                    size="small"
+                    sx={{
+                      fontFamily: 'monospace',
                       fontWeight: 600,
                       bgcolor: '#E0F2FE',
                       color: '#0369A1'
-                    }} 
+                    }}
                   />
                 </TableCell>
-                <TableCell sx={{ fontWeight: 500 }}>{port.name}</TableCell>
-                <TableCell>{port.country || '-'}</TableCell>
-                <TableCell sx={{ color: 'text.secondary', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <TableCell sx={{ width: loadPortsColumns.columnWidths['name'], fontWeight: 500 }}>{port.name}</TableCell>
+                <TableCell sx={{ width: loadPortsColumns.columnWidths['country'] }}>{port.country || '-'}</TableCell>
+                <TableCell sx={{ width: loadPortsColumns.columnWidths['description'], color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {port.description || '-'}
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ width: loadPortsColumns.columnWidths['status'] }}>
                   <Chip
                     label={port.is_active ? 'Active' : 'Inactive'}
                     size="small"
@@ -1740,7 +1787,7 @@ export default function AdminPage() {
                     sx={{ cursor: 'pointer' }}
                   />
                 </TableCell>
-                <TableCell align="right">
+                <TableCell sx={{ width: loadPortsColumns.columnWidths['actions'] }} align="right">
                   <Tooltip title="Edit">
                     <IconButton size="small" onClick={() => handleOpenLoadPortDialog(port)}>
                       <Edit fontSize="small" />
@@ -1888,42 +1935,42 @@ export default function AdminPage() {
         <Table size="small" sx={{ minWidth: 700 }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-              <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Code</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+              <ResizableTableCell columnId="order" width={inspectorsColumns.columnWidths['order']} minWidth={50} onResizeStart={inspectorsColumns.handleResizeStart}>Order</ResizableTableCell>
+              <ResizableTableCell columnId="code" width={inspectorsColumns.columnWidths['code']} minWidth={70} onResizeStart={inspectorsColumns.handleResizeStart}>Code</ResizableTableCell>
+              <ResizableTableCell columnId="name" width={inspectorsColumns.columnWidths['name']} minWidth={100} onResizeStart={inspectorsColumns.handleResizeStart}>Name</ResizableTableCell>
+              <ResizableTableCell columnId="description" width={inspectorsColumns.columnWidths['description']} minWidth={120} onResizeStart={inspectorsColumns.handleResizeStart}>Description</ResizableTableCell>
+              <ResizableTableCell columnId="status" width={inspectorsColumns.columnWidths['status']} minWidth={80} onResizeStart={inspectorsColumns.handleResizeStart}>Status</ResizableTableCell>
+              <ResizableTableCell columnId="actions" width={inspectorsColumns.columnWidths['actions']} minWidth={100} onResizeStart={inspectorsColumns.handleResizeStart} align="right" resizable={false}>Actions</ResizableTableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {inspectors.map((inspector) => (
-              <TableRow 
-                key={inspector.id} 
+              <TableRow
+                key={inspector.id}
                 hover
-                sx={{ 
+                sx={{
                   bgcolor: inspector.is_active ? 'white' : '#F8FAFC',
                   opacity: inspector.is_active ? 1 : 0.7
                 }}
               >
-                <TableCell>{inspector.sort_order}</TableCell>
-                <TableCell>
-                  <Chip 
-                    label={inspector.code} 
-                    size="small" 
-                    sx={{ 
-                      fontFamily: 'monospace', 
+                <TableCell sx={{ width: inspectorsColumns.columnWidths['order'] }}>{inspector.sort_order}</TableCell>
+                <TableCell sx={{ width: inspectorsColumns.columnWidths['code'] }}>
+                  <Chip
+                    label={inspector.code}
+                    size="small"
+                    sx={{
+                      fontFamily: 'monospace',
                       fontWeight: 600,
                       bgcolor: '#FEF3C7',
                       color: '#92400E'
-                    }} 
+                    }}
                   />
                 </TableCell>
-                <TableCell sx={{ fontWeight: 500 }}>{inspector.name}</TableCell>
-                <TableCell sx={{ color: 'text.secondary', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <TableCell sx={{ width: inspectorsColumns.columnWidths['name'], fontWeight: 500 }}>{inspector.name}</TableCell>
+                <TableCell sx={{ width: inspectorsColumns.columnWidths['description'], color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {inspector.description || '-'}
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ width: inspectorsColumns.columnWidths['status'] }}>
                   <Chip
                     label={inspector.is_active ? 'Active' : 'Inactive'}
                     size="small"
@@ -1932,7 +1979,7 @@ export default function AdminPage() {
                     sx={{ cursor: 'pointer' }}
                   />
                 </TableCell>
-                <TableCell align="right">
+                <TableCell sx={{ width: inspectorsColumns.columnWidths['actions'] }} align="right">
                   <Tooltip title="Edit">
                     <IconButton size="small" onClick={() => handleOpenInspectorDialog(inspector)}>
                       <Edit fontSize="small" />
@@ -2071,55 +2118,113 @@ export default function AdminPage() {
         <Table size="small" sx={{ minWidth: 900 }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-              <TableCell sx={{ fontWeight: 600 }}>Order</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Port Name</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Suez (days)</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Cape (days)</TableCell>
-              <TableCell sx={{ fontWeight: 600, maxWidth: 300 }}>Restrictions</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
+              <ResizableTableCell
+                columnId="order"
+                width={dischargePortsColumns.columnWidths['order']}
+                minWidth={DISCHARGE_PORTS_COLUMNS.find(c => c.id === 'order')?.minWidth}
+                onResizeStart={dischargePortsColumns.handleResizeStart}
+                sx={{ fontWeight: 600 }}
+              >
+                Order
+              </ResizableTableCell>
+              <ResizableTableCell
+                columnId="name"
+                width={dischargePortsColumns.columnWidths['name']}
+                minWidth={DISCHARGE_PORTS_COLUMNS.find(c => c.id === 'name')?.minWidth}
+                onResizeStart={dischargePortsColumns.handleResizeStart}
+                sx={{ fontWeight: 600 }}
+              >
+                Port Name
+              </ResizableTableCell>
+              <ResizableTableCell
+                columnId="suez"
+                width={dischargePortsColumns.columnWidths['suez']}
+                minWidth={DISCHARGE_PORTS_COLUMNS.find(c => c.id === 'suez')?.minWidth}
+                onResizeStart={dischargePortsColumns.handleResizeStart}
+                sx={{ fontWeight: 600 }}
+              >
+                Suez (days)
+              </ResizableTableCell>
+              <ResizableTableCell
+                columnId="cape"
+                width={dischargePortsColumns.columnWidths['cape']}
+                minWidth={DISCHARGE_PORTS_COLUMNS.find(c => c.id === 'cape')?.minWidth}
+                onResizeStart={dischargePortsColumns.handleResizeStart}
+                sx={{ fontWeight: 600 }}
+              >
+                Cape (days)
+              </ResizableTableCell>
+              <ResizableTableCell
+                columnId="restrictions"
+                width={dischargePortsColumns.columnWidths['restrictions']}
+                minWidth={DISCHARGE_PORTS_COLUMNS.find(c => c.id === 'restrictions')?.minWidth}
+                onResizeStart={dischargePortsColumns.handleResizeStart}
+                sx={{ fontWeight: 600 }}
+              >
+                Restrictions
+              </ResizableTableCell>
+              <ResizableTableCell
+                columnId="status"
+                width={dischargePortsColumns.columnWidths['status']}
+                minWidth={DISCHARGE_PORTS_COLUMNS.find(c => c.id === 'status')?.minWidth}
+                onResizeStart={dischargePortsColumns.handleResizeStart}
+                sx={{ fontWeight: 600 }}
+              >
+                Status
+              </ResizableTableCell>
+              <ResizableTableCell
+                columnId="actions"
+                width={dischargePortsColumns.columnWidths['actions']}
+                minWidth={DISCHARGE_PORTS_COLUMNS.find(c => c.id === 'actions')?.minWidth}
+                onResizeStart={dischargePortsColumns.handleResizeStart}
+                sx={{ fontWeight: 600 }}
+                align="right"
+                resizable={false}
+              >
+                Actions
+              </ResizableTableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {dischargePorts.map((port) => (
-              <TableRow 
-                key={port.id} 
+              <TableRow
+                key={port.id}
                 hover
-                sx={{ 
+                sx={{
                   bgcolor: port.is_active ? 'white' : '#F8FAFC',
                   opacity: port.is_active ? 1 : 0.7
                 }}
               >
-                <TableCell>{port.sort_order}</TableCell>
-                <TableCell>
-                  <Chip 
-                    label={port.name} 
-                    size="small" 
-                    sx={{ 
+                <TableCell sx={{ width: dischargePortsColumns.columnWidths['order'] }}>{port.sort_order}</TableCell>
+                <TableCell sx={{ width: dischargePortsColumns.columnWidths['name'] }}>
+                  <Chip
+                    label={port.name}
+                    size="small"
+                    sx={{
                       fontWeight: 600,
                       bgcolor: '#EDE9FE',
                       color: '#7C3AED'
-                    }} 
+                    }}
                   />
                 </TableCell>
-                <TableCell>
-                  <Chip 
-                    label={port.voyage_days_suez || '-'} 
+                <TableCell sx={{ width: dischargePortsColumns.columnWidths['suez'] }}>
+                  <Chip
+                    label={port.voyage_days_suez || '-'}
                     size="small"
                     sx={{ bgcolor: '#DBEAFE', color: '#1D4ED8', fontWeight: 500 }}
                   />
                 </TableCell>
-                <TableCell>
-                  <Chip 
-                    label={port.voyage_days_cape || '-'} 
+                <TableCell sx={{ width: dischargePortsColumns.columnWidths['cape'] }}>
+                  <Chip
+                    label={port.voyage_days_cape || '-'}
                     size="small"
                     sx={{ bgcolor: '#FEF3C7', color: '#92400E', fontWeight: 500 }}
                   />
                 </TableCell>
-                <TableCell sx={{ 
-                  color: 'text.secondary', 
-                  maxWidth: 300, 
-                  overflow: 'hidden', 
+                <TableCell sx={{
+                  width: dischargePortsColumns.columnWidths['restrictions'],
+                  color: 'text.secondary',
+                  overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap'
                 }}>
@@ -2127,7 +2232,7 @@ export default function AdminPage() {
                     <span>{port.restrictions ? `${port.restrictions.substring(0, 50)}...` : '-'}</span>
                   </Tooltip>
                 </TableCell>
-                <TableCell>
+                <TableCell sx={{ width: dischargePortsColumns.columnWidths['status'] }}>
                   <Chip
                     label={port.is_active ? 'Active' : 'Inactive'}
                     size="small"
@@ -2136,7 +2241,7 @@ export default function AdminPage() {
                     sx={{ cursor: 'pointer' }}
                   />
                 </TableCell>
-                <TableCell align="right">
+                <TableCell sx={{ width: dischargePortsColumns.columnWidths['actions'] }} align="right">
                   <Tooltip title="Edit">
                     <IconButton size="small" onClick={() => handleOpenDischargePortDialog(port)}>
                       <Edit fontSize="small" />
