@@ -29,7 +29,6 @@ import {
   Visibility,
   Search,
   TrendingUp,
-  LocalShipping,
   Person,
   Anchor,
   Description,
@@ -58,93 +57,6 @@ interface AnalyticsData {
     cargo_count: number
   }>
   last_updated: string
-}
-
-// Modern stat card component
-interface StatCardProps {
-  title: string
-  value: string | number
-  subtitle?: string
-  icon: React.ReactNode
-  gradient: string
-  trend?: { value: number; label: string }
-}
-
-function StatCard({ title, value, subtitle, icon, gradient, trend }: StatCardProps) {
-  return (
-    <Paper
-      sx={{
-        p: 2.5,
-        borderRadius: 3,
-        background: gradient,
-        color: '#fff',
-        position: 'relative',
-        overflow: 'hidden',
-        minHeight: 140,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-        '&:hover': {
-          transform: 'translateY(-4px)',
-          boxShadow: '0 12px 20px rgba(0,0,0,0.15)',
-        },
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: -20,
-          right: -20,
-          width: 100,
-          height: 100,
-          borderRadius: '50%',
-          background: 'rgba(255,255,255,0.1)',
-        },
-      }}
-    >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <Box>
-          <Typography variant="body2" sx={{ opacity: 0.9, fontWeight: 500, mb: 0.5 }}>
-            {title}
-          </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-            {value}
-          </Typography>
-        </Box>
-        <Box sx={{
-          p: 1,
-          borderRadius: 2,
-          bgcolor: 'rgba(255,255,255,0.2)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          {icon}
-        </Box>
-      </Box>
-      {(subtitle || trend) && (
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-          {subtitle && (
-            <Typography variant="caption" sx={{ opacity: 0.85 }}>
-              {subtitle}
-            </Typography>
-          )}
-          {trend && (
-            <Chip
-              icon={<TrendingUp sx={{ fontSize: 14, color: '#fff !important' }} />}
-              label={`${trend.value > 0 ? '+' : ''}${trend.value}% ${trend.label}`}
-              size="small"
-              sx={{
-                bgcolor: 'rgba(255,255,255,0.25)',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: '0.7rem',
-              }}
-            />
-          )}
-        </Box>
-      )}
-    </Paper>
-  )
 }
 
 // Progress bar component
@@ -278,11 +190,6 @@ export default function DashboardPage() {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }))
   }
 
-  // Calculate summary stats
-  const totalCargos = analytics?.status_stats?.reduce((sum, s) => sum + s.count, 0) || 0
-  const completedCargos = analytics?.status_stats?.find(s => s.status === 'COMPLETED')?.count || 0
-  const totalVolume = analytics?.product_stats?.reduce((sum, s) => sum + s.completed_quantity, 0) || 0
-
   if (loading) {
     return (
       <Box sx={{
@@ -309,43 +216,6 @@ export default function DashboardPage() {
         <Typography variant="body2" sx={{ color: '#64748B' }}>
           Overview of your oil lifting operations
         </Typography>
-      </Box>
-
-      {/* Summary Stats */}
-      <Box sx={{
-        display: 'grid',
-        gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' },
-        gap: 2.5,
-        mb: 4,
-      }}>
-        <StatCard
-          title="Total Cargos"
-          value={totalCargos}
-          subtitle={`${completedCargos} completed`}
-          icon={<LocalShipping />}
-          gradient="linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)"
-        />
-        <StatCard
-          title="Total Volume"
-          value={`${totalVolume.toLocaleString()} KT`}
-          subtitle="Completed shipments"
-          icon={<Inventory />}
-          gradient="linear-gradient(135deg, #10B981 0%, #047857 100%)"
-        />
-        <StatCard
-          title="Active Contracts"
-          value={contracts.length}
-          subtitle={`${customers.length} customers`}
-          icon={<Description />}
-          gradient="linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)"
-        />
-        <StatCard
-          title="Authorities"
-          value={authorities.length}
-          subtitle="Amendments & top-ups"
-          icon={<Assignment />}
-          gradient="linear-gradient(135deg, #F59E0B 0%, #D97706 100%)"
-        />
       </Box>
 
       {/* Analytics Section */}
