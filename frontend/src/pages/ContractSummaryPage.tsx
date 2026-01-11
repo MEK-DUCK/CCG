@@ -1,17 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
-  Grid,
   Chip,
   TextField,
   CircularProgress,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Table,
   TableBody,
   TableCell,
@@ -21,8 +14,9 @@ import {
   Paper,
   Button,
   Tooltip,
+  IconButton,
 } from '@mui/material'
-import { FileDownload, PictureAsPdf } from '@mui/icons-material'
+import { FileDownload, PictureAsPdf, Summarize, ChevronLeft, ChevronRight } from '@mui/icons-material'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan } from '../types'
 import { BADGE_COLORS, getContractTypeColor, getPaymentColor } from '../utils/chipColors'
@@ -419,118 +413,281 @@ export default function ContractSummaryPage() {
     }
   }
 
+  // Navigate to previous/next year
+  const goToPrevYear = () => {
+    const currentIndex = availableYears.indexOf(selectedYear)
+    if (currentIndex < availableYears.length - 1) {
+      setSelectedYear(availableYears[currentIndex + 1])
+    }
+  }
+
+  const goToNextYear = () => {
+    const currentIndex = availableYears.indexOf(selectedYear)
+    if (currentIndex > 0) {
+      setSelectedYear(availableYears[currentIndex - 1])
+    }
+  }
+
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
-            Contract Summary
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Read-only contract summary. Only "Remarks" can be edited here.
-          </Typography>
-          {!remarksEnabled && (
-            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+    <Box>
+      {/* Modern Header */}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                width: 48,
+                height: 48,
+                borderRadius: 3,
+                background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+              }}
+            >
+              <Summarize sx={{ color: 'white', fontSize: 26 }} />
+            </Box>
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', letterSpacing: '-0.02em' }}>
+                Contract Summary
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#64748B' }}>
+                Read-only summary • Edit remarks only
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<FileDownload sx={{ fontSize: 16 }} />}
+              onClick={handleExportToExcel}
+              disabled={loading || filteredContracts.length === 0}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.8125rem',
+                px: 2,
+                py: 0.75,
+                borderColor: '#E2E8F0',
+                color: '#475569',
+                bgcolor: 'white',
+                '&:hover': {
+                  borderColor: '#3B82F6',
+                  bgcolor: '#EFF6FF',
+                  color: '#2563EB',
+                },
+              }}
+            >
+              Excel
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<PictureAsPdf sx={{ fontSize: 16 }} />}
+              onClick={handleExportToPDF}
+              disabled={loading || filteredContracts.length === 0}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.8125rem',
+                px: 2,
+                py: 0.75,
+                borderColor: '#E2E8F0',
+                color: '#475569',
+                bgcolor: 'white',
+                '&:hover': {
+                  borderColor: '#EF4444',
+                  bgcolor: '#FEF2F2',
+                  color: '#DC2626',
+                },
+              }}
+            >
+              PDF
+            </Button>
+          </Box>
+        </Box>
+
+        {!remarksEnabled && (
+          <Paper elevation={0} sx={{ mt: 2, p: 2, borderRadius: 2, bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
+            <Typography variant="body2" sx={{ color: '#DC2626' }}>
               Remarks are disabled because the database is missing the <b>contracts.remarks</b> column. Apply the remarks migration, then refresh.
             </Typography>
-          )}
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1.5 }}>
-          <Button
-            variant="outlined"
-            startIcon={<FileDownload />}
-            onClick={handleExportToExcel}
-            disabled={loading || filteredContracts.length === 0}
-            sx={{
-              borderColor: '#2563EB',
-              color: '#2563EB',
-              '&:hover': {
-                borderColor: '#1D4ED8',
-                bgcolor: 'rgba(37, 99, 235, 0.04)',
-              },
-            }}
-          >
-            Export Excel
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<PictureAsPdf />}
-            onClick={handleExportToPDF}
-            disabled={loading || filteredContracts.length === 0}
-            sx={{
-              borderColor: '#DC2626',
-              color: '#DC2626',
-              '&:hover': {
-                borderColor: '#B91C1C',
-                bgcolor: 'rgba(220, 38, 38, 0.04)',
-              },
-            }}
-          >
-            Save PDF
-          </Button>
-        </Box>
+          </Paper>
+        )}
       </Box>
 
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={4}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Year</InputLabel>
-                <Select
-                  value={availableYears.includes(selectedYear) ? selectedYear : availableYears[0]}
-                  label="Year"
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                >
-                  {availableYears.map((y) => (
-                    <MenuItem key={y} value={y}>
-                      {y}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={8}>
-              <Typography variant="body2" color="text.secondary">
-                {filteredContracts.length} contract{filteredContracts.length !== 1 ? 's' : ''} shown
+      {/* Modern Filter Bar */}
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: 2,
+          borderRadius: 3,
+          border: '1px solid #E2E8F0',
+          background: 'linear-gradient(135deg, #FAFBFC 0%, #F8FAFC 100%)',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+          {/* Year Navigator */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <IconButton
+              size="small"
+              onClick={goToPrevYear}
+              disabled={availableYears.indexOf(selectedYear) >= availableYears.length - 1}
+              sx={{
+                width: 32,
+                height: 32,
+                bgcolor: 'white',
+                border: '1px solid #E2E8F0',
+                '&:hover': { bgcolor: '#F1F5F9', borderColor: '#CBD5E1' },
+                '&.Mui-disabled': { bgcolor: '#F8FAFC', borderColor: '#F1F5F9' },
+              }}
+            >
+              <ChevronLeft sx={{ fontSize: 18, color: '#64748B' }} />
+            </IconButton>
+            <Box
+              sx={{
+                px: 3,
+                py: 0.75,
+                borderRadius: 2,
+                bgcolor: 'white',
+                border: '1px solid #E2E8F0',
+                minWidth: 90,
+                textAlign: 'center',
+              }}
+            >
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1E293B', letterSpacing: '-0.01em' }}>
+                {selectedYear}
               </Typography>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
+            </Box>
+            <IconButton
+              size="small"
+              onClick={goToNextYear}
+              disabled={availableYears.indexOf(selectedYear) <= 0}
+              sx={{
+                width: 32,
+                height: 32,
+                bgcolor: 'white',
+                border: '1px solid #E2E8F0',
+                '&:hover': { bgcolor: '#F1F5F9', borderColor: '#CBD5E1' },
+                '&.Mui-disabled': { bgcolor: '#F8FAFC', borderColor: '#F1F5F9' },
+              }}
+            >
+              <ChevronRight sx={{ fontSize: 18, color: '#64748B' }} />
+            </IconButton>
+          </Box>
+
+          {/* Year Pills */}
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', flex: 1, justifyContent: 'center' }}>
+            {availableYears.slice(0, 6).map((year) => {
+              const isSelected = selectedYear === year
+              return (
+                <Box
+                  key={year}
+                  onClick={() => setSelectedYear(year)}
+                  sx={{
+                    px: 1.5,
+                    py: 0.5,
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                    fontSize: '0.8125rem',
+                    fontWeight: 600,
+                    transition: 'all 0.15s ease',
+                    border: isSelected ? '1.5px solid #10B981' : '1px solid #E2E8F0',
+                    bgcolor: isSelected ? '#10B981' : 'white',
+                    color: isSelected ? 'white' : '#64748B',
+                    '&:hover': {
+                      transform: 'scale(1.05)',
+                      boxShadow: isSelected ? '0 2px 8px rgba(16, 185, 129, 0.35)' : '0 2px 8px rgba(0,0,0,0.08)',
+                    },
+                  }}
+                >
+                  {year}
+                </Box>
+              )
+            })}
+          </Box>
+
+          {/* Contract Count */}
+          <Box
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              px: 2,
+              py: 0.75,
+              bgcolor: 'white',
+              border: '1px solid #E2E8F0',
+              borderRadius: 2,
+            }}
+          >
+            <Typography variant="body2" sx={{ color: '#475569', fontWeight: 600 }}>
+              {filteredContracts.length}
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#94A3B8', ml: 0.5 }}>
+              contract{filteredContracts.length !== 1 ? 's' : ''}
+            </Typography>
+          </Box>
+        </Box>
+      </Paper>
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-          <CircularProgress />
-        </Box>
+        <Paper elevation={0} sx={{ display: 'flex', justifyContent: 'center', p: 6, borderRadius: 3, border: '1px solid #E2E8F0' }}>
+          <CircularProgress sx={{ color: '#10B981' }} />
+        </Paper>
       ) : filteredContracts.length === 0 ? (
-        <Card>
-          <CardContent>
-            <Typography variant="body1" color="text.secondary">
-              No contracts found for {selectedYear}.
-            </Typography>
-          </CardContent>
-        </Card>
+        <Paper elevation={0} sx={{ p: 6, borderRadius: 3, border: '1px solid #E2E8F0', textAlign: 'center' }}>
+          <Box sx={{
+            width: 64,
+            height: 64,
+            borderRadius: 3,
+            background: 'linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mx: 'auto',
+            mb: 2,
+          }}>
+            <Summarize sx={{ fontSize: 28, color: '#94A3B8' }} />
+          </Box>
+          <Typography variant="body1" sx={{ fontWeight: 600, color: '#475569' }}>
+            No contracts found for {selectedYear}
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
+            Try selecting a different year
+          </Typography>
+        </Paper>
       ) : (
-        <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
-          <Table size="small" sx={{ minWidth: 1400 }}>
-            <TableHead>
-              <TableRow>
-                <TableCell>Customer</TableCell>
-                <TableCell>Contract #</TableCell>
-                <TableCell>Contract Period</TableCell>
-                <TableCell>Product(s)</TableCell>
-                <TableCell>Firm Total</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Payment</TableCell>
-                <TableCell>Qty Distribution</TableCell>
-                <TableCell>Optional Qty</TableCell>
-                <TableCell>Discharge Ranges</TableCell>
-                <TableCell>Fax / Concluded Memo</TableCell>
-                <TableCell>Additives Required</TableCell>
-                <TableCell>Remarks</TableCell>
-              </TableRow>
-            </TableHead>
+        <Paper
+          elevation={0}
+          sx={{
+            borderRadius: 3,
+            border: '1px solid #E2E8F0',
+            overflow: 'hidden',
+          }}
+        >
+          <TableContainer sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 1400 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Customer</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Contract #</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Contract Period</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Product(s)</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Firm Total</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Type</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Payment</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Qty Distribution</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Optional Qty</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Discharge Ranges</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Fax / Memo</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Additives</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Remarks</TableCell>
+                </TableRow>
+              </TableHead>
             <TableBody>
               {filteredContracts.map((c) => {
                 const customerName = customerNameById[c.customer_id] || '-'
@@ -541,7 +698,14 @@ export default function ContractSummaryPage() {
                 const saved = Boolean(savedById[c.id])
                 const err = saveErrorById[c.id] || ''
                 return (
-                  <TableRow key={c.id} hover>
+                  <TableRow
+                    key={c.id}
+                    sx={{
+                      transition: 'background-color 0.15s ease',
+                      '&:hover': { bgcolor: '#F8FAFC' },
+                      '& td': { borderBottom: '1px solid #F1F5F9' },
+                    }}
+                  >
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {customerName}
@@ -756,9 +920,10 @@ export default function ContractSummaryPage() {
                   </TableRow>
                 )
               })}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
       )}
     </Box>
   )
