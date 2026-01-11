@@ -34,7 +34,7 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material'
-import { FileDownload, Search, Description, Clear, History } from '@mui/icons-material'
+import { FileDownload, Search, Description, Clear, History, ChevronLeft, ChevronRight } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
 import { format } from 'date-fns'
 import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, documentsAPI } from '../api/client'
@@ -4895,84 +4895,157 @@ export default function HomePage() {
           </Tabs>
         </Box>
         <TabPanel value={value} index={0}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B' }}>
-              Port Movement
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<FileDownload />}
-                onClick={handlePortMovementExportToExcel}
-                sx={{
-                  fontSize: isMobile ? '0.75rem' : '0.875rem',
-                  minHeight: isMobile ? 40 : 36,
-                  px: isMobile ? 1.5 : 2,
-                }}
-              >
-                Export to Excel
-              </Button>
-              <FormControl size="small" sx={{ minWidth: 120 }}>
-                <InputLabel>Month</InputLabel>
-                <Select
-                  multiple
-                  value={selectedMonths}
-                  label="Month"
-                  onChange={(e) => {
-                    const raw = e.target.value as unknown as number[]
-                    const next = Array.isArray(raw) ? raw.map((v) => Number(v)) : []
-                    if (next.includes(-1)) {
-                      setSelectedMonths([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+          {/* Modern Filter Bar */}
+          <Paper
+            elevation={0}
+            sx={{
+              mb: 3,
+              p: 2,
+              borderRadius: 3,
+              border: '1px solid #E2E8F0',
+              background: 'linear-gradient(135deg, #FAFBFC 0%, #F8FAFC 100%)',
+            }}
+          >
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { xs: 'stretch', md: 'center' }, justifyContent: 'space-between' }}>
+              {/* Year Navigator */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <IconButton
+                  size="small"
+                  onClick={() => setSelectedYear(selectedYear - 1)}
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    bgcolor: 'white',
+                    border: '1px solid #E2E8F0',
+                    '&:hover': { bgcolor: '#F1F5F9', borderColor: '#CBD5E1' },
+                  }}
+                >
+                  <ChevronLeft sx={{ fontSize: 18, color: '#64748B' }} />
+                </IconButton>
+                <Box
+                  sx={{
+                    px: 2.5,
+                    py: 0.75,
+                    borderRadius: 2,
+                    bgcolor: 'white',
+                    border: '1px solid #E2E8F0',
+                    minWidth: 80,
+                    textAlign: 'center',
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E293B', letterSpacing: '-0.01em' }}>
+                    {selectedYear}
+                  </Typography>
+                </Box>
+                <IconButton
+                  size="small"
+                  onClick={() => setSelectedYear(selectedYear + 1)}
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    bgcolor: 'white',
+                    border: '1px solid #E2E8F0',
+                    '&:hover': { bgcolor: '#F1F5F9', borderColor: '#CBD5E1' },
+                  }}
+                >
+                  <ChevronRight sx={{ fontSize: 18, color: '#64748B' }} />
+                </IconButton>
+              </Box>
+
+              {/* Month Pills */}
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, justifyContent: { xs: 'flex-start', md: 'center' }, flex: 1 }}>
+                {/* All Months Toggle */}
+                <Box
+                  onClick={() => {
+                    if (selectedMonths.length === 12) {
+                      setSelectedMonths([new Date().getMonth() + 1])
                     } else {
-                      setSelectedMonths(next.filter((m) => m >= 1 && m <= 12))
+                      setSelectedMonths([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
                     }
                   }}
-                  renderValue={(selected) => {
-                    const months = (selected as number[]).slice().sort((a, b) => a - b)
-                    if (months.length === 0) return 'Select month(s)'
-                    if (months.length === 12) return 'All Months'
-                    return (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {months.map((month) => (
-                          <Chip
-                            key={month}
-                            label={new Date(2000, month - 1).toLocaleString('default', { month: 'short' })}
-                            size="small"
-                          />
-                        ))}
-                      </Box>
-                    )
+                  sx={{
+                    px: 1.5,
+                    py: 0.5,
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    transition: 'all 0.15s ease',
+                    border: selectedMonths.length === 12 ? '1.5px solid #3B82F6' : '1px solid #E2E8F0',
+                    bgcolor: selectedMonths.length === 12 ? '#EFF6FF' : 'white',
+                    color: selectedMonths.length === 12 ? '#2563EB' : '#64748B',
+                    '&:hover': {
+                      borderColor: '#3B82F6',
+                      bgcolor: '#EFF6FF',
+                    },
                   }}
                 >
-                  <MenuItem value={-1}>
-                    <Checkbox checked={selectedMonths.length === 12} />
-                    <ListItemText primary="All Months" />
-                  </MenuItem>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((month) => (
-                    <MenuItem key={month} value={month}>
-                      <Checkbox checked={selectedMonths.indexOf(month) > -1} />
-                      <ListItemText primary={new Date(2000, month - 1).toLocaleString('default', { month: 'long' })} />
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: 100 }}>
-                <InputLabel>Year</InputLabel>
-                <Select
-                  value={selectedYear}
-                  label="Year"
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                >
-                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((year) => (
-                    <MenuItem key={year} value={year}>
-                      {year}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  All
+                </Box>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((month) => {
+                  const isSelected = selectedMonths.includes(month)
+                  const monthName = new Date(2000, month - 1).toLocaleString('default', { month: 'short' })
+                  return (
+                    <Box
+                      key={month}
+                      onClick={() => {
+                        if (isSelected) {
+                          if (selectedMonths.length > 1) {
+                            setSelectedMonths(selectedMonths.filter(m => m !== month))
+                          }
+                        } else {
+                          setSelectedMonths([...selectedMonths, month].sort((a, b) => a - b))
+                        }
+                      }}
+                      sx={{
+                        px: 1.25,
+                        py: 0.5,
+                        borderRadius: 2,
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        transition: 'all 0.15s ease',
+                        border: isSelected ? '1.5px solid #3B82F6' : '1px solid #E2E8F0',
+                        bgcolor: isSelected ? '#3B82F6' : 'white',
+                        color: isSelected ? 'white' : '#64748B',
+                        '&:hover': {
+                          transform: 'scale(1.05)',
+                          boxShadow: isSelected ? '0 2px 8px rgba(59, 130, 246, 0.35)' : '0 2px 8px rgba(0,0,0,0.08)',
+                        },
+                      }}
+                    >
+                      {monthName}
+                    </Box>
+                  )
+                })}
+              </Box>
+
+              {/* Export Button */}
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<FileDownload sx={{ fontSize: 16 }} />}
+                onClick={handlePortMovementExportToExcel}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: '0.8125rem',
+                  px: 2,
+                  py: 0.75,
+                  borderColor: '#E2E8F0',
+                  color: '#475569',
+                  bgcolor: 'white',
+                  '&:hover': {
+                    borderColor: '#CBD5E1',
+                    bgcolor: '#F8FAFC',
+                  },
+                }}
+              >
+                Export
+              </Button>
             </Box>
-          </Box>
+          </Paper>
           
           {/* Load Port Sections: same "one-line" look as Port Movement table, but per-port ops editable inline */}
           <Paper
