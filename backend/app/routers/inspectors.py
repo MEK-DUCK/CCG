@@ -70,7 +70,6 @@ def create_inspector(inspector: schemas.InspectorCreate, db: Session = Depends(g
 def read_inspectors(
     include_inactive: bool = Query(False, description="Include inactive inspectors"),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_auth)
 ):
     """Get all inspectors, ordered by sort_order then name."""
     try:

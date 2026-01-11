@@ -71,7 +71,6 @@ def create_load_port(port: schemas.LoadPortCreate, db: Session = Depends(get_db)
 def read_load_ports(
     include_inactive: bool = Query(False, description="Include inactive ports"),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_auth)
 ):
     """Get all load ports, ordered by sort_order then name."""
     try:
