@@ -37,7 +37,7 @@ import { Add, Edit, Delete, Search, Dashboard, Description } from '@mui/icons-ma
 import client, { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan, ContractProduct, YearQuantity, AuthorityAmendment } from '../types'
 import { setVoyageDurations, getCifDestinations, type DischargePort } from '../utils/voyageDuration'
-import { getContractTypeColor, getPaymentColor, getContractCategoryColor } from '../utils/chipColors'
+import { getContractTypeColor, getPaymentColor, CONTRACT_CATEGORY_COLORS } from '../utils/chipColors'
 import QuarterlyPlanForm from '../components/QuarterlyPlanForm'
 import MonthlyPlanForm from '../components/MonthlyPlanForm'
 import { useConflictHandler } from '../components/Presence'
@@ -970,23 +970,16 @@ export default function ContractManagement() {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      {(() => {
-                        const categoryColors = getContractCategoryColor(contract.contract_category || 'TERM')
-                        return (
-                          <Chip
-                            label={contract.contract_category === 'SEMI_TERM' ? 'Semi-Term' :
-                                   contract.contract_category === 'SPOT' ? 'Spot' : 'Term'}
-                            size="small"
-                            sx={{
-                              fontWeight: 600,
-                              bgcolor: categoryColors.bgcolor,
-                              color: categoryColors.color,
-                              border: '1px solid',
-                              borderColor: categoryColors.borderColor,
-                            }}
-                          />
-                        )
-                      })()}
+                      <Chip
+                        label={contract.contract_category === 'SEMI_TERM' ? 'Semi-Term' :
+                               contract.contract_category === 'SPOT' ? 'Spot' : 'Term'}
+                        size="small"
+                        sx={{
+                          fontWeight: 600,
+                          ...CONTRACT_CATEGORY_COLORS[contract.contract_category || 'TERM'],
+                          border: '1px solid',
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       <Chip

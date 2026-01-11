@@ -170,13 +170,6 @@ export const getPaymentColor = (method: 'T/T' | 'LC' | string): { bgcolor: strin
 }
 
 /**
- * Get contract category color
- */
-export const getContractCategoryColor = (category: 'TERM' | 'SEMI_TERM' | 'SPOT' | string): { bgcolor: string; color: string; borderColor: string } => {
-  return CONTRACT_CATEGORY_COLORS[category as keyof typeof CONTRACT_CATEGORY_COLORS] || CONTRACT_CATEGORY_COLORS.TERM
-}
-
-/**
  * Get LC status chip props
  */
 export const getLCStatusColor = (status: string): { bgcolor: string; color: string } => {
