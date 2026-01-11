@@ -613,43 +613,6 @@ export default function ContractSummaryPage() {
                             </Box>
                           )
                         })}
-                        {/* Show total if multiple products */}
-                        {c.products.length > 1 && (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, pt: 0.5, borderTop: '1px dashed #E2E8F0' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 60, color: '#1E293B' }}>
-                              Total:
-                            </Typography>
-                            {isMinMaxMode(c) ? (
-                              <Chip
-                                label={`${minTotalFor(c).toLocaleString()} - ${firmTotalFor(c).toLocaleString()} KT`}
-                                size="small"
-                                variant="outlined"
-                                sx={{ height: 22, fontSize: '0.75rem', fontWeight: 600 }}
-                              />
-                            ) : (
-                              <Chip
-                                label={`${firmTotalFor(c).toLocaleString()} KT`}
-                                size="small"
-                                variant="outlined"
-                                sx={{ height: 22, fontSize: '0.75rem', fontWeight: 600 }}
-                              />
-                            )}
-                            {optionalTotalFor(c) > 0 && (
-                              <Chip
-                                label={`+${optionalTotalFor(c).toLocaleString()} opt`}
-                                size="small"
-                                sx={{
-                                  height: 18,
-                                  fontSize: '0.65rem',
-                                  bgcolor: '#F0FDF4',
-                                  color: '#16A34A',
-                                  fontWeight: 600,
-                                  '& .MuiChip-label': { px: 0.5 }
-                                }}
-                              />
-                            )}
-                          </Box>
-                        )}
                       </Box>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
