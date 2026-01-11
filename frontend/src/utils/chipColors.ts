@@ -10,7 +10,7 @@
 // ============================================
 export const CONTRACT_TYPE_COLORS = {
   FOB: { bgcolor: '#DBEAFE', color: '#1E40AF' },  // Soft blue
-  CIF: { bgcolor: '#FEF3C7', color: '#92400E' },  // Muted amber
+  CIF: { bgcolor: '#CCFBF1', color: '#0F766E' },  // Soft teal (avoids yellow conflict with highlights)
 } as const
 
 // ============================================
@@ -46,7 +46,7 @@ export const LC_STATUS_COLORS = {
 // ============================================
 export const PRODUCT_COLORS = {
   JET: { bgcolor: '#EEF2FF', color: '#4338CA' },        // Soft indigo
-  GASOIL: { bgcolor: '#FFFBEB', color: '#92400E' },     // Soft amber
+  GASOIL: { bgcolor: '#F1F5F9', color: '#475569' },     // Soft slate (avoids yellow conflict with highlights)
   FUEL_OIL: { bgcolor: '#FDF4FF', color: '#86198F' },   // Soft fuchsia
   MOGAS: { bgcolor: '#FDF2F8', color: '#9D174D' },      // Soft pink
   LPG: { bgcolor: '#F0FDFA', color: '#115E59' },        // Soft teal

@@ -559,12 +559,12 @@ export default function HomePage() {
   })
   const [completedMonth, setCompletedMonth] = useState<number | null>(null)
   const [completedYear, setCompletedYear] = useState<number | null>(null)
-  // Port Movement filters
-  const [portMovementFilterCustomer, setPortMovementFilterCustomer] = useState<number | null>(null)
-  const [portMovementFilterContract, setPortMovementFilterContract] = useState<number | null>(null)
-  const [portMovementFilterType, setPortMovementFilterType] = useState<string | null>(null)
-  const [portMovementFilterProduct, setPortMovementFilterProduct] = useState<string | null>(null)
-  const [portMovementFilterStatus, setPortMovementFilterStatus] = useState<string | null>(null)
+  // Port Movement filters (multi-select)
+  const [portMovementFilterCustomers, setPortMovementFilterCustomers] = useState<number[]>([])
+  const [portMovementFilterContracts, setPortMovementFilterContracts] = useState<number[]>([])
+  const [portMovementFilterTypes, setPortMovementFilterTypes] = useState<string[]>([])
+  const [portMovementFilterProducts, setPortMovementFilterProducts] = useState<string[]>([])
+  const [portMovementFilterStatuses, setPortMovementFilterStatuses] = useState<string[]>([])
   const [portMovementSearch, setPortMovementSearch] = useState<string>('')
   // Highlighted rows (shared team highlights loaded from backend)
   const [highlightedRows, setHighlightedRows] = useState<Set<string>>(new Set())
@@ -3895,46 +3895,47 @@ export default function HomePage() {
     // Combine cargos and monthly plans
     const allRows = [...cargosWithInfo, ...monthlyPlansWithInfo]
 
-    // Apply filters
+    // Apply filters (multi-select - show if matches ANY selected value)
     let filteredCargos = allRows.filter(({ cargo, contract, customer, isMonthlyPlan }) => {
       // Remove cargos that are currently Loading (they are shown in the port lanes above)
       if (cargo && isCargoInLoadingLanes(cargo)) {
         return false
       }
-      // Filter by customer
-      if (portMovementFilterCustomer !== null && (!customer || customer.id !== portMovementFilterCustomer)) {
+      // Filter by customers (multi-select)
+      if (portMovementFilterCustomers.length > 0 && (!customer || !portMovementFilterCustomers.includes(customer.id))) {
         return false
       }
-      
-      // Filter by contract
-      if (portMovementFilterContract !== null && (!contract || contract.id !== portMovementFilterContract)) {
+
+      // Filter by contracts (multi-select)
+      if (portMovementFilterContracts.length > 0 && (!contract || !portMovementFilterContracts.includes(contract.id))) {
         return false
       }
-      
-      // Filter by type (FOB/CIF)
-      if (portMovementFilterType !== null && (!contract || contract.contract_type !== portMovementFilterType)) {
+
+      // Filter by types (FOB/CIF) (multi-select)
+      if (portMovementFilterTypes.length > 0 && (!contract || !portMovementFilterTypes.includes(contract.contract_type))) {
         return false
       }
-      
-      // Filter by product
-      if (portMovementFilterProduct !== null) {
+
+      // Filter by products (multi-select)
+      if (portMovementFilterProducts.length > 0) {
         if (!contract || !contract.products || !Array.isArray(contract.products)) {
           return false
         }
         const productNames = contract.products.map((p: ContractProduct) => p.name)
-        if (!productNames.includes(portMovementFilterProduct)) {
+        const hasMatchingProduct = portMovementFilterProducts.some(p => productNames.includes(p))
+        if (!hasMatchingProduct) {
           return false
         }
       }
-      
-      // Filter by status (only for cargos, not monthly plans)
-      if (portMovementFilterStatus !== null) {
+
+      // Filter by statuses (multi-select)
+      if (portMovementFilterStatuses.length > 0) {
         if (isMonthlyPlan) {
-          // For monthly plans, only show if status filter is "Not Created" or empty
-          if (portMovementFilterStatus !== 'Not Created') {
+          // For monthly plans, only show if "Not Created" is in the selected statuses
+          if (!portMovementFilterStatuses.includes('Not Created')) {
             return false
           }
-        } else if (cargo && cargo.status !== portMovementFilterStatus) {
+        } else if (cargo && !portMovementFilterStatuses.includes(cargo.status)) {
           return false
         }
       }
@@ -3980,20 +3981,20 @@ export default function HomePage() {
           <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
             No cargos match the selected filters
           </Typography>
-          {(portMovementFilterCustomer !== null || portMovementFilterContract !== null || portMovementFilterType !== null || portMovementFilterProduct !== null || portMovementFilterStatus !== null || portMovementSearch.trim() !== '') && (
+          {(portMovementFilterCustomers.length > 0 || portMovementFilterContracts.length > 0 || portMovementFilterTypes.length > 0 || portMovementFilterProducts.length > 0 || portMovementFilterStatuses.length > 0 || portMovementSearch.trim() !== '') && (
             <Button
               size="small"
               variant="outlined"
               onClick={() => {
-                setPortMovementFilterCustomer(null)
-                setPortMovementFilterContract(null)
-                setPortMovementFilterType(null)
-                setPortMovementFilterProduct(null)
-                setPortMovementFilterStatus(null)
+                setPortMovementFilterCustomers([])
+                setPortMovementFilterContracts([])
+                setPortMovementFilterTypes([])
+                setPortMovementFilterProducts([])
+                setPortMovementFilterStatuses([])
                 setPortMovementSearch('')
               }}
-              sx={{ 
-                fontSize: isMobile ? '0.7rem' : '0.75rem', 
+              sx={{
+                fontSize: isMobile ? '0.7rem' : '0.75rem',
                 py: isMobile ? 1 : 0.5,
                 minHeight: isMobile ? 40 : 32,
               }}
@@ -4009,96 +4010,144 @@ export default function HomePage() {
       <Box>
         <Box sx={{ mb: 2, p: { xs: 1, sm: 1.5 }, bgcolor: 'grey.50', borderRadius: 1 }}>
           <Grid container spacing={{ xs: 1, sm: 1.5 }}>
+            {/* Customer Multi-Select */}
             <Grid item xs={6} sm={4} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel sx={{ fontSize: '0.875rem' }}>Customer</InputLabel>
                 <Select
-                  value={portMovementFilterCustomer || ''}
+                  multiple
+                  value={portMovementFilterCustomers}
                   label="Customer"
-                  onChange={(e) => setPortMovementFilterCustomer(e.target.value === '' ? null : Number(e.target.value))}
+                  onChange={(e) => setPortMovementFilterCustomers(e.target.value as number[])}
+                  renderValue={(selected) => {
+                    if (selected.length === 0) return ''
+                    if (selected.length === 1) {
+                      const customer = customers.find(c => c.id === selected[0])
+                      return customer?.name || ''
+                    }
+                    return `${selected.length} selected`
+                  }}
                   sx={{ fontSize: '0.875rem' }}
+                  MenuProps={{ PaperProps: { sx: { maxHeight: 300 } } }}
                 >
-                  <MenuItem value="" sx={{ fontSize: '0.875rem' }}>All Customers</MenuItem>
                   {customers.map((customer) => (
                     <MenuItem key={customer.id} value={customer.id} sx={{ fontSize: '0.875rem' }}>
-                      {customer.name}
+                      <Checkbox checked={portMovementFilterCustomers.includes(customer.id)} size="small" />
+                      <ListItemText primary={customer.name} primaryTypographyProps={{ fontSize: '0.875rem' }} />
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
+            {/* Contract Multi-Select */}
             <Grid item xs={6} sm={4} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel sx={{ fontSize: '0.875rem' }}>Contract</InputLabel>
                 <Select
-                  value={portMovementFilterContract || ''}
+                  multiple
+                  value={portMovementFilterContracts}
                   label="Contract"
-                  onChange={(e) => setPortMovementFilterContract(e.target.value === '' ? null : Number(e.target.value))}
+                  onChange={(e) => setPortMovementFilterContracts(e.target.value as number[])}
+                  renderValue={(selected) => {
+                    if (selected.length === 0) return ''
+                    if (selected.length === 1) {
+                      const contract = contracts.find(c => c.id === selected[0])
+                      return contract?.contract_number || ''
+                    }
+                    return `${selected.length} selected`
+                  }}
                   sx={{ fontSize: '0.875rem' }}
+                  MenuProps={{ PaperProps: { sx: { maxHeight: 300 } } }}
                 >
-                  <MenuItem value="" sx={{ fontSize: '0.875rem' }}>All Contracts</MenuItem>
                   {contracts.map((contract) => (
                     <MenuItem key={contract.id} value={contract.id} sx={{ fontSize: '0.875rem' }}>
-                      {contract.contract_number}
+                      <Checkbox checked={portMovementFilterContracts.includes(contract.id)} size="small" />
+                      <ListItemText primary={contract.contract_number} primaryTypographyProps={{ fontSize: '0.875rem' }} />
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
+            {/* Type Multi-Select */}
             <Grid item xs={6} sm={4} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel sx={{ fontSize: '0.875rem' }}>Type</InputLabel>
                 <Select
-                  value={portMovementFilterType || ''}
+                  multiple
+                  value={portMovementFilterTypes}
                   label="Type"
-                  onChange={(e) => setPortMovementFilterType(e.target.value === '' ? null : e.target.value)}
+                  onChange={(e) => setPortMovementFilterTypes(e.target.value as string[])}
+                  renderValue={(selected) => {
+                    if (selected.length === 0) return ''
+                    if (selected.length === 1) return selected[0]
+                    return `${selected.length} selected`
+                  }}
                   sx={{ fontSize: '0.875rem' }}
                 >
-                  <MenuItem value="" sx={{ fontSize: '0.875rem' }}>All Types</MenuItem>
-                  <MenuItem value="FOB" sx={{ fontSize: '0.875rem' }}>FOB</MenuItem>
-                  <MenuItem value="CIF" sx={{ fontSize: '0.875rem' }}>CIF</MenuItem>
+                  {['FOB', 'CIF'].map((type) => (
+                    <MenuItem key={type} value={type} sx={{ fontSize: '0.875rem' }}>
+                      <Checkbox checked={portMovementFilterTypes.includes(type)} size="small" />
+                      <ListItemText primary={type} primaryTypographyProps={{ fontSize: '0.875rem' }} />
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
+            {/* Product Multi-Select */}
             <Grid item xs={6} sm={4} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel sx={{ fontSize: '0.875rem' }}>Product</InputLabel>
                 <Select
-                  value={portMovementFilterProduct || ''}
+                  multiple
+                  value={portMovementFilterProducts}
                   label="Product"
-                  onChange={(e) => setPortMovementFilterProduct(e.target.value === '' ? null : e.target.value)}
+                  onChange={(e) => setPortMovementFilterProducts(e.target.value as string[])}
+                  renderValue={(selected) => {
+                    if (selected.length === 0) return ''
+                    if (selected.length === 1) return selected[0]
+                    return `${selected.length} selected`
+                  }}
                   sx={{ fontSize: '0.875rem' }}
                 >
-                  <MenuItem value="" sx={{ fontSize: '0.875rem' }}>All Products</MenuItem>
-                  <MenuItem value="JET-A1" sx={{ fontSize: '0.875rem' }}>JET-A1</MenuItem>
-                  <MenuItem value="GASOIL" sx={{ fontSize: '0.875rem' }}>GASOIL</MenuItem>
-                  <MenuItem value="GASOIL 10PPM" sx={{ fontSize: '0.875rem' }}>GASOIL 10PPM</MenuItem>
-                  <MenuItem value="HFO" sx={{ fontSize: '0.875rem' }}>HFO</MenuItem>
-                  <MenuItem value="LSFO" sx={{ fontSize: '0.875rem' }}>LSFO</MenuItem>
+                  {['JET A-1', 'GASOIL', 'GASOIL 10PPM', 'HFO', 'LSFO'].map((product) => (
+                    <MenuItem key={product} value={product} sx={{ fontSize: '0.875rem' }}>
+                      <Checkbox checked={portMovementFilterProducts.includes(product)} size="small" />
+                      <ListItemText primary={product} primaryTypographyProps={{ fontSize: '0.875rem' }} />
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
+            {/* Status Multi-Select */}
             <Grid item xs={6} sm={4} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel sx={{ fontSize: '0.875rem' }}>Status</InputLabel>
                 <Select
-                  value={portMovementFilterStatus || ''}
+                  multiple
+                  value={portMovementFilterStatuses}
                   label="Status"
-                  onChange={(e) => setPortMovementFilterStatus(e.target.value === '' ? null : e.target.value)}
+                  onChange={(e) => setPortMovementFilterStatuses(e.target.value as string[])}
+                  renderValue={(selected) => {
+                    if (selected.length === 0) return ''
+                    if (selected.length === 1) return selected[0]
+                    return `${selected.length} selected`
+                  }}
                   sx={{ fontSize: '0.875rem' }}
                 >
-                  <MenuItem value="" sx={{ fontSize: '0.875rem' }}>All Statuses</MenuItem>
-                  <MenuItem value="Planned" sx={{ fontSize: '0.875rem' }}>Planned</MenuItem>
-                  <MenuItem value="Loading" sx={{ fontSize: '0.875rem' }}>Loading</MenuItem>
-                  <MenuItem value="Completed Loading" sx={{ fontSize: '0.875rem' }}>Completed Loading</MenuItem>
-                  <MenuItem value="Not Created" sx={{ fontSize: '0.875rem' }}>Not Created</MenuItem>
+                  {['Planned', 'Loading', 'Completed Loading', 'Not Created'].map((status) => (
+                    <MenuItem key={status} value={status} sx={{ fontSize: '0.875rem' }}>
+                      <Checkbox checked={portMovementFilterStatuses.includes(status)} size="small" />
+                      <ListItemText primary={status} primaryTypographyProps={{ fontSize: '0.875rem' }} />
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
+            {/* Search */}
             <Grid item xs={6} sm={4} md={2}>
               <TextField
                 size="small"
-                placeholder="Search vessel, customer, contract, product..."
+                placeholder="Search..."
                 value={portMovementSearch}
                 onChange={(e) => setPortMovementSearch(e.target.value)}
                 InputProps={{
@@ -4109,23 +4158,23 @@ export default function HomePage() {
                   ),
                 }}
                 fullWidth
-                sx={{ 
+                sx={{
                   fontSize: '0.875rem',
                 }}
               />
             </Grid>
           </Grid>
-          {(portMovementFilterCustomer !== null || portMovementFilterContract !== null || portMovementFilterType !== null || portMovementFilterProduct !== null || portMovementFilterStatus !== null) && (
+          {(portMovementFilterCustomers.length > 0 || portMovementFilterContracts.length > 0 || portMovementFilterTypes.length > 0 || portMovementFilterProducts.length > 0 || portMovementFilterStatuses.length > 0) && (
             <Box sx={{ mt: 1.5 }}>
               <Button
                 size="small"
                 variant="outlined"
                 onClick={() => {
-                  setPortMovementFilterCustomer(null)
-                  setPortMovementFilterContract(null)
-                  setPortMovementFilterType(null)
-                  setPortMovementFilterProduct(null)
-                  setPortMovementFilterStatus(null)
+                  setPortMovementFilterCustomers([])
+                  setPortMovementFilterContracts([])
+                  setPortMovementFilterTypes([])
+                  setPortMovementFilterProducts([])
+                  setPortMovementFilterStatuses([])
                 }}
                 sx={{
                   fontSize: isMobile ? '0.7rem' : '0.75rem',
@@ -4212,60 +4261,43 @@ export default function HomePage() {
                       <TableRow
                         key={`month-divider-${rowMonth}`}
                         sx={{
-                          bgcolor: 'transparent',
-                          '&:hover': { bgcolor: 'transparent' },
+                          bgcolor: '#F8FAFC',
+                          '&:hover': { bgcolor: '#F8FAFC' },
                         }}
                       >
                         <TableCell
                           colSpan={16}
                           sx={{
-                            py: 1.5,
+                            py: 0.75,
                             px: 2,
-                            border: 'none',
-                            bgcolor: 'transparent',
+                            borderBottom: '1px solid #E2E8F0',
+                            borderTop: lastMonth !== null ? '1px solid #E2E8F0' : 'none',
                           }}
                         >
-                          <Box sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 2,
-                          }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 600,
+                                color: '#3B82F6',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                fontSize: '0.7rem',
+                              }}
+                            >
+                              {monthName}
+                            </Typography>
                             <Box sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1.5,
-                              px: 2,
-                              py: 0.75,
-                              borderRadius: 2,
-                              background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
-                              boxShadow: '0 2px 8px rgba(59, 130, 246, 0.25)',
+                              px: 0.75,
+                              py: 0.125,
+                              borderRadius: 0.5,
+                              bgcolor: '#EFF6FF',
                             }}>
-                              <Typography
-                                variant="subtitle2"
-                                sx={{
-                                  fontWeight: 700,
-                                  color: 'white',
-                                  letterSpacing: '-0.01em',
-                                }}
-                              >
-                                {monthName} {selectedYear}
+                              <Typography variant="caption" sx={{ color: '#3B82F6', fontWeight: 600, fontSize: '0.65rem' }}>
+                                {rowsInMonth}
                               </Typography>
-                              <Box sx={{
-                                px: 1,
-                                py: 0.25,
-                                borderRadius: 1,
-                                bgcolor: 'rgba(255,255,255,0.2)',
-                              }}>
-                                <Typography variant="caption" sx={{ color: 'white', fontWeight: 600 }}>
-                                  {rowsInMonth}
-                                </Typography>
-                              </Box>
                             </Box>
-                            <Box sx={{
-                              flex: 1,
-                              height: 1,
-                              background: 'linear-gradient(90deg, #E2E8F0 0%, transparent 100%)',
-                            }} />
+                            <Box sx={{ flex: 1, height: '1px', bgcolor: '#E2E8F0', ml: 1 }} />
                           </Box>
                         </TableCell>
                       </TableRow>
