@@ -161,64 +161,132 @@ export default function ContractSummaryPage() {
     (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
   )
 
-  // Get effective quantities for a product after applying authority amendments
-  // This applies amendments that affect all years (amendment.year === null)
-  const getEffectiveQuantities = (c: Contract, p: any) => {
+  // Get the number of contract years
+  const getNumContractYears = (c: Contract): number => {
+    if (!c.start_period || !c.end_period) return 1
+    const start = new Date(c.start_period)
+    const end = new Date(c.end_period)
+    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1
+    return Math.max(1, Math.ceil(months / 12))
+  }
+
+  // Get total quantities for a product across all years (for multi-year contracts)
+  // This sums year_quantities if available, otherwise uses the product-level values
+  const getProductTotalQuantities = (c: Contract, p: any) => {
     const hasMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
-    const originalMin = p.min_quantity || 0
-    const originalMax = hasMinMax ? (p.max_quantity || 0) : (p.total_quantity || 0)
+    const numYears = getNumContractYears(c)
     const amendments = c.authority_amendments || []
 
-    // Apply amendments that apply to all years (year === null/undefined)
-    // For year-specific amendments, they're shown in the yearly breakdown
-    const { effectiveMin, effectiveMax } = applyAmendmentsToProduct(
-      originalMin,
-      originalMax,
-      amendments,
-      p.name,
-      undefined // Apply only amendments that affect all years
-    )
+    let totalMin = 0
+    let totalMax = 0
+    let totalOptional = 0
+    let totalOriginalMin = 0
+    let totalOriginalMax = 0
 
-    return { effectiveMin, effectiveMax, originalMin, originalMax, hasMinMax }
+    // If year_quantities exists, sum across all years with amendments applied per year
+    if (p.year_quantities && Array.isArray(p.year_quantities) && p.year_quantities.length > 0) {
+      for (let year = 1; year <= numYears; year++) {
+        const yearQty = p.year_quantities.find((yq: any) => yq.year === year)
+        if (yearQty) {
+          const yearOrigMin = yearQty.min_quantity || 0
+          const yearOrigMax = hasMinMax ? (yearQty.max_quantity || 0) : (yearQty.quantity || 0)
+          const yearOptional = yearQty.optional_quantity || 0
+
+          // Apply year-specific amendments
+          const { effectiveMin, effectiveMax } = applyAmendmentsToProduct(
+            yearOrigMin,
+            yearOrigMax,
+            amendments,
+            p.name,
+            year
+          )
+
+          totalMin += effectiveMin
+          totalMax += effectiveMax
+          totalOptional += yearOptional
+          totalOriginalMin += yearOrigMin
+          totalOriginalMax += yearOrigMax
+        }
+      }
+    } else {
+      // No year_quantities - use product-level values (assumed to be per-year)
+      // Multiply by number of years for total
+      const originalMin = p.min_quantity || 0
+      const originalMax = hasMinMax ? (p.max_quantity || 0) : (p.total_quantity || 0)
+      const optional = p.optional_quantity || 0
+
+      // For contracts without year_quantities, the product values might already be totals
+      // or they might be per-year. We'll assume they're totals if it's a single year,
+      // otherwise apply amendments and multiply by years
+      if (numYears === 1) {
+        const { effectiveMin, effectiveMax } = applyAmendmentsToProduct(
+          originalMin,
+          originalMax,
+          amendments,
+          p.name,
+          undefined
+        )
+        totalMin = effectiveMin
+        totalMax = effectiveMax
+        totalOptional = optional
+        totalOriginalMin = originalMin
+        totalOriginalMax = originalMax
+      } else {
+        // Multi-year without year_quantities - apply amendments for each year
+        for (let year = 1; year <= numYears; year++) {
+          const { effectiveMin, effectiveMax } = applyAmendmentsToProduct(
+            originalMin,
+            originalMax,
+            amendments,
+            p.name,
+            year
+          )
+          totalMin += effectiveMin
+          totalMax += effectiveMax
+          totalOptional += optional
+          totalOriginalMin += originalMin
+          totalOriginalMax += originalMax
+        }
+      }
+    }
+
+    return { totalMin, totalMax, totalOptional, totalOriginalMin, totalOriginalMax, hasMinMax }
   }
 
   // Check if any product has been amended
   const hasAmendments = (c: Contract) => c.products.some(p => {
-    const { effectiveMin, effectiveMax, originalMin, originalMax } = getEffectiveQuantities(c, p)
-    return effectiveMin !== originalMin || effectiveMax !== originalMax
+    const { totalMin, totalMax, totalOriginalMin, totalOriginalMax } = getProductTotalQuantities(c, p)
+    return totalMin !== totalOriginalMin || totalMax !== totalOriginalMax
   })
 
   // For fixed mode: return total_quantity, for min/max mode: return max_quantity (effective)
   const firmTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
-    const { effectiveMax, hasMinMax } = getEffectiveQuantities(c, p)
-    if (hasMinMax) {
-      return acc + effectiveMax
-    }
-    return acc + (Number(p.total_quantity) || 0)
+    const { totalMax } = getProductTotalQuantities(c, p)
+    return acc + totalMax
   }, 0)
 
   // Return optional_quantity for both fixed and min/max modes
-  // Optional quantity is additional quantity beyond max (range) or total (fixed)
   const optionalTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
-    return acc + (Number(p.optional_quantity) || 0)
+    const { totalOptional } = getProductTotalQuantities(c, p)
+    return acc + totalOptional
   }, 0)
 
   // For min/max mode: return min_quantity (effective)
   const minTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
-    const { effectiveMin } = getEffectiveQuantities(c, p)
-    return acc + effectiveMin
+    const { totalMin } = getProductTotalQuantities(c, p)
+    return acc + totalMin
   }, 0)
 
   // Get original min total (before amendments)
   const originalMinTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
-    return acc + (Number(p.min_quantity) || 0)
+    const { totalOriginalMin } = getProductTotalQuantities(c, p)
+    return acc + totalOriginalMin
   }, 0)
 
   // Get original max total (before amendments)
   const originalMaxTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
-    const hasMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
-    const origMax = hasMinMax ? (p.max_quantity || 0) : (p.total_quantity || 0)
-    return acc + Number(origMax)
+    const { totalOriginalMax } = getProductTotalQuantities(c, p)
+    return acc + totalOriginalMax
   }, 0)
 
   const saveRemarks = async (contractId: number) => {
