@@ -44,6 +44,7 @@ import {
   getContractMonths,
   QUARTER_MONTHS,
   MONTH_NAMES,
+  applyAmendmentsToProduct,
 } from '../utils/monthlyPlanUtils'
 import {
   MoveEntryDialog,
@@ -1675,16 +1676,16 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             if (p.year_quantities && Array.isArray(p.year_quantities)) {
               yearQuantity = p.year_quantities.find((yq: any) => yq.year === selectedYear)
             }
-            
+
             // Support both fixed quantity mode and min/max range mode
             // Use != null to check for both null and undefined, and ensure value > 0
             const isMinMaxMode = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
-            
-            // Use year-specific quantities if available, otherwise fall back to total quantities
-            const minQuantity = yearQuantity 
+
+            // Get ORIGINAL quantities from year_quantities or product
+            const originalMinQuantity = yearQuantity
               ? (yearQuantity.min_quantity || (isMinMaxMode ? 0 : yearQuantity.quantity || 0))
               : (p.min_quantity || 0)
-            const maxQuantityForYear = yearQuantity
+            const originalMaxQuantity = yearQuantity
               ? (yearQuantity.max_quantity || (isMinMaxMode ? 0 : yearQuantity.quantity || 0))
               : (p.max_quantity || 0)
             const totalQuantityForYear = yearQuantity
@@ -1693,15 +1694,30 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             const optionalQuantity = yearQuantity
               ? (yearQuantity.optional_quantity || 0)
               : (p.optional_quantity || 0)  // Optional quantity - works for both modes
-            
+
+            // Apply authority amendments to get EFFECTIVE quantities
+            // Amendments are year-specific, so pass selectedYear (contract year 1, 2, 3...)
+            const amendments = contract?.authority_amendments || []
+            const { effectiveMin, effectiveMax } = applyAmendmentsToProduct(
+              originalMinQuantity,
+              originalMaxQuantity,
+              amendments,
+              p.name,
+              selectedYear
+            )
+
+            // Use effective quantities (after amendments) for progress calculation
+            const minQuantity = effectiveMin
+            const maxQuantityForYear = isMinMaxMode ? effectiveMax : totalQuantityForYear
+
             // For range contracts: max is the max_quantity, optional is on top of max
             // For fixed contracts: max is total + optional
-            const maxQuantity = isMinMaxMode 
-              ? maxQuantityForYear + optionalQuantity  // Range: max + optional
+            const maxQuantity = isMinMaxMode
+              ? effectiveMax + optionalQuantity  // Range: effective max + optional
               : totalQuantityForYear + optionalQuantity  // Fixed: total + optional
-            
-            const firmQuantity = isMinMaxMode 
-              ? maxQuantityForYear  // For range mode - max is the "firm" ceiling before optional
+
+            const firmQuantity = isMinMaxMode
+              ? effectiveMax  // For range mode - effective max is the "firm" ceiling before optional
               : totalQuantityForYear  // For fixed mode - firm quantity without optional
             
             const totalQuantity = maxQuantity  // Total possible = firm + optional
@@ -1753,8 +1769,9 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               : 100
             
             // For range mode: calculate max percentage (where optional starts)
+            // Use effective max (after amendments) for the percentage calculation
             const maxPercentage = isMinMaxMode && optionalQuantity > 0 && maxQuantity > 0
-              ? ((p.max_quantity || 0) / maxQuantity) * 100
+              ? (effectiveMax / maxQuantity) * 100
               : 100
             
             // Determine status color and icon

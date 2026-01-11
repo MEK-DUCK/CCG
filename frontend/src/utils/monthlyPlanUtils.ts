@@ -143,3 +143,90 @@ export const parseMonthKey = (key: string): { month: number, year: number } => {
   return { month, year }
 }
 
+/**
+ * Authority Amendment type definition
+ */
+export interface AuthorityAmendment {
+  product_name: string
+  amendment_type: 'increase_max' | 'decrease_max' | 'increase_min' | 'decrease_min' | 'set_min' | 'set_max'
+  quantity_change?: number
+  new_min_quantity?: number
+  new_max_quantity?: number
+  authority_reference: string
+  reason?: string
+  effective_date?: string
+  year?: number // Contract year (1, 2, 3...) - null means all years
+}
+
+/**
+ * Apply authority amendments to get effective min/max quantities.
+ *
+ * This mirrors the backend logic in quantity.py::apply_amendments_to_product
+ *
+ * @param originalMin - Original minimum quantity from contract
+ * @param originalMax - Original maximum quantity from contract
+ * @param amendments - List of authority amendments for the contract
+ * @param productName - Product name to filter amendments for
+ * @param contractYear - Contract year (1, 2, 3...) to filter year-specific amendments
+ * @returns Effective min and max quantities after applying amendments
+ */
+export const applyAmendmentsToProduct = (
+  originalMin: number,
+  originalMax: number,
+  amendments: AuthorityAmendment[],
+  productName: string,
+  contractYear?: number
+): { effectiveMin: number, effectiveMax: number } => {
+  let effectiveMin = originalMin
+  let effectiveMax = originalMax
+
+  // Filter amendments for this product
+  const productAmendments = amendments.filter(a => a.product_name === productName)
+
+  for (const amendment of productAmendments) {
+    // Filter by contract year: apply if amendment year matches or amendment applies to all years (null)
+    const amendmentYear = amendment.year
+    if (contractYear !== undefined) {
+      // If contractYear specified, only apply amendments for that year or all years (null/undefined)
+      if (amendmentYear !== undefined && amendmentYear !== null && amendmentYear !== contractYear) {
+        continue
+      }
+    } else {
+      // If no contractYear filter, only apply amendments that apply to all years
+      if (amendmentYear !== undefined && amendmentYear !== null) {
+        continue
+      }
+    }
+
+    // Apply the amendment
+    const qtyChange = amendment.quantity_change || 0
+
+    switch (amendment.amendment_type) {
+      case 'increase_max':
+        effectiveMax += qtyChange
+        break
+      case 'decrease_max':
+        effectiveMax = Math.max(0, effectiveMax - qtyChange)
+        break
+      case 'increase_min':
+        effectiveMin += qtyChange
+        break
+      case 'decrease_min':
+        effectiveMin = Math.max(0, effectiveMin - qtyChange)
+        break
+      case 'set_min':
+        if (amendment.new_min_quantity !== undefined) {
+          effectiveMin = amendment.new_min_quantity
+        }
+        break
+      case 'set_max':
+        if (amendment.new_max_quantity !== undefined) {
+          effectiveMax = amendment.new_max_quantity
+        }
+        break
+    }
+  }
+
+  return { effectiveMin, effectiveMax }
+}
+
