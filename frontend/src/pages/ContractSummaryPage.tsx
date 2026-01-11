@@ -17,6 +17,8 @@ import {
   IconButton,
 } from '@mui/material'
 import { FileDownload, PictureAsPdf, Summarize, ChevronLeft, ChevronRight } from '@mui/icons-material'
+import { useResizableColumns } from '../hooks/useResizableColumns'
+import { ResizableTableCell } from '../components/ResizableTableCell'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan } from '../types'
 import { BADGE_COLORS, getContractTypeColor, getPaymentColor } from '../utils/chipColors'
@@ -48,6 +50,24 @@ export default function ContractSummaryPage() {
   const [remarksEnabled, setRemarksEnabled] = useState(true)
   const autosaveTimersRef = useRef<Record<number, any>>({})
   const lastSavedRemarksRef = useRef<Record<number, string>>({})
+
+  // Resizable columns configuration
+  const columnConfig = [
+    { id: 'customer', label: 'Customer', defaultWidth: 150, minWidth: 100 },
+    { id: 'contract', label: 'Contract #', defaultWidth: 130, minWidth: 100 },
+    { id: 'period', label: 'Contract Period', defaultWidth: 160, minWidth: 120 },
+    { id: 'products', label: 'Product(s)', defaultWidth: 120, minWidth: 80 },
+    { id: 'firmTotal', label: 'Firm Total', defaultWidth: 180, minWidth: 120 },
+    { id: 'type', label: 'Type', defaultWidth: 80, minWidth: 60 },
+    { id: 'payment', label: 'Payment', defaultWidth: 90, minWidth: 70 },
+    { id: 'qtyDist', label: 'Qty Distribution', defaultWidth: 130, minWidth: 100 },
+    { id: 'optional', label: 'Optional Qty', defaultWidth: 110, minWidth: 80 },
+    { id: 'discharge', label: 'Discharge Ranges', defaultWidth: 200, minWidth: 150 },
+    { id: 'faxMemo', label: 'Fax / Memo', defaultWidth: 140, minWidth: 100 },
+    { id: 'additives', label: 'Additives', defaultWidth: 90, minWidth: 70 },
+    { id: 'remarks', label: 'Remarks', defaultWidth: 250, minWidth: 150 },
+  ]
+  const { columnWidths, handleResizeStart } = useResizableColumns('contractSummary', columnConfig)
 
   useEffect(() => {
     const load = async () => {
@@ -642,19 +662,19 @@ export default function ContractSummaryPage() {
             <Table size="small" sx={{ minWidth: 1400 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Customer</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Contract #</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Contract Period</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Product(s)</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Firm Total</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Payment</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Qty Distribution</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Optional Qty</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Discharge Ranges</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Fax / Memo</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Additives</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Remarks</TableCell>
+                  <ResizableTableCell columnId="customer" width={columnWidths['customer']} minWidth={100} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Customer</ResizableTableCell>
+                  <ResizableTableCell columnId="contract" width={columnWidths['contract']} minWidth={100} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Contract #</ResizableTableCell>
+                  <ResizableTableCell columnId="period" width={columnWidths['period']} minWidth={120} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Contract Period</ResizableTableCell>
+                  <ResizableTableCell columnId="products" width={columnWidths['products']} minWidth={80} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Product(s)</ResizableTableCell>
+                  <ResizableTableCell columnId="firmTotal" width={columnWidths['firmTotal']} minWidth={120} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Firm Total</ResizableTableCell>
+                  <ResizableTableCell columnId="type" width={columnWidths['type']} minWidth={60} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Type</ResizableTableCell>
+                  <ResizableTableCell columnId="payment" width={columnWidths['payment']} minWidth={70} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Payment</ResizableTableCell>
+                  <ResizableTableCell columnId="qtyDist" width={columnWidths['qtyDist']} minWidth={100} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Qty Distribution</ResizableTableCell>
+                  <ResizableTableCell columnId="optional" width={columnWidths['optional']} minWidth={80} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Optional Qty</ResizableTableCell>
+                  <ResizableTableCell columnId="discharge" width={columnWidths['discharge']} minWidth={150} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Discharge Ranges</ResizableTableCell>
+                  <ResizableTableCell columnId="faxMemo" width={columnWidths['faxMemo']} minWidth={100} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Fax / Memo</ResizableTableCell>
+                  <ResizableTableCell columnId="additives" width={columnWidths['additives']} minWidth={70} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Additives</ResizableTableCell>
+                  <ResizableTableCell columnId="remarks" width={columnWidths['remarks']} minWidth={150} onResizeStart={handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Remarks</ResizableTableCell>
                 </TableRow>
               </TableHead>
             <TableBody>
@@ -675,23 +695,23 @@ export default function ContractSummaryPage() {
                       '& td': { borderBottom: '1px solid #F1F5F9' },
                     }}
                   >
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', width: columnWidths['customer'] }}>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {customerName}
                       </Typography>
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', width: columnWidths['contract'] }}>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {c.contract_number}
                       </Typography>
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', width: columnWidths['period'] }}>
                       <Typography variant="body2">{formatDateRange(c.start_period, c.end_period)}</Typography>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ width: columnWidths['products'] }}>
                       <Typography variant="body2">{productsLabel}</Typography>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ width: columnWidths['firmTotal'] }}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                         {c.products.map((p, idx) => {
                           const { effectiveMin, effectiveMax, optional, originalMin, originalMax, hasMinMax, missingYearData, contractYear } = getProductYearQuantities(c, p)
@@ -777,25 +797,25 @@ export default function ContractSummaryPage() {
                         })}
                       </Box>
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', width: columnWidths['type'] }}>
                       <Chip label={c.contract_type} size="small" sx={getContractTypeColor(c.contract_type)} />
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', width: columnWidths['payment'] }}>
                       <Chip label={c.payment_method || '-'} size="small" sx={getPaymentColor(c.payment_method || 'T/T')} />
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', width: columnWidths['qtyDist'] }}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                         {getContractYears(c.id).map((year) => {
                           const yearData = quarterTotalsByContractIdAndYear[c.id]?.[year] || { q1: 0, q2: 0, q3: 0, q4: 0 }
                           const years = getContractYears(c.id)
                           const showYearLabel = years.length > 1
                           return (
-                            <Box key={year} sx={{ 
-                              display: 'flex', 
-                              flexDirection: 'column', 
+                            <Box key={year} sx={{
+                              display: 'flex',
+                              flexDirection: 'column',
                               gap: 0.25,
-                              ...(showYearLabel && { 
-                                borderLeft: '2px solid', 
+                              ...(showYearLabel && {
+                                borderLeft: '2px solid',
                                 borderColor: 'primary.main',
                                 pl: 1,
                                 mb: 0.5
@@ -815,39 +835,39 @@ export default function ContractSummaryPage() {
                         })}
                       </Box>
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', width: columnWidths['optional'] }}>
                       {optionalTotalFor(c) > 0 ? (
-                        <Chip 
-                          label={`+${optionalTotalFor(c).toLocaleString()} KT`} 
-                          size="small" 
-                          sx={{ 
-                            bgcolor: BADGE_COLORS.COMPLETED.bgcolor, 
+                        <Chip
+                          label={`+${optionalTotalFor(c).toLocaleString()} KT`}
+                          size="small"
+                          sx={{
+                            bgcolor: BADGE_COLORS.COMPLETED.bgcolor,
                             color: BADGE_COLORS.COMPLETED.color,
                             fontWeight: 500,
                             border: `1px solid ${BADGE_COLORS.COMPLETED.color}`
-                          }} 
+                          }}
                         />
                       ) : (
                         <Typography variant="body2" color="text.secondary">—</Typography>
                       )}
                     </TableCell>
-                    <TableCell sx={{ minWidth: 220 }}>
+                    <TableCell sx={{ width: columnWidths['discharge'] }}>
                       <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                         {c.discharge_ranges || '-'}
                       </Typography>
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', width: columnWidths['faxMemo'] }}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                         <Typography variant="body2">Fax: {formatDateOnly(c.fax_received_date)}</Typography>
                         <Typography variant="body2">Memo: {formatDateOnly(c.concluded_memo_received_date)}</Typography>
                       </Box>
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', width: columnWidths['additives'] }}>
                       <Typography variant="body2">
                         {!jetA1Selected ? '-' : c.additives_required === true ? 'Yes' : c.additives_required === false ? 'No' : '-'}
                       </Typography>
                     </TableCell>
-                    <TableCell sx={{ minWidth: 260 }}>
+                    <TableCell sx={{ width: columnWidths['remarks'] }}>
                       <Box>
                         <TextField
                           value={remarksDraftById[c.id] ?? ''}
