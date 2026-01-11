@@ -181,10 +181,14 @@ export default function ContractSummaryPage() {
     const hasMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
     const contractYear = getContractYearForCalendarYear(c, selectedYear)
     const amendments = c.authority_amendments || []
+    const numContractYears = c.start_period && c.end_period
+      ? Math.max(1, Math.ceil(((new Date(c.end_period).getFullYear() - new Date(c.start_period).getFullYear()) * 12 + (new Date(c.end_period).getMonth() - new Date(c.start_period).getMonth()) + 1) / 12))
+      : 1
 
     let originalMin = 0
     let originalMax = 0
     let optional = 0
+    let missingYearData = false // Flag to indicate year-specific data is missing
 
     // If year_quantities exists, get the specific year's quantities
     if (p.year_quantities && Array.isArray(p.year_quantities) && p.year_quantities.length > 0) {
@@ -194,10 +198,14 @@ export default function ContractSummaryPage() {
         originalMax = hasMinMax ? (yearQty.max_quantity || 0) : (yearQty.quantity || 0)
         optional = yearQty.optional_quantity || 0
       } else {
-        // Fallback to product-level values if year not found
+        // Fallback to product-level values if year not found - this is a gap!
         originalMin = p.min_quantity || 0
         originalMax = hasMinMax ? (p.max_quantity || 0) : (p.total_quantity || 0)
         optional = p.optional_quantity || 0
+        // Only flag as missing if this is a multi-year contract (gaps matter)
+        if (numContractYears > 1) {
+          missingYearData = true
+        }
       }
     } else {
       // No year_quantities - use product-level values
@@ -221,7 +229,9 @@ export default function ContractSummaryPage() {
       optional,
       originalMin,
       originalMax,
-      hasMinMax
+      hasMinMax,
+      missingYearData,
+      contractYear
     }
   }
 
@@ -551,7 +561,7 @@ export default function ContractSummaryPage() {
                     <TableCell>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                         {c.products.map((p, idx) => {
-                          const { effectiveMin, effectiveMax, optional, originalMin, originalMax, hasMinMax } = getProductYearQuantities(c, p)
+                          const { effectiveMin, effectiveMax, optional, originalMin, originalMax, hasMinMax, missingYearData, contractYear } = getProductYearQuantities(c, p)
                           const isAmended = effectiveMin !== originalMin || effectiveMax !== originalMax
                           return (
                             <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
@@ -604,6 +614,25 @@ export default function ContractSummaryPage() {
                                       fontSize: '0.65rem',
                                       bgcolor: '#FEF3C7',
                                       color: '#D97706',
+                                      fontWeight: 600,
+                                      '& .MuiChip-label': { px: 0.5 }
+                                    }}
+                                  />
+                                </Tooltip>
+                              )}
+                              {missingYearData && (
+                                <Tooltip
+                                  title={`Year ${contractYear} quantities not set - using contract totals. Edit contract to set per-year quantities.`}
+                                  arrow
+                                >
+                                  <Chip
+                                    label="Year data missing"
+                                    size="small"
+                                    sx={{
+                                      height: 18,
+                                      fontSize: '0.65rem',
+                                      bgcolor: '#FEE2E2',
+                                      color: '#DC2626',
                                       fontWeight: 600,
                                       '& .MuiChip-label': { px: 0.5 }
                                     }}

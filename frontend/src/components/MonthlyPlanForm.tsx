@@ -1691,8 +1691,13 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
           {products.map((p: any) => {
             // Get year-specific quantities if available, otherwise use total quantities
             let yearQuantity: any = null
-            if (p.year_quantities && Array.isArray(p.year_quantities)) {
+            let missingYearData = false
+            if (p.year_quantities && Array.isArray(p.year_quantities) && p.year_quantities.length > 0) {
               yearQuantity = p.year_quantities.find((yq: any) => yq.year === selectedYear)
+              // Flag if year_quantities exists but this specific year is missing (gap detection)
+              if (!yearQuantity && numContractYears > 1) {
+                missingYearData = true
+              }
             }
 
             // Support both fixed quantity mode and min/max range mode
@@ -1845,14 +1850,30 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
               >
                 {/* Header with product name and status */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                     <Typography variant="body1" fontWeight="bold" sx={{ color: '#1E293B' }}>
                       {p.name}
-                  </Typography>
+                    </Typography>
                     <Typography variant="body2" sx={{ color: getStatusColor() }}>
                       {getStatusIcon()}
-                  </Typography>
-                </Box>
+                    </Typography>
+                    {missingYearData && (
+                      <Tooltip title={`Year ${selectedYear} quantities not set - using contract totals. Edit contract to set per-year quantities.`} arrow>
+                        <Chip
+                          label="Year data missing"
+                          size="small"
+                          sx={{
+                            height: 18,
+                            fontSize: '0.65rem',
+                            bgcolor: '#FEE2E2',
+                            color: '#DC2626',
+                            fontWeight: 600,
+                            '& .MuiChip-label': { px: 0.5 }
+                          }}
+                        />
+                      </Tooltip>
+                    )}
+                  </Box>
                   <Box sx={{ textAlign: 'right' }}>
                     <Typography variant="h6" fontWeight="bold" sx={{ color: getStatusColor(), lineHeight: 1 }}>
                       {allocated.toLocaleString()} KT
