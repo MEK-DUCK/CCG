@@ -10,10 +10,6 @@ import {
   TableRow,
   Typography,
   CircularProgress,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   TextField,
   Chip,
   Button,
@@ -23,8 +19,9 @@ import {
   Tab,
   Snackbar,
   Alert,
+  IconButton,
 } from '@mui/material'
-import { FileDownload, PictureAsPdf } from '@mui/icons-material'
+import { FileDownload, PictureAsPdf, CalendarMonth, ChevronLeft, ChevronRight } from '@mui/icons-material'
 import { customerAPI, contractAPI, quarterlyPlanAPI, monthlyPlanAPI, cargoAPI } from '../api/client'
 import type { Customer, Contract, QuarterlyPlan, MonthlyPlan, Cargo } from '../types'
 import { getContractTypeColor, BADGE_COLORS } from '../utils/chipColors'
@@ -1073,6 +1070,18 @@ export default function LiftingPlanPage() {
     )
   }
 
+  // Get product tab color
+  const getProductTabColor = (product: string) => {
+    switch (product) {
+      case 'GASOIL': return { active: '#F59E0B', hover: '#D97706' }
+      case 'JET A-1': return { active: '#3B82F6', hover: '#2563EB' }
+      case 'FUEL OIL': return { active: '#8B5CF6', hover: '#7C3AED' }
+      default: return { active: '#3B82F6', hover: '#2563EB' }
+    }
+  }
+
+  const productColor = getProductTabColor(selectedProduct)
+
   return (
     <Box>
       {/* Notification when another user makes changes */}
@@ -1091,152 +1100,231 @@ export default function LiftingPlanPage() {
         </Alert>
       </Snackbar>
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4 }}>
-      <Typography 
-        variant="h4" 
-        gutterBottom
-        sx={{
-          fontWeight: 700,
-          color: '#000000',
-            mb: 0,
-          fontSize: { xs: '1.75rem', md: '2rem' },
-          letterSpacing: '-0.02em',
-        }}
-      >
-        Lifting Plan - Quarterly Summary
-      </Typography>
+      {/* Modern Header */}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 3,
+              background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)',
+            }}
+          >
+            <CalendarMonth sx={{ color: 'white', fontSize: 26 }} />
+          </Box>
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', letterSpacing: '-0.02em' }}>
+              Lifting Plan
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#64748B' }}>
+              Quarterly summary by product
+            </Typography>
+          </Box>
+        </Box>
       </Box>
-      
-      <Box 
-        sx={{ 
-          mb: 4, 
-          p: 3,
-          bgcolor: '#FFFFFF',
-          borderRadius: 3,
-          boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.05)',
-          display: 'flex', 
-          gap: 2, 
-          alignItems: 'center', 
-          flexWrap: 'wrap', 
-          justifyContent: 'space-between' 
-        }}
-      >
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel>Quarter</InputLabel>
-            <Select
-              value={selectedQuarter}
-              label="Quarter"
-              onChange={(e) => setSelectedQuarter(e.target.value as 'Q1' | 'Q2' | 'Q3' | 'Q4')}
-            >
-              <MenuItem value="Q1">Q1 (Jan - Mar)</MenuItem>
-              <MenuItem value="Q2">Q2 (Apr - Jun)</MenuItem>
-              <MenuItem value="Q3">Q3 (Jul - Sep)</MenuItem>
-              <MenuItem value="Q4">Q4 (Oct - Dec)</MenuItem>
-            </Select>
-          </FormControl>
-          
-          <FormControl size="small" sx={{ minWidth: 100 }}>
-            <InputLabel>Year</InputLabel>
-            <Select
-              value={selectedYear}
-              label="Year"
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-            >
-              {Array.from({ length: 5 }, (_, i) => {
-                const year = 2024 + i  // Start from 2024 to match test data (2024-2028)
-                return (
-                  <MenuItem key={year} value={year}>
-                    {year}
-                  </MenuItem>
-                )
-              })}
-            </Select>
-          </FormControl>
 
+      {/* Modern Filter Bar */}
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: 2,
+          borderRadius: 3,
+          border: '1px solid #E2E8F0',
+          background: 'linear-gradient(135deg, #FAFBFC 0%, #F8FAFC 100%)',
+        }}
+      >
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { xs: 'stretch', md: 'center' }, justifyContent: 'space-between' }}>
+          {/* Year Navigator */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <IconButton
+              size="small"
+              onClick={() => setSelectedYear(selectedYear - 1)}
+              sx={{
+                width: 32,
+                height: 32,
+                bgcolor: 'white',
+                border: '1px solid #E2E8F0',
+                '&:hover': { bgcolor: '#F1F5F9', borderColor: '#CBD5E1' },
+              }}
+            >
+              <ChevronLeft sx={{ fontSize: 18, color: '#64748B' }} />
+            </IconButton>
+            <Box
+              sx={{
+                px: 2.5,
+                py: 0.75,
+                borderRadius: 2,
+                bgcolor: 'white',
+                border: '1px solid #E2E8F0',
+                minWidth: 80,
+                textAlign: 'center',
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E293B', letterSpacing: '-0.01em' }}>
+                {selectedYear}
+              </Typography>
+            </Box>
+            <IconButton
+              size="small"
+              onClick={() => setSelectedYear(selectedYear + 1)}
+              sx={{
+                width: 32,
+                height: 32,
+                bgcolor: 'white',
+                border: '1px solid #E2E8F0',
+                '&:hover': { bgcolor: '#F1F5F9', borderColor: '#CBD5E1' },
+              }}
+            >
+              <ChevronRight sx={{ fontSize: 18, color: '#64748B' }} />
+            </IconButton>
+          </Box>
+
+          {/* Quarter Pills */}
+          <Box sx={{ display: 'flex', gap: 0.75, justifyContent: { xs: 'flex-start', md: 'center' }, flex: 1 }}>
+            {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map((quarter) => {
+              const isSelected = selectedQuarter === quarter
+              const quarterLabels = { Q1: 'Jan-Mar', Q2: 'Apr-Jun', Q3: 'Jul-Sep', Q4: 'Oct-Dec' }
+              return (
+                <Box
+                  key={quarter}
+                  onClick={() => setSelectedQuarter(quarter)}
+                  sx={{
+                    px: 2,
+                    py: 0.75,
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                    fontSize: '0.8125rem',
+                    fontWeight: 600,
+                    transition: 'all 0.15s ease',
+                    border: isSelected ? '1.5px solid #3B82F6' : '1px solid #E2E8F0',
+                    bgcolor: isSelected ? '#3B82F6' : 'white',
+                    color: isSelected ? 'white' : '#64748B',
+                    '&:hover': {
+                      transform: 'scale(1.03)',
+                      boxShadow: isSelected ? '0 2px 8px rgba(59, 130, 246, 0.35)' : '0 2px 8px rgba(0,0,0,0.08)',
+                    },
+                  }}
+                >
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.2 }}>
+                    <span>{quarter}</span>
+                    <Typography variant="caption" sx={{ fontSize: '0.65rem', opacity: 0.8, mt: 0.25 }}>
+                      {quarterLabels[quarter]}
+                    </Typography>
+                  </Box>
+                </Box>
+              )
+            })}
+          </Box>
+
+          {/* Export Buttons */}
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<FileDownload sx={{ fontSize: 16 }} />}
+              onClick={handleExportToExcel}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.8125rem',
+                px: 2,
+                py: 0.75,
+                borderColor: '#E2E8F0',
+                color: '#475569',
+                bgcolor: 'white',
+                '&:hover': {
+                  borderColor: '#3B82F6',
+                  bgcolor: '#EFF6FF',
+                  color: '#2563EB',
+                },
+              }}
+            >
+              Excel
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<PictureAsPdf sx={{ fontSize: 16 }} />}
+              onClick={handleExportToPDF}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.8125rem',
+                px: 2,
+                py: 0.75,
+                borderColor: '#E2E8F0',
+                color: '#475569',
+                bgcolor: 'white',
+                '&:hover': {
+                  borderColor: '#EF4444',
+                  bgcolor: '#FEF2F2',
+                  color: '#DC2626',
+                },
+              }}
+            >
+              PDF
+            </Button>
+          </Box>
         </Box>
-        
-        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<FileDownload />}
-            onClick={handleExportToExcel}
-            sx={{ 
-              fontSize: isMobile ? '0.75rem' : '0.875rem',
-              minHeight: isMobile ? 40 : 36,
-              px: isMobile ? 1.5 : 2,
-              borderColor: '#2563EB',
-              color: '#2563EB',
-              '&:hover': {
-                borderColor: '#1D4ED8',
-                bgcolor: 'rgba(37, 99, 235, 0.04)',
-              },
-            }}
-          >
-            Export Excel
-          </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<PictureAsPdf />}
-            onClick={handleExportToPDF}
-            sx={{ 
-              fontSize: isMobile ? '0.75rem' : '0.875rem',
-              minHeight: isMobile ? 40 : 36,
-              px: isMobile ? 1.5 : 2,
-              borderColor: '#DC2626',
-              color: '#DC2626',
-              '&:hover': {
-                borderColor: '#B91C1C',
-                bgcolor: 'rgba(220, 38, 38, 0.04)',
-              },
-            }}
-          >
-            Save PDF
-          </Button>
-        </Box>
-      </Box>
+      </Paper>
 
       {/* Product Tabs */}
-      <Box sx={{ mt: 3 }}>
-        <Tabs
-          value={PRODUCT_FILTERS.indexOf(selectedProduct as typeof PRODUCT_FILTERS[number])}
-          onChange={(_, newValue) => setSelectedProduct(PRODUCT_FILTERS[newValue])}
-          sx={{
-            '& .MuiTabs-indicator': {
-              backgroundColor: '#2563EB',
-              height: 3,
-            },
-            '& .MuiTab-root': {
-              textTransform: 'none',
-              fontWeight: 600,
-              fontSize: '1rem',
-              color: '#64748B',
-              minWidth: 120,
-              '&.Mui-selected': {
-                color: '#2563EB',
-              },
-            },
-          }}
-        >
-          <Tab label="GASOIL" />
-          <Tab label="JET A-1" />
-          <Tab label="FUEL OIL" />
-        </Tabs>
-      </Box>
-
-      <Box 
-        sx={{ 
-          mt: 2,
-          bgcolor: '#FFFFFF',
+      <Paper
+        elevation={0}
+        sx={{
           borderRadius: 3,
-          boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.05)',
+          border: '1px solid #E2E8F0',
           overflow: 'hidden',
         }}
       >
-        {renderTable()}
-      </Box>
+        <Box sx={{ borderBottom: '1px solid #E2E8F0', bgcolor: '#FAFBFC' }}>
+          <Tabs
+            value={PRODUCT_FILTERS.indexOf(selectedProduct as typeof PRODUCT_FILTERS[number])}
+            onChange={(_, newValue) => setSelectedProduct(PRODUCT_FILTERS[newValue])}
+            sx={{
+              minHeight: 48,
+              px: 2,
+              '& .MuiTabs-indicator': {
+                backgroundColor: productColor.active,
+                height: 3,
+                borderRadius: '3px 3px 0 0',
+              },
+              '& .MuiTab-root': {
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '0.9rem',
+                color: '#64748B',
+                minHeight: 48,
+                minWidth: 100,
+                px: 2.5,
+                '&.Mui-selected': {
+                  color: productColor.active,
+                },
+                '&:hover': {
+                  color: '#1E293B',
+                  backgroundColor: 'rgba(0,0,0,0.02)',
+                },
+              },
+            }}
+          >
+            <Tab label="GASOIL" />
+            <Tab label="JET A-1" />
+            <Tab label="FUEL OIL" />
+          </Tabs>
+        </Box>
+
+        <Box sx={{ bgcolor: 'white' }}>
+          {renderTable()}
+        </Box>
+      </Paper>
     </Box>
   )
 }
