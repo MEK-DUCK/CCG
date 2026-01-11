@@ -172,9 +172,15 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
   const getYearContractMonths = (): Array<{ month: number, year: number }> => {
     if (!contract?.start_period || contractMonths.length === 0) return contractMonths
 
-    // For SPOT/RANGE contracts, don't filter by fiscal year - just return all contract months
-    // These contracts are short-term and don't follow quarterly planning
+    // For SPOT/RANGE contracts with multiple years, filter by calendar year
+    // For single-year contracts, return all months
     if (isSpotContract || isRangeContract) {
+      if (numContractYears > 1) {
+        // Multi-year SPOT/RANGE: filter by calendar year based on selectedYear
+        const contractStartYear = new Date(contract.start_period).getFullYear()
+        const calendarYear = contractStartYear + (selectedYear - 1)
+        return contractMonths.filter(cm => cm.year === calendarYear)
+      }
       return contractMonths
     }
 
