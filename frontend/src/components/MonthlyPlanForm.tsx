@@ -21,6 +21,7 @@ import {
   Tabs,
   Tab,
   Checkbox,
+  Tooltip,
 } from '@mui/material'
 import { Save, Add, Delete, Lock, MoreVert, ArrowForward, ArrowBack, TrendingUp, CalendarMonth, History, ViewModule, ViewList } from '@mui/icons-material'
 import { ToggleButton, ToggleButtonGroup } from '@mui/material'
@@ -1710,6 +1711,11 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
             const minQuantity = effectiveMin
             const maxQuantityForYear = isMinMaxMode ? effectiveMax : totalQuantityForYear
 
+            // Track if this product has been amended (quantities changed from original)
+            const isAmended = effectiveMin !== originalMinQuantity || effectiveMax !== originalMaxQuantity
+            const amendmentDeltaMin = effectiveMin - originalMinQuantity
+            const amendmentDeltaMax = effectiveMax - originalMaxQuantity
+
             // For range contracts: max is the max_quantity, optional is on top of max
             // For fixed contracts: max is total + optional
             const maxQuantity = isMinMaxMode
@@ -2042,11 +2048,63 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                         )}
                     </>
                   )}
-                    <Chip 
+                    {/* Amendment indicator chip with tooltip */}
+                    {isAmended && (
+                      <Tooltip
+                        title={
+                          <Box>
+                            <Typography variant="caption" sx={{ fontWeight: 600 }}>Authority Amendment Applied</Typography>
+                            <Box sx={{ mt: 0.5 }}>
+                              {isMinMaxMode ? (
+                                <>
+                                  <Typography variant="caption" display="block">
+                                    Original: {originalMinQuantity.toLocaleString()} - {originalMaxQuantity.toLocaleString()} KT
+                                  </Typography>
+                                  <Typography variant="caption" display="block">
+                                    Effective: {effectiveMin.toLocaleString()} - {effectiveMax.toLocaleString()} KT
+                                  </Typography>
+                                  <Typography variant="caption" display="block" sx={{ color: amendmentDeltaMax < 0 ? '#FCA5A5' : '#86EFAC' }}>
+                                    Change: {amendmentDeltaMax >= 0 ? '+' : ''}{amendmentDeltaMax.toLocaleString()} KT max
+                                  </Typography>
+                                </>
+                              ) : (
+                                <>
+                                  <Typography variant="caption" display="block">
+                                    Original: {originalMaxQuantity.toLocaleString()} KT
+                                  </Typography>
+                                  <Typography variant="caption" display="block">
+                                    Effective: {effectiveMax.toLocaleString()} KT
+                                  </Typography>
+                                  <Typography variant="caption" display="block" sx={{ color: amendmentDeltaMax < 0 ? '#FCA5A5' : '#86EFAC' }}>
+                                    Change: {amendmentDeltaMax >= 0 ? '+' : ''}{amendmentDeltaMax.toLocaleString()} KT
+                                  </Typography>
+                                </>
+                              )}
+                            </Box>
+                          </Box>
+                        }
+                        arrow
+                      >
+                        <Chip
+                          label="Amended"
+                          size="small"
+                          sx={{
+                            bgcolor: amendmentDeltaMax < 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                            color: amendmentDeltaMax < 0 ? '#DC2626' : '#16A34A',
+                            fontWeight: 600,
+                            fontSize: '0.7rem',
+                            height: 22,
+                            border: `1px solid ${amendmentDeltaMax < 0 ? '#FCA5A5' : '#86EFAC'}`,
+                            cursor: 'help'
+                          }}
+                        />
+                      </Tooltip>
+                    )}
+                    <Chip
                       label={`${Math.round(percentage)}%`}
                       size="small"
-                      sx={{ 
-                        bgcolor: getStatusColor(), 
+                      sx={{
+                        bgcolor: getStatusColor(),
                         color: '#FFFFFF',
                         fontWeight: 600,
                         fontSize: '0.7rem',
@@ -2055,13 +2113,31 @@ export default function MonthlyPlanForm({ contractId, contract: propContract, qu
                     />
                   </Box>
                 </Box>
-                
+
+                {/* Amendment info box - shows when quantities have been amended */}
+                {isAmended && (
+                  <Box sx={{
+                    mt: 1.5,
+                    p: 1,
+                    bgcolor: amendmentDeltaMax < 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(34, 197, 94, 0.08)',
+                    borderRadius: 1,
+                    border: `1px solid ${amendmentDeltaMax < 0 ? '#FECACA' : '#BBF7D0'}`
+                  }}>
+                    <Typography variant="caption" sx={{ color: amendmentDeltaMax < 0 ? '#DC2626' : '#16A34A', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      📋 Authority Amendment: {isMinMaxMode
+                        ? `Range adjusted from ${originalMinQuantity.toLocaleString()}-${originalMaxQuantity.toLocaleString()} to ${effectiveMin.toLocaleString()}-${effectiveMax.toLocaleString()} KT (${amendmentDeltaMin !== 0 ? `min ${amendmentDeltaMin >= 0 ? '+' : ''}${amendmentDeltaMin.toLocaleString()}, ` : ''}max ${amendmentDeltaMax >= 0 ? '+' : ''}${amendmentDeltaMax.toLocaleString()})`
+                        : `Quantity adjusted from ${originalMaxQuantity.toLocaleString()} to ${effectiveMax.toLocaleString()} KT (${amendmentDeltaMax >= 0 ? '+' : ''}${amendmentDeltaMax.toLocaleString()} KT)`
+                      }
+                    </Typography>
+                  </Box>
+                )}
+
                 {/* Optional quantity warning/info */}
                 {isUsingOptional && (
-                  <Box sx={{ 
-                    mt: 1.5, 
-                    p: 1, 
-                    bgcolor: 'rgba(139, 92, 246, 0.1)', 
+                  <Box sx={{
+                    mt: 1.5,
+                    p: 1,
+                    bgcolor: 'rgba(139, 92, 246, 0.1)',
                     borderRadius: 1,
                     border: '1px solid #C4B5FD'
                   }}>

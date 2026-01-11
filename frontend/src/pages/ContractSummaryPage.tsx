@@ -27,6 +27,7 @@ import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan } from '../types'
 import { BADGE_COLORS, getContractTypeColor, getPaymentColor } from '../utils/chipColors'
 import { useToast } from '../contexts/ToastContext'
+import { applyAmendmentsToProduct } from '../utils/monthlyPlanUtils'
 
 const formatDateRange = (start?: string, end?: string) => {
   if (!start || !end) return '-'
@@ -156,45 +157,67 @@ export default function ContractSummaryPage() {
 
   // Check if contract uses min/max mode (any product has actual min or max quantity values)
   // Use != null to check for both null and undefined, and ensure value > 0
-  const isMinMaxMode = (c: Contract) => c.products.some(p => 
+  const isMinMaxMode = (c: Contract) => c.products.some(p =>
     (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
   )
-  
-  // Check if any product has been amended (original values differ from current)
-  const hasAmendments = (c: Contract) => c.products.some(p => {
-    const isMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
-    if (!isMinMax) return false
-    return (p.original_min_quantity != null && p.original_min_quantity !== p.min_quantity) ||
-           (p.original_max_quantity != null && p.original_max_quantity !== p.max_quantity)
-  })
-  
-  // For fixed mode: return total_quantity, for min/max mode: return max_quantity
-  const firmTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
+
+  // Get effective quantities for a product after applying authority amendments
+  // This applies amendments that affect all years (amendment.year === null)
+  const getEffectiveQuantities = (c: Contract, p: any) => {
     const hasMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
+    const originalMin = p.min_quantity || 0
+    const originalMax = hasMinMax ? (p.max_quantity || 0) : (p.total_quantity || 0)
+    const amendments = c.authority_amendments || []
+
+    // Apply amendments that apply to all years (year === null/undefined)
+    // For year-specific amendments, they're shown in the yearly breakdown
+    const { effectiveMin, effectiveMax } = applyAmendmentsToProduct(
+      originalMin,
+      originalMax,
+      amendments,
+      p.name,
+      undefined // Apply only amendments that affect all years
+    )
+
+    return { effectiveMin, effectiveMax, originalMin, originalMax, hasMinMax }
+  }
+
+  // Check if any product has been amended
+  const hasAmendments = (c: Contract) => c.products.some(p => {
+    const { effectiveMin, effectiveMax, originalMin, originalMax } = getEffectiveQuantities(c, p)
+    return effectiveMin !== originalMin || effectiveMax !== originalMax
+  })
+
+  // For fixed mode: return total_quantity, for min/max mode: return max_quantity (effective)
+  const firmTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
+    const { effectiveMax, hasMinMax } = getEffectiveQuantities(c, p)
     if (hasMinMax) {
-      return acc + (Number(p.max_quantity) || 0)
+      return acc + effectiveMax
     }
     return acc + (Number(p.total_quantity) || 0)
   }, 0)
-  
+
   // Return optional_quantity for both fixed and min/max modes
   // Optional quantity is additional quantity beyond max (range) or total (fixed)
   const optionalTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
     return acc + (Number(p.optional_quantity) || 0)
   }, 0)
-  
-  // For min/max mode: return min_quantity
-  const minTotalFor = (c: Contract) => c.products.reduce((acc, p) => acc + (Number(p.min_quantity) || 0), 0)
-  
+
+  // For min/max mode: return min_quantity (effective)
+  const minTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
+    const { effectiveMin } = getEffectiveQuantities(c, p)
+    return acc + effectiveMin
+  }, 0)
+
   // Get original min total (before amendments)
   const originalMinTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
-    const origMin = p.original_min_quantity ?? p.min_quantity ?? 0
-    return acc + Number(origMin)
+    return acc + (Number(p.min_quantity) || 0)
   }, 0)
-  
+
   // Get original max total (before amendments)
   const originalMaxTotalFor = (c: Contract) => c.products.reduce((acc, p) => {
-    const origMax = p.original_max_quantity ?? p.max_quantity ?? p.total_quantity ?? 0
+    const hasMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
+    const origMax = hasMinMax ? (p.max_quantity || 0) : (p.total_quantity || 0)
     return acc + Number(origMax)
   }, 0)
 

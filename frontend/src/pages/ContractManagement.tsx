@@ -43,6 +43,7 @@ import MonthlyPlanForm from '../components/MonthlyPlanForm'
 import { useConflictHandler } from '../components/Presence'
 import { useToast } from '../contexts/ToastContext'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { applyAmendmentsToProduct } from '../utils/monthlyPlanUtils'
 
 // Fallback product options if API fails
 const DEFAULT_PRODUCT_OPTIONS = ['JET A-1', 'GASOIL', 'GASOIL 10PPM', 'HFO', 'LSFO']
@@ -1006,20 +1007,31 @@ export default function ContractManagement() {
                               // Check if min/max mode - must have actual values (not null/undefined)
                               const isMinMax = (p.min_quantity != null && p.min_quantity > 0) || (p.max_quantity != null && p.max_quantity > 0)
                               const optionalQty = p.optional_quantity || 0
-                              
-                              // Check if product has been amended (original values differ from current)
-                              const isAmended = isMinMax && (
-                                (p.original_min_quantity != null && p.original_min_quantity !== p.min_quantity) ||
-                                (p.original_max_quantity != null && p.original_max_quantity !== p.max_quantity)
+
+                              // Get original quantities
+                              const originalMin = p.min_quantity || 0
+                              const originalMax = isMinMax ? (p.max_quantity || 0) : (p.total_quantity || 0)
+
+                              // Apply authority amendments to get effective quantities
+                              const amendments = contract.authority_amendments || []
+                              const { effectiveMin, effectiveMax } = applyAmendmentsToProduct(
+                                originalMin,
+                                originalMax,
+                                amendments,
+                                p.name,
+                                undefined // Apply all-year amendments for the list view
                               )
-                              
-                              // Build quantity display
+
+                              // Check if product has been amended
+                              const isAmended = effectiveMin !== originalMin || effectiveMax !== originalMax
+
+                              // Build quantity display using effective values
                               let qtyDisplay: string
                               let originalDisplay: string | null = null
                               if (isMinMax) {
-                                qtyDisplay = `${(p.min_quantity || 0).toLocaleString()} - ${(p.max_quantity || 0).toLocaleString()} KT`
+                                qtyDisplay = `${effectiveMin.toLocaleString()} - ${effectiveMax.toLocaleString()} KT`
                                 if (isAmended) {
-                                  originalDisplay = `${(p.original_min_quantity || 0).toLocaleString()} - ${(p.original_max_quantity || 0).toLocaleString()} KT`
+                                  originalDisplay = `${originalMin.toLocaleString()} - ${originalMax.toLocaleString()} KT`
                                 }
                               } else {
                                 qtyDisplay = `${(p.total_quantity || 0).toLocaleString()} KT`

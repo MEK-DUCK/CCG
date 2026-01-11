@@ -17,6 +17,7 @@ import { useToast } from '../contexts/ToastContext'
 import { useFormShortcuts } from '../hooks/useKeyboardShortcuts'
 import { EditingWarningBanner, ActiveUsersIndicator } from './Presence'
 import { getQuarterDisplayLabel } from '../utils/fiscalYear'
+import { applyAmendmentsToProduct } from '../utils/monthlyPlanUtils'
 
 interface QuarterlyPlanFormProps {
   contractId: number
@@ -146,9 +147,31 @@ export default function QuarterlyPlanForm({ contractId, contract, existingPlans 
         
         // Get year-specific quantity if available, otherwise use total
         const yearQuantity = product.year_quantities?.find((yq: any) => yq.year === year)
-        const yearTotalQty = yearQuantity?.quantity ?? product.total_quantity ?? 0
+
+        // Check if this product uses range (min/max) mode
+        const isRangeMode = (product.min_quantity != null && product.min_quantity > 0) ||
+                           (product.max_quantity != null && product.max_quantity > 0)
+
+        // Get original quantities from year_quantities or product
+        const originalQty = isRangeMode
+          ? (yearQuantity?.max_quantity ?? product.max_quantity ?? 0)
+          : (yearQuantity?.quantity ?? product.total_quantity ?? 0)
+        const originalMinQty = yearQuantity?.min_quantity ?? product.min_quantity ?? 0
         const yearOptionalQty = yearQuantity?.optional_quantity ?? product.optional_quantity ?? 0
-        
+
+        // Apply authority amendments to get effective quantities
+        const amendments = contractData?.authority_amendments || []
+        const { effectiveMax } = applyAmendmentsToProduct(
+          originalMinQty,
+          originalQty,
+          amendments,
+          product.name,
+          year
+        )
+
+        // Use effective quantity for the year total
+        const yearTotalQty = isRangeMode ? effectiveMax : (yearQuantity?.quantity ?? product.total_quantity ?? 0)
+
         newProductPlans.push({
           productName: product.name,
           contractYear: year,
