@@ -312,64 +312,100 @@ export default function AdminPage() {
   const fetchProducts = useCallback(async () => {
     try {
       const response = await client.get('/api/products?include_inactive=true')
+      const data = response.data || []
       // Auto-seed if empty
-      if (response.data.length === 0) {
-        await client.post('/api/products/seed-defaults')
-        const seededResponse = await client.get('/api/products?include_inactive=true')
-        setProducts(seededResponse.data)
+      if (Array.isArray(data) && data.length === 0) {
+        console.log('No products found, attempting to seed defaults...')
+        try {
+          await client.post('/api/products/seed-defaults')
+          const seededResponse = await client.get('/api/products?include_inactive=true')
+          setProducts(seededResponse.data || [])
+          console.log('Products seeded successfully')
+        } catch (seedErr: any) {
+          console.error('Error seeding products:', seedErr?.response?.data || seedErr)
+          setProducts([])
+        }
       } else {
-        setProducts(response.data)
+        setProducts(Array.isArray(data) ? data : [])
       }
     } catch (err: any) {
-      console.error('Error fetching products:', err)
+      console.error('Error fetching products:', err?.response?.data || err)
+      setProducts([])
     }
   }, [])
 
   const fetchLoadPorts = useCallback(async () => {
     try {
       const response = await client.get('/api/load-ports?include_inactive=true')
+      const data = response.data || []
       // Auto-seed if empty
-      if (response.data.length === 0) {
-        await client.post('/api/load-ports/seed-defaults')
-        const seededResponse = await client.get('/api/load-ports?include_inactive=true')
-        setLoadPorts(seededResponse.data)
+      if (Array.isArray(data) && data.length === 0) {
+        console.log('No load ports found, attempting to seed defaults...')
+        try {
+          await client.post('/api/load-ports/seed-defaults')
+          const seededResponse = await client.get('/api/load-ports?include_inactive=true')
+          setLoadPorts(seededResponse.data || [])
+          console.log('Load ports seeded successfully')
+        } catch (seedErr: any) {
+          console.error('Error seeding load ports:', seedErr?.response?.data || seedErr)
+          setLoadPorts([])
+        }
       } else {
-        setLoadPorts(response.data)
+        setLoadPorts(Array.isArray(data) ? data : [])
       }
     } catch (err: any) {
-      console.error('Error fetching load ports:', err)
+      console.error('Error fetching load ports:', err?.response?.data || err)
+      setLoadPorts([])
     }
   }, [])
 
   const fetchInspectors = useCallback(async () => {
     try {
       const response = await client.get('/api/inspectors?include_inactive=true')
+      const data = response.data || []
       // Auto-seed if empty
-      if (response.data.length === 0) {
-        await client.post('/api/inspectors/seed-defaults')
-        const seededResponse = await client.get('/api/inspectors?include_inactive=true')
-        setInspectors(seededResponse.data)
+      if (Array.isArray(data) && data.length === 0) {
+        console.log('No inspectors found, attempting to seed defaults...')
+        try {
+          await client.post('/api/inspectors/seed-defaults')
+          const seededResponse = await client.get('/api/inspectors?include_inactive=true')
+          setInspectors(seededResponse.data || [])
+          console.log('Inspectors seeded successfully')
+        } catch (seedErr: any) {
+          console.error('Error seeding inspectors:', seedErr?.response?.data || seedErr)
+          setInspectors([])
+        }
       } else {
-        setInspectors(response.data)
+        setInspectors(Array.isArray(data) ? data : [])
       }
     } catch (err: any) {
-      console.error('Error fetching inspectors:', err)
+      console.error('Error fetching inspectors:', err?.response?.data || err)
+      setInspectors([])
     }
   }, [])
 
   const fetchDischargePorts = useCallback(async () => {
     try {
       const response = await client.get('/api/discharge-ports?include_inactive=true')
+      const data = response.data || []
       // Auto-seed if empty
-      if (response.data.length === 0) {
-        await client.post('/api/discharge-ports/seed-defaults')
-        const seededResponse = await client.get('/api/discharge-ports?include_inactive=true')
-        setDischargePorts(seededResponse.data)
+      if (Array.isArray(data) && data.length === 0) {
+        console.log('No discharge ports found, attempting to seed defaults...')
+        try {
+          await client.post('/api/discharge-ports/seed-defaults')
+          const seededResponse = await client.get('/api/discharge-ports?include_inactive=true')
+          setDischargePorts(seededResponse.data || [])
+          console.log('Discharge ports seeded successfully')
+        } catch (seedErr: any) {
+          console.error('Error seeding discharge ports:', seedErr?.response?.data || seedErr)
+          setDischargePorts([])
+        }
       } else {
-        setDischargePorts(response.data)
+        setDischargePorts(Array.isArray(data) ? data : [])
       }
     } catch (err: any) {
-      console.error('Error fetching discharge ports:', err)
+      console.error('Error fetching discharge ports:', err?.response?.data || err)
+      setDischargePorts([])
     }
   }, [])
 
