@@ -1453,16 +1453,21 @@ export default function HomePage() {
         }
 
         // Calculate and add ETA date if possible
-        if (monthlyPlan.loading_window && monthlyPlan.cif_route && contract.cif_destination) {
-          const etaDate = calculateETADate(
-            monthlyPlan.loading_window,
-            contract.cif_destination,
-            monthlyPlan.cif_route,
-            monthlyPlan.month,
-            monthlyPlan.year
-          )
-          if (etaDate) {
-            parts.push(`ETA: ${etaDate.getDate()}`)
+        if (monthlyPlan.loading_window && contract.cif_destination) {
+          // Try with cif_route if available, otherwise try both SUEZ and CAPE
+          const routes = monthlyPlan.cif_route ? [monthlyPlan.cif_route] : ['SUEZ', 'CAPE']
+          for (const route of routes) {
+            const etaDate = calculateETADate(
+              monthlyPlan.loading_window,
+              contract.cif_destination,
+              route,
+              monthlyPlan.month,
+              monthlyPlan.year
+            )
+            if (etaDate) {
+              parts.push(`ETA: ${etaDate.getDate()}`)
+              break // Use first successful calculation
+            }
           }
         }
 
@@ -1471,7 +1476,7 @@ export default function HomePage() {
         }
       }
     }
-    
+
     setCargoFormData({
       vessel_name: cargo.vessel_name,
       load_ports: parseLoadPorts(cargo.load_ports),
@@ -1660,16 +1665,21 @@ export default function HomePage() {
       }
 
       // Calculate and add ETA date if possible
-      if (monthlyPlan.loading_window && monthlyPlan.cif_route && contract.cif_destination) {
-        const etaDate = calculateETADate(
-          monthlyPlan.loading_window,
-          contract.cif_destination,
-          monthlyPlan.cif_route,
-          monthlyPlan.month,
-          monthlyPlan.year
-        )
-        if (etaDate) {
-          parts.push(`ETA: ${etaDate.getDate()}`)
+      if (monthlyPlan.loading_window && contract.cif_destination) {
+        // Try with cif_route if available, otherwise try both SUEZ and CAPE
+        const routes = monthlyPlan.cif_route ? [monthlyPlan.cif_route] : ['SUEZ', 'CAPE']
+        for (const route of routes) {
+          const etaDate = calculateETADate(
+            monthlyPlan.loading_window,
+            contract.cif_destination,
+            route,
+            monthlyPlan.month,
+            monthlyPlan.year
+          )
+          if (etaDate) {
+            parts.push(`ETA: ${etaDate.getDate()}`)
+            break // Use first successful calculation
+          }
         }
       }
 
@@ -1677,7 +1687,7 @@ export default function HomePage() {
         etaDischargePort = parts.join(' - ')
       }
     }
-    
+
     setCargoFormData({
       vessel_name: 'TBA',
       load_ports: parseLoadPorts((contract as any).allowed_load_ports || ''),
