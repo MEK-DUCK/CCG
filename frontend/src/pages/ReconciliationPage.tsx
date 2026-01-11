@@ -16,14 +16,23 @@ import {
   Select,
   MenuItem,
   TextField,
-  Grid,
   Button,
   TablePagination,
   Tabs,
   Tab,
+  IconButton,
+  Tooltip,
 } from '@mui/material'
 import { format } from 'date-fns'
-import { Refresh } from '@mui/icons-material'
+import {
+  Refresh,
+  CompareArrows,
+  AddCircleOutline,
+  EditOutlined,
+  DeleteOutline,
+  SwapHoriz,
+  TrendingUp,
+} from '@mui/icons-material'
 import { auditLogAPI, contractAPI } from '../api/client'
 import type {
   PlanAuditLog,
@@ -260,161 +269,489 @@ export default function ReconciliationPage() {
     return 'month' in log && 'year' in log
   }
 
+  // Calculate action counts for stat cards
+  const actionCounts = useMemo(() => {
+    const counts = { CREATE: 0, UPDATE: 0, DELETE: 0, DEFER: 0, ADVANCE: 0, AUTHORITY_TOPUP: 0 }
+    logs.forEach((log) => {
+      if (log.action in counts) {
+        counts[log.action as keyof typeof counts]++
+      }
+    })
+    return counts
+  }, [logs])
+
   return (
     <Box>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4, flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#1E293B', mb: 0.5 }}>
-            Plan Reconciliation
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#64748B' }}>
-            Track all changes to monthly and quarterly plans including quantity updates, deletions, and creations.
-          </Typography>
+      {/* Modern Header */}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                width: 48,
+                height: 48,
+                borderRadius: 3,
+                background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 14px rgba(139, 92, 246, 0.35)',
+              }}
+            >
+              <CompareArrows sx={{ color: 'white', fontSize: 26 }} />
+            </Box>
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#1E293B', letterSpacing: '-0.02em' }}>
+                Plan Reconciliation
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#64748B', mt: 0.25 }}>
+                Track changes to monthly and quarterly plans
+              </Typography>
+            </Box>
+          </Box>
+          <Tooltip title="Refresh data">
+            <IconButton
+              onClick={() => { loadLogs(); loadWeeklyComparison(); }}
+              disabled={loading || weeklyLoading}
+              sx={{
+                width: 42,
+                height: 42,
+                bgcolor: 'white',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                '&:hover': {
+                  bgcolor: '#F8FAFC',
+                  borderColor: '#CBD5E1',
+                },
+              }}
+            >
+              <Refresh sx={{ fontSize: 20, color: '#64748B' }} />
+            </IconButton>
+          </Tooltip>
         </Box>
-        <Button
-          variant="outlined"
-          startIcon={<Refresh />}
-          onClick={loadLogs}
-          disabled={loading}
-          sx={{ 
-            minWidth: 110,
-            borderColor: '#E2E8F0',
-            color: '#475569',
-            '&:hover': {
-              borderColor: '#CBD5E1',
-              backgroundColor: '#F8FAFC',
-            }
-          }}
-        >
-          Refresh
-        </Button>
+
+        {/* Stat Cards */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)', md: 'repeat(6, 1fr)' }, gap: 2 }}>
+          {/* Creates */}
+          <Paper
+            elevation={0}
+            onClick={() => setSelectedAction(selectedAction === 'CREATE' ? '' : 'CREATE')}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              cursor: 'pointer',
+              border: selectedAction === 'CREATE' ? '2px solid #10B981' : '1px solid #E2E8F0',
+              background: selectedAction === 'CREATE' ? 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' : 'white',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.15)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 1.5,
+                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <AddCircleOutline sx={{ color: 'white', fontSize: 16 }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>
+                  {actionCounts.CREATE}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                  Creates
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+
+          {/* Updates */}
+          <Paper
+            elevation={0}
+            onClick={() => setSelectedAction(selectedAction === 'UPDATE' ? '' : 'UPDATE')}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              cursor: 'pointer',
+              border: selectedAction === 'UPDATE' ? '2px solid #3B82F6' : '1px solid #E2E8F0',
+              background: selectedAction === 'UPDATE' ? 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)' : 'white',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 12px rgba(59, 130, 246, 0.15)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 1.5,
+                  background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <EditOutlined sx={{ color: 'white', fontSize: 16 }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>
+                  {actionCounts.UPDATE}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                  Updates
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+
+          {/* Deletes */}
+          <Paper
+            elevation={0}
+            onClick={() => setSelectedAction(selectedAction === 'DELETE' ? '' : 'DELETE')}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              cursor: 'pointer',
+              border: selectedAction === 'DELETE' ? '2px solid #EF4444' : '1px solid #E2E8F0',
+              background: selectedAction === 'DELETE' ? 'linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)' : 'white',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.15)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 1.5,
+                  background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <DeleteOutline sx={{ color: 'white', fontSize: 16 }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>
+                  {actionCounts.DELETE}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                  Deletes
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+
+          {/* Defers */}
+          <Paper
+            elevation={0}
+            onClick={() => setSelectedAction(selectedAction === 'DEFER' ? '' : 'DEFER')}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              cursor: 'pointer',
+              border: selectedAction === 'DEFER' ? '2px solid #F59E0B' : '1px solid #E2E8F0',
+              background: selectedAction === 'DEFER' ? 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)' : 'white',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 12px rgba(245, 158, 11, 0.15)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 1.5,
+                  background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <SwapHoriz sx={{ color: 'white', fontSize: 16 }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>
+                  {actionCounts.DEFER}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                  Defers
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+
+          {/* Advances */}
+          <Paper
+            elevation={0}
+            onClick={() => setSelectedAction(selectedAction === 'ADVANCE' ? '' : 'ADVANCE')}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              cursor: 'pointer',
+              border: selectedAction === 'ADVANCE' ? '2px solid #8B5CF6' : '1px solid #E2E8F0',
+              background: selectedAction === 'ADVANCE' ? 'linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)' : 'white',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 12px rgba(139, 92, 246, 0.15)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 1.5,
+                  background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <SwapHoriz sx={{ color: 'white', fontSize: 16, transform: 'scaleX(-1)' }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>
+                  {actionCounts.ADVANCE}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
+                  Advances
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+
+          {/* Authority Top-Up */}
+          <Paper
+            elevation={0}
+            onClick={() => setSelectedAction(selectedAction === 'AUTHORITY_TOPUP' ? '' : 'AUTHORITY_TOPUP')}
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              cursor: 'pointer',
+              border: selectedAction === 'AUTHORITY_TOPUP' ? '2px solid #06B6D4' : '1px solid #E2E8F0',
+              background: selectedAction === 'AUTHORITY_TOPUP' ? 'linear-gradient(135deg, #ECFEFF 0%, #CFFAFE 100%)' : 'white',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 12px rgba(6, 182, 212, 0.15)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 1.5,
+                  background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <TrendingUp sx={{ color: 'white', fontSize: 16 }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', lineHeight: 1 }}>
+                  {actionCounts.AUTHORITY_TOPUP}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                  Top-Ups
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Box>
       </Box>
 
       {/* Filters */}
-      <Paper sx={{ mb: 3, p: 2.5 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Month</InputLabel>
-              <Select
-                value={selectedMonth || ''}
-                label="Month"
-                onChange={(e) => setSelectedMonth(e.target.value ? Number(e.target.value) : null)}
-              >
-                <MenuItem value="">All Months</MenuItem>
-                {monthNames.slice(1).map((month, index) => (
-                  <MenuItem key={index + 1} value={index + 1}>
-                    {month}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <TextField
-              fullWidth
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: 2.5,
+          borderRadius: 3,
+          border: '1px solid #E2E8F0',
+          background: 'linear-gradient(135deg, #FAFBFC 0%, #F8FAFC 100%)',
+        }}
+      >
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>Month</InputLabel>
+            <Select
+              value={selectedMonth || ''}
+              label="Month"
+              onChange={(e) => setSelectedMonth(e.target.value ? Number(e.target.value) : null)}
+              sx={{
+                borderRadius: 2,
+                bgcolor: 'white',
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: '#E2E8F0' },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#CBD5E1' },
+              }}
+            >
+              <MenuItem value="">All Months</MenuItem>
+              {monthNames.slice(1).map((month, index) => (
+                <MenuItem key={index + 1} value={index + 1}>
+                  {month}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <TextField
+            size="small"
+            label="Year"
+            type="number"
+            value={selectedYear || ''}
+            onChange={(e) => setSelectedYear(e.target.value ? Number(e.target.value) : null)}
+            inputProps={{ min: 2020, max: 2100 }}
+            sx={{
+              width: 120,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+                bgcolor: 'white',
+                '& fieldset': { borderColor: '#E2E8F0' },
+                '&:hover fieldset': { borderColor: '#CBD5E1' },
+              },
+            }}
+          />
+
+          {selectedAction && (
+            <Button
               size="small"
-              label="Year"
-              type="number"
-              value={selectedYear || ''}
-              onChange={(e) => setSelectedYear(e.target.value ? Number(e.target.value) : null)}
-              inputProps={{ min: 2020, max: 2100 }}
-            />
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Action</InputLabel>
-              <Select
-                value={selectedAction}
-                label="Action"
-                onChange={(e) => setSelectedAction(e.target.value)}
-              >
-                <MenuItem value="">All Actions</MenuItem>
-                <MenuItem value="CREATE">Create</MenuItem>
-                <MenuItem value="UPDATE">Update</MenuItem>
-                <MenuItem value="DELETE">Delete</MenuItem>
-                <MenuItem value="DEFER">Defer</MenuItem>
-                <MenuItem value="ADVANCE">Advance</MenuItem>
-                <MenuItem value="AUTHORITY_TOPUP">Authority Top-Up</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Box sx={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              px: 1.5, 
-              py: 0.75, 
-              bgcolor: '#F1F5F9', 
-              borderRadius: 2 
-            }}>
-              <Typography variant="body2" sx={{ color: '#475569', fontWeight: 500 }}>
-                {logs.length} log{logs.length !== 1 ? 's' : ''} found
+              onClick={() => setSelectedAction('')}
+              sx={{
+                textTransform: 'none',
+                color: '#64748B',
+                bgcolor: 'white',
+                border: '1px solid #E2E8F0',
+                borderRadius: 2,
+                px: 2,
+                '&:hover': {
+                  bgcolor: '#F8FAFC',
+                  borderColor: '#CBD5E1',
+                },
+              }}
+            >
+              Clear filter: {selectedAction}
+            </Button>
+          )}
+
+          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box
+              sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                px: 2,
+                py: 0.75,
+                bgcolor: 'white',
+                border: '1px solid #E2E8F0',
+                borderRadius: 2,
+              }}
+            >
+              <Typography variant="body2" sx={{ color: '#475569', fontWeight: 600 }}>
+                {logs.length}
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#94A3B8', ml: 0.5 }}>
+                log{logs.length !== 1 ? 's' : ''}
               </Typography>
             </Box>
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
       </Paper>
 
-      {/* Weekly quantity comparison (new) */}
-      <Paper sx={{ mb: 3, p: 2.5 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+      {/* Weekly Quantity Comparison */}
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: 3,
+          borderRadius: 3,
+          border: '1px solid #E2E8F0',
+          background: 'white',
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap', mb: 2.5 }}>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B' }}>
-              Weekly Quantity Comparison
-            </Typography>
-            <Typography variant="body2" sx={{ color: '#64748B', mt: 0.5 }}>
-              Sun–Thu snapshot for {weeklyProduct}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 2,
+                  background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <CompareArrows sx={{ color: 'white', fontSize: 18 }} />
+              </Box>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', letterSpacing: '-0.01em' }}>
+                Weekly Quantity Comparison
+              </Typography>
+            </Box>
+            <Typography variant="body2" sx={{ color: '#64748B', ml: 6.5 }}>
+              Sun–Thu snapshot comparing previous week to current live data
             </Typography>
             {weeklyData && (
-              <Box sx={{ display: 'inline-flex', alignItems: 'center', mt: 1, px: 1.5, py: 0.5, bgcolor: 'rgba(71, 85, 105, 0.08)', borderRadius: 1.5 }}>
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', mt: 1, ml: 6.5, px: 1.5, py: 0.5, bgcolor: '#F1F5F9', borderRadius: 1.5 }}>
                 <Typography variant="caption" sx={{ color: '#475569', fontWeight: 500 }}>
                   {format(new Date(weeklyData.previous_week_start), 'MMM dd')} → {format(new Date(weeklyData.previous_week_end), 'MMM dd, yyyy')}
                 </Typography>
               </Box>
             )}
           </Box>
-          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Button 
-              variant="outlined" 
-              size="small"
-              onClick={loadWeeklyComparison} 
-              disabled={weeklyLoading} 
-              startIcon={<Refresh />}
-              sx={{ 
-                minWidth: 100,
-                borderColor: '#E2E8F0',
-                color: '#475569',
-                '&:hover': {
-                  borderColor: '#CBD5E1',
-                  backgroundColor: '#F8FAFC',
-                }
-              }}
-            >
-              Refresh
-            </Button>
-          </Box>
         </Box>
 
         {/* Product Tabs */}
-        <Box sx={{ mb: 2 }}>
+        <Box sx={{ mb: 2.5, borderBottom: '1px solid #E2E8F0' }}>
           <Tabs
             value={PRODUCT_FILTERS.indexOf(weeklyProduct as typeof PRODUCT_FILTERS[number])}
             onChange={(_, newValue) => setWeeklyProduct(PRODUCT_FILTERS[newValue])}
             sx={{
+              minHeight: 44,
               '& .MuiTabs-indicator': {
-                backgroundColor: '#2563EB',
+                backgroundColor: weeklyProduct === 'GASOIL' ? '#F59E0B' : weeklyProduct === 'JET A-1' ? '#3B82F6' : '#8B5CF6',
                 height: 3,
+                borderRadius: '3px 3px 0 0',
               },
               '& .MuiTab-root': {
                 textTransform: 'none',
                 fontWeight: 600,
-                fontSize: '1rem',
+                fontSize: '0.9rem',
                 color: '#64748B',
-                minWidth: 120,
+                minWidth: 100,
+                minHeight: 44,
+                px: 2.5,
                 '&.Mui-selected': {
-                  color: '#2563EB',
+                  color: weeklyProduct === 'GASOIL' ? '#D97706' : weeklyProduct === 'JET A-1' ? '#2563EB' : '#7C3AED',
+                },
+                '&:hover': {
+                  color: '#1E293B',
+                  backgroundColor: '#F8FAFC',
                 },
               },
             }}
@@ -488,54 +825,67 @@ export default function ReconciliationPage() {
         )}
       </Paper>
 
-      {/* Logs Table */}
-      <Box sx={{ mt: 3 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, color: '#1E293B', mb: 2 }}>
-          Audit Logs
-        </Typography>
-        
+      {/* Audit Logs Table */}
+      <Paper
+        elevation={0}
+        sx={{
+          mt: 3,
+          borderRadius: 3,
+          border: '1px solid #E2E8F0',
+          overflow: 'hidden',
+        }}
+      >
+        <Box sx={{ p: 2.5, borderBottom: '1px solid #E2E8F0', background: 'linear-gradient(135deg, #FAFBFC 0%, #F8FAFC 100%)' }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', letterSpacing: '-0.01em' }}>
+            Audit Logs
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748B', mt: 0.25 }}>
+            Detailed history of all plan modifications
+          </Typography>
+        </Box>
+
         {loading ? (
-          <Paper sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
-            <CircularProgress size={32} />
-          </Paper>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+            <CircularProgress size={32} sx={{ color: '#8B5CF6' }} />
+          </Box>
         ) : logs.length === 0 ? (
-          <Paper sx={{ py: 8, textAlign: 'center' }}>
-            <Box sx={{ 
-              width: 56, 
-              height: 56, 
-              borderRadius: 3, 
-              bgcolor: '#F1F5F9', 
-              display: 'flex', 
-              alignItems: 'center', 
+          <Box sx={{ py: 8, textAlign: 'center' }}>
+            <Box sx={{
+              width: 64,
+              height: 64,
+              borderRadius: 3,
+              background: 'linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)',
+              display: 'flex',
+              alignItems: 'center',
               justifyContent: 'center',
               mx: 'auto',
               mb: 2,
             }}>
-              <Refresh sx={{ fontSize: 28, color: '#94A3B8' }} />
+              <CompareArrows sx={{ fontSize: 28, color: '#94A3B8' }} />
             </Box>
-            <Typography variant="body1" sx={{ fontWeight: 500, color: '#475569' }}>
+            <Typography variant="body1" sx={{ fontWeight: 600, color: '#475569' }}>
               No reconciliation logs found
             </Typography>
-            <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
-              Logs will appear here when plan changes are made.
+            <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5, maxWidth: 320, mx: 'auto' }}>
+              Logs will appear here when plan changes are made. Try adjusting your filters.
             </Typography>
-          </Paper>
+          </Box>
         ) : (
-          <Paper>
+          <>
             <TableContainer sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <Table sx={{ minWidth: 900 }}>
                 <TableHead>
-                  <TableRow>
-                    <ResizableTableCell columnId="dateTime" width={auditLogsCols.columnWidths['dateTime']} minWidth={120} onResizeStart={auditLogsCols.handleResizeStart}>Date & Time</ResizableTableCell>
-                    <ResizableTableCell columnId="user" width={auditLogsCols.columnWidths['user']} minWidth={60} onResizeStart={auditLogsCols.handleResizeStart}>User</ResizableTableCell>
-                    <ResizableTableCell columnId="type" width={auditLogsCols.columnWidths['type']} minWidth={80} onResizeStart={auditLogsCols.handleResizeStart}>Type</ResizableTableCell>
-                    <ResizableTableCell columnId="action" width={auditLogsCols.columnWidths['action']} minWidth={80} onResizeStart={auditLogsCols.handleResizeStart}>Action</ResizableTableCell>
-                    <ResizableTableCell columnId="customer" width={auditLogsCols.columnWidths['customer']} minWidth={100} onResizeStart={auditLogsCols.handleResizeStart}>Customer</ResizableTableCell>
-                    <ResizableTableCell columnId="contract" width={auditLogsCols.columnWidths['contract']} minWidth={100} onResizeStart={auditLogsCols.handleResizeStart}>Contract</ResizableTableCell>
-                    <ResizableTableCell columnId="product" width={auditLogsCols.columnWidths['product']} minWidth={90} onResizeStart={auditLogsCols.handleResizeStart}>Product</ResizableTableCell>
-                    <ResizableTableCell columnId="planPeriod" width={auditLogsCols.columnWidths['planPeriod']} minWidth={90} onResizeStart={auditLogsCols.handleResizeStart}>Plan Period</ResizableTableCell>
-                    <ResizableTableCell columnId="description" width={auditLogsCols.columnWidths['description']} minWidth={120} onResizeStart={auditLogsCols.handleResizeStart}>Description</ResizableTableCell>
-                    <ResizableTableCell columnId="fieldChange" width={auditLogsCols.columnWidths['fieldChange']} minWidth={120} onResizeStart={auditLogsCols.handleResizeStart}>Field Change</ResizableTableCell>
+                  <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                    <ResizableTableCell columnId="dateTime" width={auditLogsCols.columnWidths['dateTime']} minWidth={120} onResizeStart={auditLogsCols.handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Date & Time</ResizableTableCell>
+                    <ResizableTableCell columnId="user" width={auditLogsCols.columnWidths['user']} minWidth={60} onResizeStart={auditLogsCols.handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>User</ResizableTableCell>
+                    <ResizableTableCell columnId="type" width={auditLogsCols.columnWidths['type']} minWidth={80} onResizeStart={auditLogsCols.handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Type</ResizableTableCell>
+                    <ResizableTableCell columnId="action" width={auditLogsCols.columnWidths['action']} minWidth={80} onResizeStart={auditLogsCols.handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Action</ResizableTableCell>
+                    <ResizableTableCell columnId="customer" width={auditLogsCols.columnWidths['customer']} minWidth={100} onResizeStart={auditLogsCols.handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Customer</ResizableTableCell>
+                    <ResizableTableCell columnId="contract" width={auditLogsCols.columnWidths['contract']} minWidth={100} onResizeStart={auditLogsCols.handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Contract</ResizableTableCell>
+                    <ResizableTableCell columnId="product" width={auditLogsCols.columnWidths['product']} minWidth={90} onResizeStart={auditLogsCols.handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Product</ResizableTableCell>
+                    <ResizableTableCell columnId="planPeriod" width={auditLogsCols.columnWidths['planPeriod']} minWidth={90} onResizeStart={auditLogsCols.handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Plan Period</ResizableTableCell>
+                    <ResizableTableCell columnId="description" width={auditLogsCols.columnWidths['description']} minWidth={120} onResizeStart={auditLogsCols.handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Description</ResizableTableCell>
+                    <ResizableTableCell columnId="fieldChange" width={auditLogsCols.columnWidths['fieldChange']} minWidth={120} onResizeStart={auditLogsCols.handleResizeStart} sx={{ fontWeight: 600, color: '#475569', fontSize: '0.8125rem' }}>Field Change</ResizableTableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -543,7 +893,18 @@ export default function ReconciliationPage() {
                     ? logs.slice(logsPage * logsRowsPerPage, logsPage * logsRowsPerPage + logsRowsPerPage)
                     : logs
                   ).map((log) => (
-                    <TableRow key={log.id} hover>
+                    <TableRow
+                      key={log.id}
+                      sx={{
+                        transition: 'background-color 0.15s ease',
+                        '&:hover': {
+                          bgcolor: '#F8FAFC',
+                        },
+                        '& td': {
+                          borderBottom: '1px solid #F1F5F9',
+                        },
+                      }}
+                    >
                       <TableCell>
                         <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8125rem' }}>
                           {formatDate(log.created_at)}
@@ -666,23 +1027,28 @@ export default function ReconciliationPage() {
                 </TableBody>
               </Table>
             </TableContainer>
-            {logs.length > 0 && (
-              <TablePagination
-                rowsPerPageOptions={[25, 50, { label: 'All', value: -1 }]}
-                component="div"
-                count={logs.length}
-                rowsPerPage={logsRowsPerPage}
-                page={logsPage}
-                onPageChange={(_, newPage) => setLogsPage(newPage)}
-                onRowsPerPageChange={(e) => {
-                  setLogsRowsPerPage(parseInt(e.target.value, 10))
-                  setLogsPage(0)
-                }}
-              />
-            )}
-          </Paper>
+            <TablePagination
+              rowsPerPageOptions={[25, 50, { label: 'All', value: -1 }]}
+              component="div"
+              count={logs.length}
+              rowsPerPage={logsRowsPerPage}
+              page={logsPage}
+              onPageChange={(_, newPage) => setLogsPage(newPage)}
+              onRowsPerPageChange={(e) => {
+                setLogsRowsPerPage(parseInt(e.target.value, 10))
+                setLogsPage(0)
+              }}
+              sx={{
+                borderTop: '1px solid #E2E8F0',
+                '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                  color: '#64748B',
+                  fontSize: '0.875rem',
+                },
+              }}
+            />
+          </>
         )}
-      </Box>
+      </Paper>
     </Box>
   )
 }
