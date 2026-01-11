@@ -949,3 +949,32 @@ class DeletedEntity(Base):
     
     # For automatic cleanup
     permanent_delete_after = Column(DateTime(timezone=True), nullable=True)  # When to permanently delete
+
+
+class RowHighlight(Base):
+    """
+    Shared row highlights for port movement table.
+    Allows team leaders to highlight rows for team visibility.
+    Highlights are global (visible to all users).
+    """
+    __tablename__ = "row_highlights"
+    __table_args__ = (
+        UniqueConstraint('row_key', name='uq_row_highlights_row_key'),
+        Index('idx_row_highlights_row_key', 'row_key'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Row identification - flexible key to support cargos, monthly plans, and combi groups
+    # Examples: "cargo-123", "monthly-plan-456", "combi-cargo-abc-def", "combi-plan-xyz"
+    row_key = Column(String(100), nullable=False, unique=True)
+
+    # Who highlighted this row
+    highlighted_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    highlighted_by_initials = Column(String(10), nullable=True)
+
+    # When it was highlighted
+    highlighted_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Optional note for the highlight (future enhancement)
+    note = Column(Text, nullable=True)

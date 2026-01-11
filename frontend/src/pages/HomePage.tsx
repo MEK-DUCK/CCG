@@ -34,10 +34,10 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material'
-import { FileDownload, Search, Description, Clear, History, ChevronLeft, ChevronRight } from '@mui/icons-material'
+import { FileDownload, Search, Description, Clear, History, ChevronLeft, ChevronRight, Highlight } from '@mui/icons-material'
 import { alpha } from '@mui/material/styles'
 import { format } from 'date-fns'
-import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, documentsAPI } from '../api/client'
+import client, { cargoAPI, customerAPI, contractAPI, monthlyPlanAPI, documentsAPI, highlightsAPI } from '../api/client'
 import type { Cargo, Customer, Contract, MonthlyPlan, CargoStatus, ContractProduct, LCStatus, CargoPortOperation, PortOperationStatus } from '../types'
 import { parseLaycanDate } from '../utils/laycanParser'
 import { calculateETADate, setVoyageDurations, type DischargePort } from '../utils/voyageDuration'
@@ -566,6 +566,8 @@ export default function HomePage() {
   const [portMovementFilterProduct, setPortMovementFilterProduct] = useState<string | null>(null)
   const [portMovementFilterStatus, setPortMovementFilterStatus] = useState<string | null>(null)
   const [portMovementSearch, setPortMovementSearch] = useState<string>('')
+  // Highlighted rows (shared team highlights loaded from backend)
+  const [highlightedRows, setHighlightedRows] = useState<Set<string>>(new Set())
   const [completedCargosSearch, setCompletedCargosSearch] = useState<string>('')
   const [inRoadCIFSearch, setInRoadCIFSearch] = useState<string>('')
   const [inRoadCIFFilterCustomers, setInRoadCIFFilterCustomers] = useState<number[]>([])
@@ -935,6 +937,38 @@ export default function HomePage() {
       localStorage.setItem('portMovement_selectedYear', String(selectedYear))
     } catch {}
   }, [selectedYear])
+
+  // Load highlighted rows from backend on mount
+  useEffect(() => {
+    const loadHighlights = async () => {
+      try {
+        const res = await highlightsAPI.getKeys()
+        setHighlightedRows(new Set(res.data.row_keys))
+      } catch (err) {
+        console.error('Error loading highlights:', err)
+      }
+    }
+    loadHighlights()
+  }, [])
+
+  // Toggle row highlight (shared across all users via backend)
+  const toggleRowHighlight = useCallback(async (rowKey: string, event: React.MouseEvent) => {
+    event.stopPropagation()
+    try {
+      const res = await highlightsAPI.toggle(rowKey)
+      setHighlightedRows(prev => {
+        const newSet = new Set(prev)
+        if (res.data.action === 'removed') {
+          newSet.delete(rowKey)
+        } else {
+          newSet.add(rowKey)
+        }
+        return newSet
+      })
+    } catch (err) {
+      console.error('Error toggling highlight:', err)
+    }
+  }, [])
 
   const loadActiveLoadings = async () => {
     try {
@@ -4093,8 +4127,8 @@ export default function HomePage() {
                   setPortMovementFilterProduct(null)
                   setPortMovementFilterStatus(null)
                 }}
-                sx={{ 
-                  fontSize: isMobile ? '0.7rem' : '0.75rem', 
+                sx={{
+                  fontSize: isMobile ? '0.7rem' : '0.75rem',
                   py: isMobile ? 1 : 0.5,
                   minHeight: isMobile ? 40 : 32,
                 }}
@@ -4153,12 +4187,101 @@ export default function HomePage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredCargos.map(({ cargo, combiCargos, contract, customer, laycan, isMonthlyPlan, monthlyPlan, combiMonthlyPlans, isCombi }) => (
-                    <TableRow 
-                  key={cargo 
-                    ? (isCombi ? `combi-cargo-${cargo.combi_group_id}` : `cargo-${cargo.id}`) 
-                    : (isCombi && combiMonthlyPlans ? `combi-plan-${combiMonthlyPlans[0]?.combi_group_id}` : `monthly-plan-${monthlyPlan?.id}`)
+              {(() => {
+                // Group rows by month when multiple months are selected
+                const showMonthDividers = selectedMonths.length > 1
+                let lastMonth: number | null = null
+                const elements: React.ReactNode[] = []
+
+                filteredCargos.forEach(({ cargo, combiCargos, contract, customer, laycan, isMonthlyPlan, monthlyPlan, combiMonthlyPlans, isCombi }) => {
+                  // Determine the month for this row
+                  const rowMonth = monthlyPlan?.month || (cargo ? (() => {
+                    const mp = monthlyPlans.find(m => m.id === cargo.monthly_plan_id)
+                    return mp?.month || null
+                  })() : null)
+
+                  // Add month divider if month changed and we're showing dividers
+                  if (showMonthDividers && rowMonth !== null && rowMonth !== lastMonth) {
+                    const monthName = new Date(selectedYear, rowMonth - 1).toLocaleString('default', { month: 'long' })
+                    const rowsInMonth = filteredCargos.filter(r => {
+                      const m = r.monthlyPlan?.month || (r.cargo ? monthlyPlans.find(mp => mp.id === r.cargo?.monthly_plan_id)?.month : null)
+                      return m === rowMonth
+                    }).length
+
+                    elements.push(
+                      <TableRow
+                        key={`month-divider-${rowMonth}`}
+                        sx={{
+                          bgcolor: 'transparent',
+                          '&:hover': { bgcolor: 'transparent' },
+                        }}
+                      >
+                        <TableCell
+                          colSpan={16}
+                          sx={{
+                            py: 1.5,
+                            px: 2,
+                            border: 'none',
+                            bgcolor: 'transparent',
+                          }}
+                        >
+                          <Box sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                          }}>
+                            <Box sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1.5,
+                              px: 2,
+                              py: 0.75,
+                              borderRadius: 2,
+                              background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
+                              boxShadow: '0 2px 8px rgba(59, 130, 246, 0.25)',
+                            }}>
+                              <Typography
+                                variant="subtitle2"
+                                sx={{
+                                  fontWeight: 700,
+                                  color: 'white',
+                                  letterSpacing: '-0.01em',
+                                }}
+                              >
+                                {monthName} {selectedYear}
+                              </Typography>
+                              <Box sx={{
+                                px: 1,
+                                py: 0.25,
+                                borderRadius: 1,
+                                bgcolor: 'rgba(255,255,255,0.2)',
+                              }}>
+                                <Typography variant="caption" sx={{ color: 'white', fontWeight: 600 }}>
+                                  {rowsInMonth}
+                                </Typography>
+                              </Box>
+                            </Box>
+                            <Box sx={{
+                              flex: 1,
+                              height: 1,
+                              background: 'linear-gradient(90deg, #E2E8F0 0%, transparent 100%)',
+                            }} />
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    )
+                    lastMonth = rowMonth
                   }
+
+                  // Generate unique row key for highlighting
+                  const rowKey = cargo
+                    ? (isCombi ? `combi-cargo-${cargo.combi_group_id}` : `cargo-${cargo.id}`)
+                    : (isCombi && combiMonthlyPlans ? `combi-plan-${combiMonthlyPlans[0]?.combi_group_id}` : `monthly-plan-${monthlyPlan?.id}`)
+                  const isHighlighted = highlightedRows.has(rowKey)
+
+                  elements.push(
+                    <TableRow
+                  key={rowKey}
                   onClick={() => {
                     if (isMonthlyPlan && monthlyPlan) {
                       // For combie, pass all monthly plans in the group
@@ -4168,17 +4291,23 @@ export default function HomePage() {
                       handleEditCargo(isCombi && combiCargos ? combiCargos[0] : cargo)
                     }
                   }}
-                      sx={{ 
-                        cursor: 'pointer', 
-                        '&:hover': { bgcolor: 'action.hover' },
-                        '& td': { 
+                      sx={{
+                        cursor: 'pointer',
+                        '&:hover': { bgcolor: isHighlighted ? '#FEF9C3' : 'action.hover' },
+                        '& td': {
                           minHeight: isMobile ? 56 : 48,
                           py: isMobile ? 1.5 : 1,
                     },
-                    bgcolor: isMonthlyPlan ? 'action.selected' : 'inherit'
+                    bgcolor: isHighlighted
+                      ? '#FEF3C7'
+                      : isMonthlyPlan
+                        ? 'action.selected'
+                        : 'inherit',
+                    borderLeft: isHighlighted ? '4px solid #F59E0B' : 'none',
+                    transition: 'all 0.15s ease',
                   }}
                 >
-                      <TableCell sx={{ 
+                      <TableCell sx={{
                         minWidth: isMobile ? 120 : 'auto',
                         whiteSpace: 'normal',
                         wordWrap: 'break-word',
@@ -4581,30 +4710,55 @@ export default function HomePage() {
                       }}>
                         {cargo ? (cargo.notes || '-') : '-'}
                       </TableCell>
-                      <TableCell 
-                        sx={{ 
+                      <TableCell
+                        sx={{
                           minWidth: isMobile ? 100 : 120,
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {cargo && (
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<Description />}
-                            onClick={(e) => handleGenerateNomination(cargo.id, e)}
-                            sx={{ 
-                              fontSize: '0.7rem',
-                              minWidth: 'auto',
-                              px: 1,
-                            }}
-                          >
-                            Nom
-                          </Button>
-                        )}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          {/* Highlight toggle button */}
+                          <Tooltip title={isHighlighted ? "Remove highlight" : "Highlight row"} arrow>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => toggleRowHighlight(rowKey, e)}
+                              sx={{
+                                width: 28,
+                                height: 28,
+                                color: isHighlighted ? '#F59E0B' : '#CBD5E1',
+                                transition: 'all 0.15s ease',
+                                '&:hover': {
+                                  color: '#F59E0B',
+                                  bgcolor: '#FEF3C7',
+                                },
+                              }}
+                            >
+                              <Highlight sx={{ fontSize: 18 }} />
+                            </IconButton>
+                          </Tooltip>
+                          {cargo && (
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<Description />}
+                              onClick={(e) => handleGenerateNomination(cargo.id, e)}
+                              sx={{
+                                fontSize: '0.7rem',
+                                minWidth: 'auto',
+                                px: 1,
+                              }}
+                            >
+                              Nom
+                            </Button>
+                          )}
+                        </Box>
                       </TableCell>
                     </TableRow>
-              ))}
+                  )
+                })
+
+                return elements
+              })()}
             </TableBody>
           </Table>
         </TableContainer>

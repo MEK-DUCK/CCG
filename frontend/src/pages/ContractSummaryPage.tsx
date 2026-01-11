@@ -21,7 +21,7 @@ import { useResizableColumns } from '../hooks/useResizableColumns'
 import { ResizableTableCell } from '../components/ResizableTableCell'
 import { contractAPI, customerAPI, quarterlyPlanAPI } from '../api/client'
 import type { Contract, Customer, QuarterlyPlan } from '../types'
-import { BADGE_COLORS, getContractTypeColor, getPaymentColor } from '../utils/chipColors'
+import { BADGE_COLORS, getContractTypeColor, getPaymentColor, getProductColor } from '../utils/chipColors'
 import { useToast } from '../contexts/ToastContext'
 import { applyAmendmentsToProduct } from '../utils/monthlyPlanUtils'
 
@@ -680,8 +680,6 @@ export default function ContractSummaryPage() {
             <TableBody>
               {filteredContracts.map((c) => {
                 const customerName = customerNameById[c.customer_id] || '-'
-                const productsLabel =
-                  c.products.length === 0 ? '-' : c.products.map((p) => p.name).filter(Boolean).join(', ')
                 const jetA1Selected = c.products.some((p) => p.name === 'JET A-1')
                 const saving = Boolean(savingById[c.id])
                 const saved = Boolean(savedById[c.id])
@@ -709,7 +707,25 @@ export default function ContractSummaryPage() {
                       <Typography variant="body2">{formatDateRange(c.start_period, c.end_period)}</Typography>
                     </TableCell>
                     <TableCell sx={{ width: columnWidths['products'] }}>
-                      <Typography variant="body2">{productsLabel}</Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {c.products.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary">-</Typography>
+                        ) : (
+                          c.products.map((p, idx) => (
+                            <Chip
+                              key={idx}
+                              label={p.name}
+                              size="small"
+                              sx={{
+                                height: 22,
+                                fontSize: '0.7rem',
+                                fontWeight: 500,
+                                ...getProductColor(p.name),
+                              }}
+                            />
+                          ))
+                        )}
+                      </Box>
                     </TableCell>
                     <TableCell sx={{ width: columnWidths['firmTotal'] }}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>

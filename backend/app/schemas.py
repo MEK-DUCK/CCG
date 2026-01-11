@@ -1114,3 +1114,25 @@ class AdminCustomerUpdate(SanitizedModel):
     """Schema for admin customer updates with validation."""
     name: Optional[str] = Field(None, min_length=1, max_length=200, description="Customer name")
 
+
+# Row Highlight Schemas (for shared team highlights in port movement)
+class RowHighlightBase(BaseModel):
+    row_key: str = Field(..., min_length=1, max_length=100, description="Unique row identifier")
+    note: Optional[str] = Field(None, max_length=500, description="Optional note for the highlight")
+
+class RowHighlightCreate(RowHighlightBase):
+    pass
+
+class RowHighlight(RowHighlightBase):
+    id: int
+    highlighted_by_id: Optional[int] = None
+    highlighted_by_initials: Optional[str] = None
+    highlighted_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class RowHighlightList(BaseModel):
+    """Response schema for list of highlighted row keys."""
+    row_keys: list[str]
+

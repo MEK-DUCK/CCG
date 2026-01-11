@@ -367,28 +367,55 @@ export const versionHistoryAPI = {
 export const recycleBinAPI = {
   // Get list of deleted entities
   getDeleted: (entityType?: string, includeRestored?: boolean, limit?: number) =>
-    client.get('/api/recycle-bin', { 
-      params: { 
-        entity_type: entityType, 
+    client.get('/api/recycle-bin', {
+      params: {
+        entity_type: entityType,
         include_restored: includeRestored,
-        limit 
-      } 
+        limit
+      }
     }),
-  
+
   // Get details of a specific deleted entity
   getDeletedDetail: (deletedId: number) =>
     client.get(`/api/recycle-bin/${deletedId}`),
-  
+
   // Restore a deleted entity
   restore: (deletedId: number) =>
     client.post(`/api/recycle-bin/${deletedId}/restore`),
-  
+
   // Permanently delete (admin only)
   permanentDelete: (deletedId: number) =>
     client.delete(`/api/recycle-bin/${deletedId}`),
-  
+
   // Cleanup expired entities (admin only)
   cleanup: () =>
     client.post('/api/recycle-bin/cleanup'),
+}
+
+// Row Highlights API (shared team highlights for port movement)
+export const highlightsAPI = {
+  // Get all highlighted row keys
+  getKeys: () =>
+    client.get<{ row_keys: string[] }>('/api/highlights/keys'),
+
+  // Get all highlights with details
+  getAll: () =>
+    client.get('/api/highlights'),
+
+  // Toggle highlight for a row (add if not highlighted, remove if highlighted)
+  toggle: (rowKey: string) =>
+    client.post<{ action: 'added' | 'removed'; row_key: string; highlighted_by?: string }>(`/api/highlights/toggle/${encodeURIComponent(rowKey)}`),
+
+  // Add a highlight
+  add: (rowKey: string, note?: string) =>
+    client.post('/api/highlights', { row_key: rowKey, note }),
+
+  // Remove a highlight
+  remove: (rowKey: string) =>
+    client.delete(`/api/highlights/${encodeURIComponent(rowKey)}`),
+
+  // Clear all highlights
+  clearAll: () =>
+    client.delete('/api/highlights'),
 }
 
